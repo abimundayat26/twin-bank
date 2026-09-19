@@ -168,3 +168,13 @@ export interface SimulationResponse {
   /** Monte Carlo runs behind the metrics. Absent/null on mock results. */
   num_simulations?: number | null;
 }
+
+/**
+ * What the simulator treats as a low checking balance when the user has not declared a
+ * minimum_checking_balance constraint of their own. Mirrors LOW_BALANCE_THRESHOLD in
+ * backend/src/backend/simulation/engine.py — change both together.
+ *
+ * Only for telling the user what the default is. Every displayed result already has the
+ * threshold applied server-side; never re-derive a low-balance verdict from this.
+ */
+export const DEFAULT_LOW_BALANCE_THRESHOLD = 500;
