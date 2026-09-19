@@ -1,23 +1,32 @@
-"""TwinBank API. /twin returns the mock fixture plus the user's answers; /simulate runs the Monte Carlo simulation."""
+"""TwinBank API. /twin returns the mock fixture plus the user's answers; /simulate runs the Monte Carlo simulation
+and /explain/{simulation_id} returns a recent simulation again."""
 
 import os
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend import simulation_store
 from backend import twin_store
 from backend.fixtures import load_raw_transactions
+from backend.goal_compiler import compile_goals
 from backend.ingest.build import latest_transaction_date, rebuild
 from backend.ingest.normalize import normalize_all
 from backend.schemas import (
     ClarificationResponseRequest,
+    DeclaredGoalsRequest,
     FinancialTwin,
+    GoalCompileRequest,
+    GoalCompileResponse,
     MinimumBalanceRequest,
+    OptimizationRequest,
+    OptimizationResponse,
     SimulationRequest,
     SimulationResponse,
     TwinBuildRequest,
 )
 from backend.simulation import SimulationError, run_simulation
+from backend.simulation.optimize import run_optimization
 
 # Optional: fix the Monte Carlo seed so demo numbers repeat. Unset means fresh randomness.
 SIMULATION_SEED = int(seed) if (seed := os.getenv("SIMULATION_SEED")) else None
@@ -91,6 +100,44 @@ def respond_to_clarification(request: ClarificationResponseRequest) -> Financial
 def simulate(request: SimulationRequest) -> SimulationResponse:
     twin = twin_for(request.user_id)
     try:
-        return run_simulation(twin, request, seed=SIMULATION_SEED)
+        response = run_simulation(twin, request, seed=SIMULATION_SEED)
     except SimulationError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    simulation_store.save(response)
+    return response
+
+
+@app.get("/explain/{simulation_id}", response_model=SimulationResponse)
+def explain(simulation_id: str) -> SimulationResponse:
+    """The stored result of a recent /simulate call, explanation included."""
+    response = simulation_store.get(simulation_id)
+    if response is None:
+        raise HTTPException(
+            status_code=404, detail=f"Unknown or expired simulation_id '{simulation_id}'"
+        )
+    return response
+
+
+@app.post("/optimize", response_model=OptimizationResponse)
+def optimize(request: OptimizationRequest) -> OptimizationResponse:
+    twin = twin_for(request.user_id)
+    try:
+        return run_optimization(twin, request, seed=SIMULATION_SEED)
+    except SimulationError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@app.post("/goals/compile", response_model=GoalCompileResponse)
+def compile_goal_text(request: GoalCompileRequest) -> GoalCompileResponse:
+    """Drafts only. Saving them is a separate PUT /twin/{user_id}/goals, after the user confirms."""
+    twin = twin_for(request.user_id)
+    return compile_goals(twin.user_id, request.text, twin.as_of)
+
+
+@app.put("/twin/{user_id}/goals", response_model=FinancialTwin)
+def set_goals(user_id: str, request: DeclaredGoalsRequest) -> FinancialTwin:
+    twin_for(user_id)
+    try:
+        return twin_store.set_goals(request.goals, request.constraints)
+    except twin_store.InvalidDeclaration as e:
         raise HTTPException(status_code=422, detail=str(e)) from e

@@ -51,19 +51,24 @@ Endpoints:
 | PUT | `/twin/{user_id}/minimum-balance` | `FinancialTwin` with the user's low-balance line set |
 | POST | `/clarifications/respond` | `FinancialTwin` with the user's category answer applied |
 | POST | `/simulate` | `SimulationResponse` for a `SimulationRequest` |
+| POST | `/optimize` | `OptimizationResponse`: alternatives to a purchase, ranked, for an `OptimizationRequest` |
+| POST | `/goals/compile` | `GoalCompileResponse`: draft goals, constraints and clarification questions from a `GoalCompileRequest` (saves nothing) |
+| PUT | `/twin/{user_id}/goals` | `FinancialTwin` after saving the confirmed goals and emergency reserve (`DeclaredGoalsRequest`) |
 
 Interactive docs: http://localhost:8000/docs
 
 ## Frontend
 
-Requires Node 22.
+Requires Node 22. On WSL, install Node inside Linux (for example with nvm): the Windows
+`npm` under `/mnt/c` cannot run scripts from a WSL path.
 
 ```bash
 cd frontend
 npm install
 npm run dev        # http://localhost:3000
 npm run lint
-npm run typecheck
+npm run typecheck  # generates Next's route types first, so it works on a fresh clone
+npm test           # Vitest unit tests (lib/*.test.ts)
 npm run build
 ```
 
