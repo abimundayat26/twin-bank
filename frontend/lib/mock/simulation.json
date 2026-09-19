@@ -1,0 +1,69 @@
+{
+  "simulation_id": "sim_mock_alex_laptop",
+  "user_id": "alex",
+  "request": {
+    "user_id": "alex",
+    "events": [
+      {
+        "type": "purchase",
+        "description": "Laptop",
+        "amount": 800.0,
+        "date": "2026-09-20",
+        "account_id": "acc_checking"
+      }
+    ],
+    "horizon_end": "2027-05-01"
+  },
+  "horizon_end": "2027-05-01",
+  "baseline": {
+    "ending_balance": 4480.0,
+    "min_balance": 2390.0,
+    "prob_low_balance": 0.02,
+    "prob_below_reserve": 0.03,
+    "goal_shortfall": 0.0,
+    "obligations_covered": true
+  },
+  "counterfactual": {
+    "ending_balance": 3680.0,
+    "min_balance": 1590.0,
+    "prob_low_balance": 0.11,
+    "prob_below_reserve": 0.21,
+    "goal_shortfall": 0.0,
+    "obligations_covered": true
+  },
+  "summary": "Buying the $800 laptop still leaves Alex on track for the $2,000 summer housing goal and all upcoming bills, but the cushion above the goal and the $1,500 emergency reserve shrinks from about $980 to about $180. The chance of dipping below the reserve rises from 3% to 21%.",
+  "drivers": [
+    {
+      "label": "Laptop purchase",
+      "impact_amount": -800.0,
+      "direction": "negative",
+      "detail": "One-time $800 payment from checking on 2026-09-20."
+    },
+    {
+      "label": "October rent",
+      "impact_amount": -650.0,
+      "direction": "negative",
+      "detail": "Rent is due 11 days after the purchase, which is when the balance is at its lowest."
+    },
+    {
+      "label": "Discretionary spending variability",
+      "impact_amount": -130.0,
+      "direction": "negative",
+      "detail": "Discretionary spending varies by about $65 every two weeks, so a few above-average periods could erase the remaining $180 cushion."
+    },
+    {
+      "label": "Biweekly paycheck",
+      "impact_amount": 720.0,
+      "direction": "positive",
+      "detail": "Steady $720 paychecks every 14 days rebuild the balance by roughly $220 per month after bills and spending."
+    }
+  ],
+  "assumptions": [
+    "Mocked result: values are fixed and do not yet respond to the request.",
+    "Low balance means checking below $200.",
+    "The emergency reserve counts checking plus savings.",
+    "The housing goal must be met on top of the emergency reserve.",
+    "The horizon runs from 2026-09-18 to the goal deadline, 2027-05-01."
+  ],
+  "is_mock": true
+}
