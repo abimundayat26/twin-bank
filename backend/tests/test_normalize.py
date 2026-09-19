@@ -59,6 +59,19 @@ def test_categorize_by_keyword(description, expected):
     assert categorize(description) == expected
 
 
+@pytest.mark.parametrize(
+    "description",
+    ["Current account fee", "Parent payment", "Torrent VPN", "Shell gas co", "Barnes & Noble"],
+)
+def test_keywords_only_match_whole_words(description):
+    assert categorize(description) == "other"
+
+
+def test_multi_word_keywords_match():
+    assert categorize("ACME DIRECT DEPOSIT") == "income"
+    assert categorize("Dominion natural gas") == "utilities"
+
+
 def test_categorize_is_case_insensitive():
     assert categorize("Kroger #418") == categorize("KROGER #418") == "groceries"
 

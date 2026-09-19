@@ -6,7 +6,7 @@ changing anything in backend/fixtures/:
 
     cd backend && uv run python -m backend.sync_frontend_mocks
 
-`test_fixtures.py` fails if the two ever drift apart.
+`tests/test_frontend_mocks.py` fails if the two ever drift apart.
 """
 
 import json

@@ -139,6 +139,12 @@ export interface ScenarioMetrics {
   prob_obligations_uncovered?: number | null;
   /** Share of simulated futures meeting every goal due within the horizon. Absent/null if not computed. */
   prob_goal_met?: number | null;
+  /**
+   * Share of simulated futures where checking could not cover a mandatory bill on its
+   * own and savings made up the difference. The bill was still paid — see
+   * prob_obligations_uncovered for the futures where it was not. Absent/null on mock results.
+   */
+  prob_savings_sweep?: number | null;
 }
 
 export interface ExplanationDriver {

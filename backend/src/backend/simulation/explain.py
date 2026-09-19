@@ -56,10 +56,16 @@ def build_summary(twin: FinancialTwin, events: list[SimulationEvent], mc: MonteC
             f"Total savings dip below the {money(mc.reserve)} emergency reserve in "
             f"{pct(cf.prob_below_reserve)} of futures, versus {pct(base.prob_below_reserve)}."
         )
+    if base.prob_savings_sweep or cf.prob_savings_sweep:
+        sentences.append(
+            f"In {pct(cf.prob_savings_sweep)} of futures {name} would have to move money out of "
+            f"savings to pay a mandatory bill, versus {pct(base.prob_savings_sweep)} without the "
+            "purchase."
+        )
     if base.prob_obligations_uncovered or cf.prob_obligations_uncovered:
         sentences.append(
-            f"In {pct(cf.prob_obligations_uncovered)} of futures checking would not cover a mandatory "
-            f"bill without moving money from savings, versus {pct(base.prob_obligations_uncovered)}."
+            f"In {pct(cf.prob_obligations_uncovered)} of futures checking and savings together would "
+            f"not cover a mandatory bill, versus {pct(base.prob_obligations_uncovered)}."
         )
 
     expected_base, expected_cf = mc.expected.baseline, mc.expected.counterfactual
@@ -179,7 +185,10 @@ def build_assumptions(twin: FinancialTwin, mc: MonteCarloComparison) -> list[str
         "from a normal distribution using the twin's mean and standard deviation, spread evenly over "
         "the period and never below $0 (which raises average spending slightly).",
         "Bill amounts, bill due dates, and paycheck dates are fixed; bill confidence is not used.",
-        "Bills count as covered only if checking covers every mandatory bill in every simulated future.",
+        "A mandatory bill checking cannot cover is paid by moving money from savings, even if "
+        "that breaks the emergency reserve; it counts as uncovered only when checking and savings "
+        "together fall short.",
+        "Everyday spending and optional charges are never paid from savings.",
         low_balance_assumption(twin),
         "The emergency reserve counts checking plus savings.",
         "Goals must be met on top of the emergency reserve.",

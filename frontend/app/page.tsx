@@ -8,7 +8,7 @@
  * the real backend changes nothing here.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExplanationPanel } from "@/components/ExplanationPanel";
 import { FinancialSummary } from "@/components/FinancialSummary";
 import { GoalCard } from "@/components/GoalCard";
@@ -26,6 +26,7 @@ import {
 } from "@/lib/api";
 import type {
   FinancialTwin,
+  Goal,
   ObligationCategory,
   SimulationEvent,
   SimulationResponse,
@@ -33,15 +34,28 @@ import type {
 
 const DEMO_USER_ID = "alex";
 
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** The backend's default horizon ends at the earliest goal deadline; match it. */
+function earliestGoal(goals: Goal[]): Goal | undefined {
+  return [...goals].sort((a, b) => a.deadline.localeCompare(b.deadline))[0];
+}
+
 export default function Home() {
   const [twin, setTwin] = useState<FinancialTwin | null>(null);
   const [source, setSource] = useState<DataSource>();
   const [twinError, setTwinError] = useState<string>();
   const [isSavingTwin, setIsSavingTwin] = useState(false);
+  const [twinUpdateError, setTwinUpdateError] = useState<string>();
 
   const [simulation, setSimulation] = useState<SimulationResponse | null>(null);
+  const [simulationSource, setSimulationSource] = useState<DataSource>();
   const [isSimulating, setIsSimulating] = useState(false);
   const [simulationError, setSimulationError] = useState<string>();
+  // Bumped by every simulation and twin update; only the latest simulation may render.
+  const latestRequest = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,7 +66,7 @@ export default function Home() {
         setSource(loaded.source);
       })
       .catch((error: unknown) => {
-        if (!cancelled) setTwinError(String(error));
+        if (!cancelled) setTwinError(errorText(error));
       });
     return () => {
       cancelled = true;
@@ -61,12 +75,17 @@ export default function Home() {
 
   /** Alex changed a declared fact, so any earlier simulation is now stale. */
   async function updateTwin(update: Promise<Loaded<FinancialTwin>>) {
+    latestRequest.current += 1;
     setIsSavingTwin(true);
+    setTwinUpdateError(undefined);
     try {
       const loaded = await update;
       setTwin(loaded.data);
       setSource(loaded.source);
       setSimulation(null);
+      setSimulationError(undefined);
+    } catch (error: unknown) {
+      setTwinUpdateError(errorText(error));
     } finally {
       setIsSavingTwin(false);
     }
@@ -90,17 +109,19 @@ export default function Home() {
 
   async function handleSimulate(event: SimulationEvent) {
     if (!twin) return;
+    const request = ++latestRequest.current;
     setIsSimulating(true);
     setSimulationError(undefined);
     try {
-      const loaded = await runSimulation({
-        user_id: twin.user_id,
-        events: [event],
-        horizon_end: twin.goals[0]?.deadline ?? null,
-      });
+      // No horizon_end: the backend defaults to the earliest goal deadline.
+      const loaded = await runSimulation({ user_id: twin.user_id, events: [event] });
+      if (request !== latestRequest.current) return;
       setSimulation(loaded.data);
+      setSimulationSource(loaded.source);
     } catch (error: unknown) {
-      setSimulationError(String(error));
+      if (request !== latestRequest.current) return;
+      setSimulation(null);
+      setSimulationError(errorText(error));
     } finally {
       setIsSimulating(false);
     }
@@ -130,7 +151,7 @@ export default function Home() {
     );
   }
 
-  const goal = twin.goals[0];
+  const goal = earliestGoal(twin.goals);
   const reserve = twin.constraints.find((c) => c.type === "minimum_reserve");
 
   return (
@@ -148,6 +169,11 @@ export default function Home() {
                 What the bank observed, plus what {twin.display_name} declared.
               </p>
             </div>
+            {twinUpdateError ? (
+              <Card title="Could not save your answer">
+                <p className="text-sm text-bad">{twinUpdateError}</p>
+              </Card>
+            ) : null}
             <FinancialSummary
               twin={twin}
               isSaving={isSavingTwin}
@@ -161,6 +187,7 @@ export default function Home() {
 
             <PurchaseSimulator
               twin={twin}
+              lastDate={goal?.deadline}
               isSimulating={isSimulating}
               onSimulate={handleSimulate}
             />
@@ -173,6 +200,14 @@ export default function Home() {
 
             {simulation ? (
               <>
+                {simulationSource === "fixture" ? (
+                  <Card title="Backend offline">
+                    <p className="text-sm text-caution">
+                      Showing the saved example ($800 laptop). Your purchase and answers are
+                      not applied until the backend is running.
+                    </p>
+                  </Card>
+                ) : null}
                 <ScenarioComparison
                   simulation={simulation}
                   reserve={reserve}
