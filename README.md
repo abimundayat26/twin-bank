@@ -6,7 +6,9 @@ See [`SPEC.md`](SPEC.md) for the product spec and [`CLAUDE.md`](CLAUDE.md) for t
 
 ## Status
 
-**Phase 1: mocked vertical slice.** `GET /twin/alex` and `POST /simulate` return fixture data from `backend/fixtures/`. `/simulate` validates the request but always returns the $800 laptop result (`is_mock: true`).
+**Phase 1 slice complete; mocks being replaced.** `GET /twin/alex` serves the hand-written twin in `backend/fixtures/`, plus whatever the user has since declared. `POST /simulate` runs a real 1,000-path Monte Carlo over that twin (`is_mock: false`); set `SIMULATION_SEED` to make the numbers repeat.
+
+`POST /twin/build` detects the twin's observed half — income, obligations, variable spending — from a year of transactions in `backend/fixtures/transactions.json`, which stands in for Nessie until Phase 3. It returns the built twin rather than storing it, so `GET /twin/alex` and the demo are unaffected by it.
 
 ## Layout
 
@@ -45,6 +47,9 @@ Endpoints:
 | --- | --- | --- |
 | GET | `/health` | `{"status": "ok"}` |
 | GET | `/twin/{user_id}` | `FinancialTwin` (only `alex` exists) |
+| POST | `/twin/build` | `FinancialTwin` built from transactions, for a `TwinBuildRequest` |
+| PUT | `/twin/{user_id}/minimum-balance` | `FinancialTwin` with the user's low-balance line set |
+| POST | `/clarifications/respond` | `FinancialTwin` with the user's category answer applied |
 | POST | `/simulate` | `SimulationResponse` for a `SimulationRequest` |
 
 Interactive docs: http://localhost:8000/docs
