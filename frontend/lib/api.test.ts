@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, getTwin, runOptimization, runSimulation, setMinimumBalance } from "./api";
+import {
+  ApiError,
+  getTwin,
+  runOptimization,
+  runSimulation,
+  saveGoals,
+  setMinimumBalance,
+} from "./api";
 import mockSimulation from "./mock/simulation.json";
 import mockTwin from "./mock/twin.json";
 import type { FinancialTwin, OptimizationResponse, SimulationRequest } from "./types";
@@ -132,5 +139,36 @@ describe("runOptimization", () => {
   it("has no fixture to fall back to, so an unreachable backend throws", async () => {
     backendDown();
     await expect(runOptimization(request)).rejects.toThrow("fetch failed");
+  });
+});
+
+describe("saveGoals", () => {
+  const reserve = twin.constraints.find((c) => c.type === "minimum_reserve")!;
+
+  it("PUTs the complete set to /twin/{user_id}/goals", async () => {
+    backendReplies(200, { ...twin, goals: [] });
+    const result = await saveGoals(twin, { goals: [], constraints: [reserve] });
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(String(url)).toMatch(/\/twin\/alex\/goals$/);
+    expect(init?.method).toBe("PUT");
+    expect(JSON.parse(String(init?.body))).toEqual({ goals: [], constraints: [reserve] });
+    expect(result).toEqual({ data: { ...twin, goals: [] }, source: "api" });
+  });
+
+  it("throws the backend's error", async () => {
+    backendReplies(422, { detail: "Goal ids must be unique" });
+    await expect(saveGoals(twin, { goals: [] })).rejects.toThrow("Goal ids must be unique");
+  });
+
+  it("offline, applies the set locally and keeps a checking minimum it was not sent", async () => {
+    backendDown();
+    const withMinimum = (await setMinimumBalance(twin, { amount: 300 })).data;
+    const saved = await saveGoals(withMinimum, { goals: [], constraints: [reserve] });
+    expect(saved.source).toBe("fixture");
+    expect(saved.data.goals).toEqual([]);
+    expect(saved.data.constraints.map((c) => c.type)).toEqual([
+      "minimum_reserve",
+      "minimum_checking_balance",
+    ]);
   });
 });

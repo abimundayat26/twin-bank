@@ -22,6 +22,7 @@ import mockSimulation from "./mock/simulation.json";
 import mockTwin from "./mock/twin.json";
 import type {
   ClarificationResponseRequest,
+  DeclaredGoalsRequest,
   FinancialTwin,
   MinimumBalanceRequest,
   OptimizationRequest,
@@ -176,6 +177,37 @@ export async function respondToClarification(
       o.id === request.obligation_id ? { ...o, declared_category: request.category } : o,
     );
     return { data: { ...twin, obligations }, source: "fixture" };
+  }
+}
+
+/**
+ * Replaces Alex's declared goals and emergency reserve (`PUT /twin/{user_id}/goals`).
+ * The body is the complete set, not a change: build it with `lib/goals`.
+ * Offline, the set is applied to the local twin the way the backend would apply it:
+ * the reserve is replaced, and a checking minimum is only replaced when one is sent.
+ */
+export async function saveGoals(
+  twin: FinancialTwin,
+  request: DeclaredGoalsRequest,
+): Promise<Loaded<FinancialTwin>> {
+  try {
+    const data = await getJson<FinancialTwin>(`/twin/${twin.user_id}/goals`, {
+      method: "PUT",
+      body: JSON.stringify(request),
+    });
+    return { data, source: "api" };
+  } catch (error) {
+    unlessApiError(error);
+    console.warn("Backend unavailable; keeping the goals locally.", error);
+    const sent = request.constraints ?? [];
+    const floor =
+      sent.find((c) => c.type === "minimum_checking_balance") ??
+      twin.constraints.find((c) => c.type === "minimum_checking_balance");
+    const constraints = [
+      ...sent.filter((c) => c.type === "minimum_reserve"),
+      ...(floor ? [floor] : []),
+    ];
+    return { data: { ...twin, goals: request.goals, constraints }, source: "fixture" };
   }
 }
 
