@@ -28,10 +28,12 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+from backend.forecast import HALF_LIFE_DAYS, Fortnight, fit_category
 from backend.ingest.models import Category, Transaction
 from backend.schemas import (
     CategoryCandidate,
     FinancialObligation,
+    ForecastMetadata,
     IncomeStream,
     ObligationCategory,
     VariableSpendingDistribution,
@@ -109,6 +111,8 @@ class DetectedStructure:
     income: list[IncomeStream]
     obligations: list[FinancialObligation]
     variable_spending: list[VariableSpendingDistribution]
+    # How variable_spending was estimated. None only when there was no history.
+    forecast: ForecastMetadata | None = None
 
 
 # --- Grouping -----------------------------------------------------------------
@@ -376,6 +380,11 @@ def detect_variable_spending(
     Non-recurring transfers are included, under the category "transfer". That
     records the observed fact that the money left without claiming to know what
     it was for; the simulator needs the outflow either way.
+
+    The mean and spread come from `backend.forecast`: recency-weighted, and
+    deseasonalized when the category has a clear seasonal shape, which then
+    comes back as `seasonal`. A short history gets no shape and the plain
+    recency-weighted mean.
     """
     blocks = fortnight_blocks(window_start, as_of)
     if not blocks:
@@ -392,17 +401,19 @@ def detect_variable_spending(
 
     distributions = []
     for category, group in by_category.items():
-        totals = [
-            sum(abs(t.amount) for t in group if start <= t.date <= end) for start, end in blocks
+        fortnights = [
+            Fortnight(start, end, sum(abs(t.amount) for t in group if start <= t.date <= end))
+            for start, end in blocks
         ]
-        mean = statistics.fmean(totals)
+        mean, spread, seasonal = fit_category(fortnights, as_of)
         if mean <= 0:
             continue
         distributions.append(
             VariableSpendingDistribution(
                 category=category,
                 mean_14d=round(mean, 2),
-                std_dev_14d=round(statistics.stdev(totals), 2) if len(totals) > 1 else 0.0,
+                std_dev_14d=round(spread, 2),
+                seasonal=seasonal,
             )
         )
     return sorted(distributions, key=lambda d: -d.mean_14d)
@@ -422,10 +433,17 @@ def detect_structure(transactions: list[Transaction], as_of: date) -> DetectedSt
 
     window_start = min(t.date for t in transactions)
     obligations, recurring_keys = detect_obligations(transactions, window_start, as_of)
+    variable_spending = detect_variable_spending(transactions, recurring_keys, window_start, as_of)
+    seasonal = any(v.seasonal is not None for v in variable_spending)
     return DetectedStructure(
         income=detect_income(transactions, as_of),
         obligations=obligations,
-        variable_spending=detect_variable_spending(
-            transactions, recurring_keys, window_start, as_of
+        variable_spending=variable_spending,
+        forecast=ForecastMetadata(
+            method="seasonal_ewma" if seasonal else "flat_mean",
+            as_of=as_of,
+            window_start=window_start,
+            observed_fortnights=len(fortnight_blocks(window_start, as_of)),
+            half_life_days=HALF_LIFE_DAYS if seasonal else None,
         ),
     )

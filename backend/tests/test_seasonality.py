@@ -20,7 +20,7 @@ import pytest
 from backend.fixtures import load_raw_transactions, load_twin
 from backend.ingest.generate_transactions import SEASONAL_WEIGHTS, seasonal_factor
 from backend.ingest.normalize import normalize_all
-from backend.ingest.recurrence import BLOCK_DAYS, fortnight_blocks
+from backend.ingest.recurrence import BLOCK_DAYS, detect_structure, fortnight_blocks
 
 TWIN = load_twin()
 TRANSACTIONS = normalize_all(load_raw_transactions())
@@ -175,3 +175,45 @@ def test_the_seasonal_levels_are_recoverable(category: str) -> None:
     seen_spread = max(estimated.values()) - min(estimated.values())
     assert true_spread > 0.5, "the seasonal levels are too close together to be worth finding"
     assert seen_spread > 0.5 * true_spread
+
+
+# --- The forecast that recovers it --------------------------------------------
+
+DETECTED = {v.category: v for v in detect_structure(TRANSACTIONS, TWIN.as_of).variable_spending}
+
+
+def test_the_forecast_recovers_the_groceries_shape() -> None:
+    """The forecast, blind to the generator, finds groceries' term/away shape.
+
+    Unlike `test_the_seasonal_levels_are_recoverable`, the forecast is not told
+    which months share a level; it has to find the grouping itself, from about
+    two fortnights a month. The committed feed is too noisy for that to come out
+    right month by month (a single $53 fortnight is enough to send April to the
+    summer level), so this checks the shape on aggregates, never a single month.
+
+    Groceries only. Whether discretionary gets a profile depends on this seed's
+    draws, and asserting either way would be asserting an artifact of the seed.
+    """
+    seasonal = DETECTED["groceries"].seasonal
+    assert seasonal is not None
+
+    weights, truth = SEASONAL_WEIGHTS["groceries"], normalized("groceries")
+    away = [m for m, w in weights.items() if w == min(weights.values())]
+    on_campus = [m for m, w in weights.items() if w == max(weights.values())]
+    fitted_away = statistics.fmean(seasonal.factors[m] for m in away)
+    fitted_on_campus = statistics.fmean(seasonal.factors[m] for m in on_campus)
+    assert fitted_away < fitted_on_campus
+
+    # A signal that survives estimation has to keep most of its spread. Without
+    # this, flattening every level to 1.0 would pass the ordering above.
+    true_spread = truth[on_campus[0]] - truth[away[0]]
+    seen_spread = fitted_on_campus - fitted_away
+    assert seen_spread > 0.5 * true_spread
+
+
+@pytest.mark.parametrize("category", SEASONAL_CATEGORIES)
+def test_the_forecast_keeps_the_annual_average(category: str) -> None:
+    """Restates the abs=30 gate in test_recurrence.py, here where seasonality lives,
+    so an estimator change that drags the baseline trips in this file too."""
+    expected = next(v for v in TWIN.variable_spending if v.category == category)
+    assert DETECTED[category].mean_14d == pytest.approx(expected.mean_14d, abs=30)
