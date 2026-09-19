@@ -18,7 +18,8 @@ export function SpendingPanel({ twin }: { twin: FinancialTwin }) {
           // A flat or absent profile adds nothing: the row reads exactly as before.
           const seasonal = bucket.seasonal ? seasonalSummary(bucket.seasonal) : null;
           const spread = `± ${money(bucket.std_dev_14d)} std dev per 14 days`;
-          const label = bucket.category[0].toUpperCase() + bucket.category.slice(1);
+          // Indexing an empty category would throw and take the whole page with it.
+          const label = bucket.category.charAt(0).toUpperCase() + bucket.category.slice(1);
           return (
             <Row
               key={bucket.category}

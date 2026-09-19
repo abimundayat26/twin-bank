@@ -37,7 +37,9 @@ export function CategoryQuestion({
   const isSaving = savingScope === obligation.id;
   const [isChanging, setIsChanging] = useState(false);
   const candidates = obligation.category_candidates ?? [];
-  const asking = !declared || isChanging;
+  // With no candidates there is nothing to answer the question with, and asking
+  // it anyway leaves a dead end the user cannot clear.
+  const asking = candidates.length > 0 && (!declared || isChanging);
 
   function answer(category: ObligationCategory) {
     setIsChanging(false);
@@ -80,7 +82,7 @@ export function CategoryQuestion({
             {isSaving ? <span className="text-xs text-muted">Saving…</span> : null}
           </div>
         </div>
-      ) : (
+      ) : declared ? (
         <div className="mt-1 flex items-center gap-2">
           <Badge tone="info">You declared: {CATEGORY_LABELS[declared]}</Badge>
           <button
@@ -93,7 +95,7 @@ export function CategoryQuestion({
           </button>
           {isSaving ? <span className="text-xs text-muted">Saving…</span> : null}
         </div>
-      )}
+      ) : null}
     </li>
   );
 }

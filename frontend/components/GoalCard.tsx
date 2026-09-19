@@ -33,7 +33,13 @@ export function GoalCard({
   // Several goals can be on screen at once: only the one being removed says so.
   const isSaving = savingScope === goal.id;
   // Display-only bar width, clamped. The dollar figures below are the contract's.
-  const filled = Math.min(100, Math.max(0, (goal.current_amount / goal.target_amount) * 100));
+  // A zero target would divide to NaN, and `width: NaN%` is invalid CSS the
+  // browser drops — leaving the bar at its full default width, which reads as a
+  // goal already met.
+  const filled =
+    goal.target_amount > 0
+      ? Math.min(100, Math.max(0, (goal.current_amount / goal.target_amount) * 100))
+      : 0;
 
   return (
     <Card title={title} subtitle={subtitle}>
