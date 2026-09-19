@@ -12,7 +12,7 @@
  * inferred).
  */
 
-import type { FinancialConstraint, Goal } from "@/lib/types";
+import type { DeclaredGoalsRequest, FinancialConstraint, FinancialTwin, Goal } from "@/lib/types";
 
 /** How a merged goal relates to what the twin held before. */
 export type GoalChange = "new" | "updated" | "unchanged";
@@ -66,6 +66,21 @@ export function mergeConstraints(
   });
 
   return [...merged, ...pending.values()];
+}
+
+/** The goals without the one being removed. An unknown id removes nothing. */
+export function removeGoal(existing: Goal[], goalId: string): Goal[] {
+  return existing.filter((goal) => goal.id !== goalId);
+}
+
+/**
+ * The full `PUT /twin/{user_id}/goals` body for removing one goal.
+ *
+ * Every other goal and every constraint go back unchanged: the PUT replaces the
+ * whole declared set, so leaving the reserve out would delete it too.
+ */
+export function withoutGoal(twin: FinancialTwin, goalId: string): DeclaredGoalsRequest {
+  return { goals: removeGoal(twin.goals, goalId), constraints: twin.constraints };
 }
 
 /**

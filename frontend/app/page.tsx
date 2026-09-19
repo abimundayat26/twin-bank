@@ -31,6 +31,7 @@ import {
   type DataSource,
   type Loaded,
 } from "@/lib/api";
+import { withoutGoal } from "@/lib/goals";
 import type {
   DeclaredGoalsRequest,
   FinancialTwin,
@@ -182,6 +183,11 @@ export default function Home() {
     }
   }
 
+  function handleRemoveGoal(goalId: string) {
+    if (!twin) return;
+    void updateTwin(saveGoals(twin, withoutGoal(twin, goalId)));
+  }
+
   async function handleSimulate(event: SimulationEvent) {
     if (!twin) return;
     const request = ++latestRequest.current;
@@ -288,18 +294,28 @@ export default function Home() {
           </div>
 
           <div className="grid gap-6">
-            {goals.map((each, index) => (
-              <GoalCard
-                key={each.id}
-                goal={each}
-                title={index === 0 ? "Active savings goal" : "Also saving for"}
-                subtitle={
-                  index === 0 && goals.length > 1
-                    ? "The soonest deadline, which is where the simulation ends."
-                    : undefined
-                }
-              />
-            ))}
+            {goals.length > 0 ? (
+              goals.map((each, index) => (
+                <GoalCard
+                  key={each.id}
+                  goal={each}
+                  title={index === 0 ? "Active savings goal" : "Also saving for"}
+                  subtitle={
+                    index === 0 && goals.length > 1
+                      ? "The soonest deadline, which is where the simulation ends."
+                      : undefined
+                  }
+                  isSaving={isSavingTwin}
+                  onRemove={handleRemoveGoal}
+                />
+              ))
+            ) : (
+              <Card title="Savings goals">
+                <p className="text-sm text-muted">
+                  No goals declared. The simulation looks 180 days ahead.
+                </p>
+              </Card>
+            )}
 
             <GoalComposer
               key={composerKey}

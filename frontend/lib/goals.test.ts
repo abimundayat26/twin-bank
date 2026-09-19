@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { describeChange, mergeConstraints, mergeGoals } from "./goals";
-import type { FinancialConstraint, Goal } from "./types";
+import { describeChange, mergeConstraints, mergeGoals, removeGoal, withoutGoal } from "./goals";
+import type { FinancialConstraint, FinancialTwin, Goal } from "./types";
 
 function goal(id: string, name: string, target: number, deadline: string, current = 0): Goal {
   return {
@@ -163,5 +163,37 @@ describe("describeChange", () => {
 
   it("describes nothing for an empty merged set", () => {
     expect(describeChange([housing], []).size).toBe(0);
+  });
+});
+
+describe("removeGoal", () => {
+  const laptop = goal("goal_laptop", "Laptop", 800, "2026-12-01");
+
+  it("drops only the goal with that id, keeping the others in order", () => {
+    const trip = goal("goal_trip", "Trip", 500, "2027-03-01");
+    expect(removeGoal([housing, laptop, trip], "goal_laptop")).toEqual([housing, trip]);
+  });
+
+  it("can remove the last goal", () => {
+    expect(removeGoal([housing], "goal_summer_housing")).toEqual([]);
+  });
+
+  it("removes nothing for an unknown id", () => {
+    expect(removeGoal([housing, laptop], "goal_missing")).toEqual([housing, laptop]);
+  });
+});
+
+describe("withoutGoal", () => {
+  const minimum = constraint("minimum_checking_balance", 300, "Keep at least $300 in checking");
+  const twin = {
+    goals: [housing, goal("goal_laptop", "Laptop", 800, "2026-12-01")],
+    constraints: [reserve, minimum],
+  } as FinancialTwin;
+
+  it("sends every other goal and every constraint, so the reserve survives", () => {
+    expect(withoutGoal(twin, "goal_laptop")).toEqual({
+      goals: [housing],
+      constraints: [reserve, minimum],
+    });
   });
 });
