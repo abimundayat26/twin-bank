@@ -19,6 +19,8 @@ def to_metrics(aggregate: ScenarioAggregate) -> ScenarioMetrics:
         goal_shortfall=aggregate.goal_shortfall,
         # Conservative: covered only if no simulated future leaves a mandatory bill uncovered.
         obligations_covered=aggregate.prob_obligations_uncovered == 0,
+        prob_obligations_uncovered=aggregate.prob_obligations_uncovered,
+        prob_goal_met=aggregate.prob_goal_met,
     )
 
 
@@ -40,4 +42,5 @@ def run_simulation(
         drivers=build_drivers(twin, request.events, mc),
         assumptions=build_assumptions(twin, mc),
         is_mock=False,
+        num_simulations=mc.n_simulations,
     )
