@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * Alex's own low-balance line for checking. Without one, the simulator uses its
- * $500 default (see the simulation assumptions). Props only.
+ * Alex's own low-balance line for checking. Without one, the simulator falls back to
+ * DEFAULT_LOW_BALANCE_THRESHOLD (see the simulation assumptions). Props only.
  */
 
 import { useState, type FormEvent } from "react";
 import { money } from "@/lib/format";
-import type { FinancialConstraint } from "@/lib/types";
+import { DEFAULT_LOW_BALANCE_THRESHOLD, type FinancialConstraint } from "@/lib/types";
 import { Card, ProvenanceTag } from "./ui";
 
 export function MinimumBalanceCard({
@@ -36,7 +36,9 @@ export function MinimumBalanceCard({
           <ProvenanceTag provenance={minimum.provenance} />
         </div>
       ) : (
-        <p className="mb-3 text-sm text-muted">Not set. The simulation assumes {money(500)}.</p>
+        <p className="mb-3 text-sm text-muted">
+          Not set. The simulation assumes {money(DEFAULT_LOW_BALANCE_THRESHOLD)}.
+        </p>
       )}
       <form onSubmit={submit} className="flex items-center gap-2">
         <label className="sr-only" htmlFor="minimum-balance">
@@ -50,7 +52,7 @@ export function MinimumBalanceCard({
           inputMode="decimal"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="500"
+          placeholder={String(DEFAULT_LOW_BALANCE_THRESHOLD)}
           className="tnum w-full rounded-lg border border-line bg-raised px-3 py-2 text-sm text-ink outline-none placeholder:text-faint focus:border-counter"
         />
         <button
