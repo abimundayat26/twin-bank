@@ -6,7 +6,9 @@
  * key still serves fixture-derived data, so "the backend answered" must never
  * be allowed to read as "this is real bank data".
  *
- * The four combinations below are fixed by `frontend/SPEC.md` section 8.
+ * The combinations below are fixed by `frontend/SPEC.md` section 8, which lists
+ * them as a floor rather than a closed set: Databricks is a source the backend
+ * can report (`schemas.py`) that the table does not name yet.
  */
 
 import type { DataSource } from "./api";
@@ -22,6 +24,33 @@ export interface ProvenanceLabel {
   /** The two joined for display, e.g. "Backend connected · Nessie data". */
   label: string;
   tone: ProvenanceTone;
+}
+
+const CONNECTED = "Backend connected";
+
+/**
+ * What each source the backend can report is called on screen.
+ *
+ * Keyed by the source union itself, so a fourth source added to `schemas.py`
+ * fails to compile here instead of quietly displaying as an unknown one.
+ *
+ * Only Nessie earns the `good` tone. A Databricks twin was *built* in
+ * Databricks, which says where the work ran, not whose money it describes: the
+ * job's documented input is an uploaded copy of the demo transactions
+ * (`backend/databricks.yml`). Calling it live bank data would be the exact
+ * claim section 1 forbids.
+ */
+const DATA_ORIGIN: Record<
+  NonNullable<FinancialTwin["source"]>,
+  { data: string; tone: ProvenanceTone }
+> = {
+  nessie: { data: "Nessie data", tone: "good" },
+  fixture: { data: "Demo fixture", tone: "caution" },
+  databricks: { data: "Databricks build", tone: "caution" },
+};
+
+function connected(data: string, tone: ProvenanceTone): ProvenanceLabel {
+  return { backend: CONNECTED, data, label: `${CONNECTED} · ${data}`, tone };
 }
 
 /**
@@ -49,29 +78,10 @@ export function provenanceLabel(
     };
   }
 
-  if (twinSource === "nessie") {
-    return {
-      backend: "Backend connected",
-      data: "Nessie data",
-      label: "Backend connected · Nessie data",
-      tone: "good",
-    };
-  }
+  // A source the backend named but this build does not know is as good as no
+  // source: say so rather than assuming one.
+  const origin = twinSource ? DATA_ORIGIN[twinSource] : undefined;
+  if (!origin) return connected("Data source unavailable", "caution");
 
-  if (twinSource === "fixture") {
-    return {
-      backend: "Backend connected",
-      data: "Demo fixture",
-      label: "Backend connected · Demo fixture",
-      tone: "caution",
-    };
-  }
-
-  // The backend answered but named no source: say so rather than assuming one.
-  return {
-    backend: "Backend connected",
-    data: "Data source unavailable",
-    label: "Backend connected · Data source unavailable",
-    tone: "caution",
-  };
+  return connected(origin.data, origin.tone);
 }
