@@ -175,6 +175,15 @@ class ScenarioMetrics(BaseModel):
         description="Share of simulated futures meeting every goal due within the horizon. "
         "None when not computed or no goal is due within the horizon.",
     )
+    prob_savings_sweep: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description="Share of simulated futures where checking could not cover a mandatory "
+        "bill on its own and savings had to make up the difference. The bill was still "
+        "paid; see prob_obligations_uncovered for the futures where it was not. "
+        "None when not computed (mock results).",
+    )
 
 
 class ExplanationDriver(BaseModel):
