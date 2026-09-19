@@ -1,7 +1,9 @@
+import pytest
+
 from backend.fixtures import load_raw_transactions, load_twin
 from backend.ingest.build import latest_transaction_date, rebuild
 from backend.ingest.normalize import normalize_all
-from backend.tracking import twin_build_summary
+from backend.tracking import log_twin_build, twin_build_summary
 
 PARAM_KEYS = {
     "user_id",
@@ -68,3 +70,40 @@ def test_values_are_strings_and_floats(flat_twin):
         params, metrics = twin_build_summary(twin)
         assert all(type(value) is str for value in params.values())
         assert all(type(value) is float for value in metrics.values())
+
+
+class FakeLogRun:
+    """Stands in for MLflow: records what would have been logged."""
+
+    def __init__(self):
+        self.runs = []
+
+    def __call__(self, params, metrics):
+        self.runs.append((params, metrics))
+
+
+@pytest.mark.parametrize("value", [None, "", "false", "ture"])
+def test_tracking_is_off_unless_explicitly_on(monkeypatch, flat_twin, value):
+    if value is None:
+        monkeypatch.delenv("TRACK_TWIN_BUILDS", raising=False)
+    else:
+        monkeypatch.setenv("TRACK_TWIN_BUILDS", value)
+    fake = FakeLogRun()
+    assert log_twin_build(flat_twin, log_run=fake) is False
+    assert fake.runs == []
+
+
+def test_tracking_on_logs_the_summary(monkeypatch, flat_twin):
+    monkeypatch.setenv("TRACK_TWIN_BUILDS", "true")
+    fake = FakeLogRun()
+    assert log_twin_build(flat_twin, log_run=fake) is True
+    assert fake.runs == [twin_build_summary(flat_twin)]
+
+
+def test_tracking_failure_does_not_raise(monkeypatch, flat_twin):
+    monkeypatch.setenv("TRACK_TWIN_BUILDS", "true")
+
+    def broken(params, metrics):
+        raise ConnectionError("tracking server unreachable")
+
+    assert log_twin_build(flat_twin, log_run=broken) is False

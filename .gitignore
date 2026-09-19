@@ -12,6 +12,10 @@ __pycache__/
 # Saved user answers (twin_store)
 backend/.data/
 
+# Local MLflow tracking store (TRACK_TWIN_BUILDS)
+mlflow.db
+mlruns/
+
 # Node / Next.js
 node_modules/
 .next/

@@ -1,8 +1,9 @@
 """A built twin, summarized as flat params and metrics for experiment tracking.
 
 Phase 6 records every twin build so that a change to the forecaster can be
-compared run against run. This module only decides what gets recorded; the
-tracking itself (MLflow, behind a flag) arrives in later chunks.
+compared run against run. `twin_build_summary` decides what gets recorded and is
+pure; `log_twin_build` sends it to MLflow, and only when `TRACK_TWIN_BUILDS` is
+on. Nothing calls `log_twin_build` yet.
 
 The summary describes the estimate, not the person: which method produced the
 observed figures, over what window, and what it fitted per category. Balances,
@@ -13,13 +14,33 @@ forecaster did — and they are the parts of a twin most worth keeping private.
 Params are strings and metrics are floats, the shapes a tracker expects. A
 missing value is recorded as "none" rather than dropped, so every run carries
 the same keys and runs line up when compared.
+
+Tracking is off by default and can never break a build (CLAUDE.md, "External
+Integrations"): a fresh clone has no tracking server, and a twin that failed to
+log is still a correct twin. So `log_twin_build` fails towards not tracking —
+only an explicit "yes" turns it on, and any error is logged and swallowed.
 """
 
+import logging
+import os
+from collections.abc import Callable
 from datetime import date
 
 from backend.schemas import FinancialTwin
 
+logger = logging.getLogger(__name__)
+
 MISSING = "none"
+
+# Runs land here rather than in MLflow's "Default" experiment. Where the
+# experiment lives is MLflow's own MLFLOW_TRACKING_URI; unset, it is a local
+# mlflow.db in the working directory.
+EXPERIMENT_NAME = "twin-builds"
+
+# Only an explicit "yes" turns tracking on; a typo leaves it off.
+TRACKING_ON = frozenset({"1", "true", "yes", "on"})
+
+LogRun = Callable[[dict[str, str], dict[str, float]], None]
 
 
 def as_param(value: object) -> str:
@@ -56,3 +77,37 @@ def twin_build_summary(twin: FinancialTwin) -> tuple[dict[str, str], dict[str, f
     metrics["income_streams"] = float(len(twin.income))
     metrics["obligations"] = float(len(twin.obligations))
     return params, metrics
+
+
+# --- Logging ------------------------------------------------------------------
+
+
+def track_twin_builds() -> bool:
+    """True only when someone has explicitly turned tracking on."""
+    return (os.getenv("TRACK_TWIN_BUILDS") or "").strip().lower() in TRACKING_ON
+
+
+def mlflow_log_run(params: dict[str, str], metrics: dict[str, float]) -> None:
+    """Record one twin build as one MLflow run."""
+    # Imported here so that nothing pays for MLflow while tracking is off.
+    import mlflow
+
+    mlflow.set_experiment(EXPERIMENT_NAME)
+    with mlflow.start_run(run_name=f"twin-build-{params['user_id']}"):
+        mlflow.log_params(params)
+        mlflow.log_metrics(metrics)
+
+
+def log_twin_build(twin: FinancialTwin, log_run: LogRun = mlflow_log_run) -> bool:
+    """Record a built twin when tracking is on. True if a run was logged.
+
+    Never raises. Tests pass a fake `log_run`, so they never reach MLflow.
+    """
+    if not track_twin_builds():
+        return False
+    try:
+        log_run(*twin_build_summary(twin))
+    except Exception as e:
+        logger.warning("Twin build tracking failed, continuing without it: %s", e)
+        return False
+    return True
