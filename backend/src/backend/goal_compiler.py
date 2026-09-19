@@ -21,6 +21,7 @@ Rules, per clause:
 
 import calendar
 import re
+from collections.abc import Callable
 from datetime import date, timedelta
 
 from backend.schemas import FinancialConstraint, Goal, GoalClarification, GoalCompileResponse
@@ -195,6 +196,54 @@ def slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "goal"
 
 
+def check_deadline(
+    deadline: date | None, deadline_words: str | None, what: str, as_of: date
+) -> str | None:
+    """The clarification question to ask about a goal's deadline, or None if it is usable.
+
+    what completes "When do you need the money ...?", e.g. "for a car".
+    """
+    if deadline is None:
+        if deadline_words:
+            return f'When exactly is "{deadline_words}"? Give a date.'
+        return f"When do you need the money {what}?"
+    if deadline <= as_of:
+        return f"{deadline} has already passed. When do you need it {what}?"
+    # PUT /twin/{user_id}/goals rejects anything later, so a draft never goes past it.
+    latest_deadline = as_of + timedelta(days=MAX_HORIZON_DAYS)
+    if deadline > latest_deadline:
+        return (
+            f"{deadline} is too far ahead to plan for; goals can be due by {latest_deadline} "
+            f"at the latest. When do you need the money {what}?"
+        )
+    return None
+
+
+def unique_goal_id(name: str, taken: set[str]) -> str:
+    """goal_<slug>, with _2, _3, ... added when that id is already taken."""
+    goal_id = f"goal_{slug(name)}"
+    suffix = 2
+    while goal_id in taken:
+        goal_id = f"goal_{slug(name)}_{suffix}"
+        suffix += 1
+    return goal_id
+
+
+def dedupe_constraints(
+    constraints: list[FinancialConstraint],
+    text: str,
+    ask: Callable[[str, str, str], None],
+) -> list[FinancialConstraint]:
+    """Drop every constraint of a type given more than once, and ask which amount was meant."""
+    for constraint_type in ("minimum_reserve", "minimum_checking_balance"):
+        same = [c for c in constraints if c.type == constraint_type]
+        if len(same) > 1:
+            constraints = [c for c in constraints if c.type != constraint_type]
+            listed = " and ".join(money(c.amount) for c in same)
+            ask("amount", f"You gave two amounts to keep ({listed}). Which one?", text)
+    return constraints
+
+
 def compile_goals(user_id: str, text: str, as_of: date) -> GoalCompileResponse:
     goals: list[Goal] = []
     constraints: list[FinancialConstraint] = []
@@ -204,9 +253,6 @@ def compile_goals(user_id: str, text: str, as_of: date) -> GoalCompileResponse:
 
     def ask(field, question: str, fragment: str) -> None:
         clarifications.append(GoalClarification(field=field, question=question, fragment=fragment))
-
-    # PUT /twin/{user_id}/goals rejects anything later, so a draft never goes past it.
-    latest_deadline = as_of + timedelta(days=MAX_HORIZON_DAYS)
 
     for clause in split_clauses(text):
         amounts = [parse_amount(m) for m in AMOUNT.finditer(clause)]
@@ -297,42 +343,18 @@ def compile_goals(user_id: str, text: str, as_of: date) -> GoalCompileResponse:
         if name is None:
             ask("name", f"What is {money(amounts[0]) if amounts else 'this'} for?", clause)
             missing = True
-        if deadline is None:
-            if deadline_words:
-                question = f'When exactly is "{deadline_words}"? Give a date.'
-            else:
-                question = f"When do you need the money {what}?"
-            ask("deadline", question, clause)
-            missing = True
-        elif deadline <= as_of:
-            ask("deadline", f"{deadline} has already passed. When do you need it {what}?", clause)
-            missing = True
-        elif deadline > latest_deadline:
-            ask(
-                "deadline",
-                f"{deadline} is too far ahead to plan for; goals can be due by {latest_deadline} "
-                f"at the latest. When do you need the money {what}?",
-                clause,
-            )
+        deadline_question = check_deadline(deadline, deadline_words, what, as_of)
+        if deadline_question:
+            ask("deadline", deadline_question, clause)
             missing = True
         if missing:
             continue
 
         assert name is not None and deadline is not None
-        goal_id = f"goal_{slug(name)}"
-        taken = {g.id for g in goals}
-        suffix = 2
-        while goal_id in taken:
-            goal_id = f"goal_{slug(name)}_{suffix}"
-            suffix += 1
+        goal_id = unique_goal_id(name, {g.id for g in goals})
         goals.append(Goal(id=goal_id, name=name, target_amount=amounts[0], deadline=deadline))
 
-    for constraint_type in ("minimum_reserve", "minimum_checking_balance"):
-        same = [c for c in constraints if c.type == constraint_type]
-        if len(same) > 1:
-            constraints = [c for c in constraints if c.type != constraint_type]
-            listed = " and ".join(money(c.amount) for c in same)
-            ask("amount", f"You gave two amounts to keep ({listed}). Which one?", text)
+    constraints = dedupe_constraints(constraints, text, ask)
 
     return GoalCompileResponse(
         user_id=user_id,
