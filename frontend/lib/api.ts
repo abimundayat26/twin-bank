@@ -4,14 +4,16 @@
  * Phase 1: these functions already call the real endpoints
  * (`GET /twin/{user_id}` and `POST /simulate`). If the backend is unreachable
  * they fall back to the bundled fixtures in `lib/mock/`, so the demo still
- * runs from a fresh clone with nothing started.
+ * runs from a fresh clone with nothing started. If the backend answers with an
+ * error (for example a 422 for a purchase outside the horizon), they throw an
+ * `ApiError` instead: a real error must never be replaced by fixture numbers.
  *
  * To drop the mocks later, delete the `catch` fallbacks below. No component
  * needs to change: they only ever see `FinancialTwin` / `SimulationResponse`.
  *
  * `lib/mock/*.json` are generated from the API payloads. If a backend fixture
  * changes, regenerate them with `cd backend && uv run python -m
- * backend.sync_frontend_mocks`; `backend/tests/test_fixtures.py` fails if they
+ * backend.sync_frontend_mocks`; `backend/tests/test_frontend_mocks.py` fails if they
  * drift apart. Do not hand-edit them.
  */
 
@@ -36,6 +38,31 @@ export interface Loaded<T> {
   source: DataSource;
 }
 
+/** The backend was reached and returned an error. Never replaced by a fixture. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+/** FastAPI's `detail` is a string for our errors and a list for validation errors. */
+async function errorMessage(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as { detail?: unknown };
+    if (typeof body.detail === "string") return body.detail;
+    if (Array.isArray(body.detail) && typeof body.detail[0]?.msg === "string") {
+      return body.detail[0].msg;
+    }
+  } catch {
+    // Not JSON; fall through to the status line.
+  }
+  return `${response.status} ${response.statusText}`.trim();
+}
+
 async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     cache: "no-store",
@@ -43,15 +70,21 @@ async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (!response.ok) {
-    throw new Error(`${init?.method ?? "GET"} ${path} failed: ${response.status}`);
+    throw new ApiError(await errorMessage(response), response.status);
   }
   return (await response.json()) as T;
+}
+
+/** Only a backend that could not be reached falls back to fixtures. */
+function unlessApiError(error: unknown): void {
+  if (error instanceof ApiError) throw error;
 }
 
 export async function getTwin(userId: string): Promise<Loaded<FinancialTwin>> {
   try {
     return { data: await getJson<FinancialTwin>(`/twin/${userId}`), source: "api" };
   } catch (error) {
+    unlessApiError(error);
     console.warn("Falling back to the bundled twin fixture.", error);
     return { data: mockTwin as FinancialTwin, source: "fixture" };
   }
@@ -67,9 +100,10 @@ export async function runSimulation(
     });
     return { data, source: "api" };
   } catch (error) {
+    unlessApiError(error);
     console.warn("Falling back to the bundled simulation fixture.", error);
-    // Returned verbatim, exactly as the mocked backend does: the numbers do
-    // not respond to the request yet. `is_mock` and `assumptions` say so.
+    // Returned verbatim: the numbers do not respond to the request or to the
+    // user's answers. `is_mock` says so, and the page shows an offline notice.
     return { data: mockSimulation as SimulationResponse, source: "fixture" };
   }
 }
@@ -89,6 +123,7 @@ export async function respondToClarification(
     });
     return { data, source: "api" };
   } catch (error) {
+    unlessApiError(error);
     console.warn("Backend unavailable; keeping the answer locally.", error);
     const obligations = twin.obligations.map((o) =>
       o.id === request.obligation_id ? { ...o, declared_category: request.category } : o,
@@ -109,6 +144,7 @@ export async function setMinimumBalance(
     });
     return { data, source: "api" };
   } catch (error) {
+    unlessApiError(error);
     console.warn("Backend unavailable; keeping the minimum locally.", error);
     const constraints = [
       ...twin.constraints.filter((c) => c.type !== "minimum_checking_balance"),

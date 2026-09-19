@@ -18,10 +18,13 @@ const label = "mb-1 block text-xs font-medium uppercase tracking-wider text-mute
 
 export function PurchaseSimulator({
   twin,
+  lastDate,
   isSimulating,
   onSimulate,
 }: {
   twin: FinancialTwin;
+  /** Last day the simulation covers; later purchases would be rejected. */
+  lastDate?: string;
   isSimulating: boolean;
   onSimulate: (event: SimulationEvent) => void;
 }) {
@@ -33,7 +36,10 @@ export function PurchaseSimulator({
   );
 
   const parsedAmount = Number(amount);
-  const isValid = description.trim().length > 0 && parsedAmount > 0 && date.length === 10;
+  // ISO dates compare correctly as strings.
+  const inHorizon = date >= twin.as_of && (!lastDate || date <= lastDate);
+  const isValid =
+    description.trim().length > 0 && parsedAmount > 0 && date.length === 10 && inHorizon;
 
   function handleSubmit(formEvent: React.FormEvent) {
     formEvent.preventDefault();
@@ -88,6 +94,8 @@ export function PurchaseSimulator({
               id="purchase-date"
               className={`${field} tnum`}
               type="date"
+              min={twin.as_of}
+              max={lastDate}
               value={date}
               onChange={(e) => setDate(e.target.value)}
             />

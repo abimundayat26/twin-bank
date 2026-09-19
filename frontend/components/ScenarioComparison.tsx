@@ -37,9 +37,12 @@ function pointsDelta(baseline: number, counterfactual: number): string {
 
 function buildRows(
   simulations: number | null | undefined,
+  horizonEnd: string,
   reserve?: FinancialConstraint,
   goal?: Goal,
 ): MetricRow[] {
+  // ISO dates compare correctly as strings.
+  const goalAfterHorizon = goal != null && goal.deadline > horizonEnd;
   // Monte Carlo results report balances as medians; mock results omit the count.
   return [
     {
@@ -77,9 +80,11 @@ function buildRows(
       render: (m) =>
         m.prob_goal_met != null
           ? `Met in ${chance(m.prob_goal_met)} of futures`
-          : m.goal_shortfall === 0
-            ? "On track"
-            : `${money(m.goal_shortfall)} short`,
+          : goalAfterHorizon
+            ? "Not evaluated (deadline after horizon)"
+            : m.goal_shortfall === 0
+              ? "On track"
+              : `${money(m.goal_shortfall)} short`,
       delta: (b, c) =>
         b.prob_goal_met != null && c.prob_goal_met != null
           ? pointsDelta(b.prob_goal_met, c.prob_goal_met)
@@ -124,7 +129,7 @@ export function ScenarioComparison({
 }) {
   const { baseline, counterfactual } = simulation;
   const purchase = simulation.request.events[0];
-  const rows = buildRows(simulation.num_simulations, reserve, goal);
+  const rows = buildRows(simulation.num_simulations, simulation.horizon_end, reserve, goal);
 
   return (
     <Card
