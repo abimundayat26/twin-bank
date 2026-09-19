@@ -7,8 +7,11 @@ from backend.schemas import (
     FinancialConstraint,
     FinancialObligation,
     MinimumBalanceRequest,
+    OptimizationRequest,
+    OptimizationResponse,
     ScenarioMetrics,
     SimulationResponse,
+    SpendingAdjustment,
 )
 from backend.simulation.engine import reserve_amount
 
@@ -124,3 +127,64 @@ def test_twin_update_requests_validate():
     assert MinimumBalanceRequest(amount=0).amount == 0
     with pytest.raises(ValidationError):
         MinimumBalanceRequest(amount=-1)
+
+
+# --- Optimization -------------------------------------------------------------
+
+LAPTOP = {
+    "type": "purchase",
+    "description": "Laptop",
+    "amount": 800.0,
+    "date": "2026-09-20",
+    "account_id": "acc_checking",
+}
+
+
+def optimization_response(**overrides) -> dict:
+    candidate = {
+        "id": "cand_buy_now",
+        "kind": "buy_now",
+        "label": "Buy now",
+        "detail": "Buy the laptop on 2026-09-20 from checking.",
+        "events": [LAPTOP],
+        "metrics": METRICS,
+        "meets_constraints": True,
+    }
+    return {
+        "optimization_id": "opt_1",
+        "user_id": "alex",
+        "request": {"user_id": "alex", "events": [LAPTOP]},
+        "horizon_end": "2027-05-01",
+        "baseline": METRICS,
+        "candidates": [candidate],
+        "recommended_id": "cand_buy_now",
+        "summary": "One option.",
+        "assumptions": [],
+        "num_simulations": 300,
+        **overrides,
+    }
+
+
+def test_optimization_response_round_trips():
+    response = OptimizationResponse.model_validate(optimization_response())
+    assert OptimizationResponse.model_validate_json(response.model_dump_json()) == response
+    assert response.candidates[0].violations == []
+    assert response.candidates[0].spending_adjustments == []
+
+
+def test_optimization_request_needs_an_event():
+    with pytest.raises(ValidationError):
+        OptimizationRequest(user_id="alex", events=[])
+
+
+@pytest.mark.parametrize("multiplier", [-0.1, 1.1])
+def test_spending_multiplier_is_bounded(multiplier):
+    with pytest.raises(ValidationError):
+        SpendingAdjustment(category="discretionary", multiplier=multiplier)
+
+
+def test_unknown_candidate_kind_is_rejected():
+    data = optimization_response()
+    data["candidates"][0]["kind"] = "take_a_loan"
+    with pytest.raises(ValidationError):
+        OptimizationResponse.model_validate(data)
