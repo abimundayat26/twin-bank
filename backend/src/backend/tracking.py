@@ -36,8 +36,9 @@ MISSING = "none"
 
 # Runs land here rather than in MLflow's "Default" experiment. Where the
 # experiment lives is MLflow's own MLFLOW_TRACKING_URI; unset, it is a local
-# mlflow.db in the working directory.
-EXPERIMENT_NAME = "twin-builds"
+# mlflow.db in the working directory. Databricks only accepts an absolute
+# workspace path such as /Shared/twin-builds, hence MLFLOW_EXPERIMENT_NAME.
+DEFAULT_EXPERIMENT_NAME = "twin-builds"
 
 # Only an explicit "yes" turns tracking on; a typo leaves it off.
 TRACKING_ON = frozenset({"1", "true", "yes", "on"})
@@ -89,12 +90,17 @@ def track_twin_builds() -> bool:
     return (os.getenv("TRACK_TWIN_BUILDS") or "").strip().lower() in TRACKING_ON
 
 
+def experiment_name() -> str:
+    """MLFLOW_EXPERIMENT_NAME, or the local default when it is unset."""
+    return (os.getenv("MLFLOW_EXPERIMENT_NAME") or "").strip() or DEFAULT_EXPERIMENT_NAME
+
+
 def mlflow_log_run(params: dict[str, str], metrics: dict[str, float]) -> None:
     """Record one twin build as one MLflow run."""
     # Imported here so that nothing pays for MLflow while tracking is off.
     import mlflow
 
-    mlflow.set_experiment(EXPERIMENT_NAME)
+    mlflow.set_experiment(experiment_name())
     with mlflow.start_run(run_name=f"twin-build-{params['user_id']}"):
         mlflow.log_params(params)
         mlflow.log_metrics(metrics)

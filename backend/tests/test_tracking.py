@@ -6,7 +6,12 @@ from backend.fixtures import load_raw_transactions, load_twin
 from backend.ingest.build import latest_transaction_date, rebuild
 from backend.ingest.normalize import normalize_all
 from backend.nessie.client import NessieError
-from backend.tracking import log_twin_build, twin_build_summary
+from backend.tracking import (
+    DEFAULT_EXPERIMENT_NAME,
+    experiment_name,
+    log_twin_build,
+    twin_build_summary,
+)
 
 PARAM_KEYS = {
     "user_id",
@@ -110,6 +115,20 @@ def test_tracking_failure_does_not_raise(monkeypatch, flat_twin):
         raise ConnectionError("tracking server unreachable")
 
     assert log_twin_build(flat_twin, log_run=broken) is False
+
+
+@pytest.mark.parametrize("value", [None, "", "  "])
+def test_experiment_defaults_to_twin_builds(monkeypatch, value):
+    if value is None:
+        monkeypatch.delenv("MLFLOW_EXPERIMENT_NAME", raising=False)
+    else:
+        monkeypatch.setenv("MLFLOW_EXPERIMENT_NAME", value)
+    assert experiment_name() == DEFAULT_EXPERIMENT_NAME
+
+
+def test_experiment_can_be_a_databricks_workspace_path(monkeypatch):
+    monkeypatch.setenv("MLFLOW_EXPERIMENT_NAME", "/Shared/twin-builds")
+    assert experiment_name() == "/Shared/twin-builds"
 
 
 # --- Where builds are logged --------------------------------------------------
