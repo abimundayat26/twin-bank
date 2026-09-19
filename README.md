@@ -107,6 +107,37 @@ NESSIE_API_KEY=... uv run python -m backend.nessie.seed
 
 It prints the account ids it created. Put those and the key in `.env`, set `USE_MOCKS=false`, and restart the backend; `GET /twin/alex` is then built from Nessie. Note the base URL is `https://` — the `http://` host in Nessie's own docs refuses connections.
 
+### Tracking twin builds with MLflow (optional)
+
+Every time a twin is built from transactions (`POST /twin/build`, or a Nessie build when `USE_MOCKS=false`), the backend can record it as an MLflow run: the forecast method, its window and half-life as params, and each spending category's `mean_14d`, `std_dev_14d` and seasonal max/min as metrics. Balances and goals are never recorded. Serving the hand-written fixture twin is not a build, so it records nothing.
+
+It is off by default. To record runs locally:
+
+```bash
+cd backend
+TRACK_TWIN_BUILDS=true uv run uvicorn backend.main:app --reload --port 8000
+curl -X POST localhost:8000/twin/build -H "Content-Type: application/json" -d '{"user_id": "alex"}'
+```
+
+Runs go to `backend/mlflow.db` (git-ignored), in the `twin-builds` experiment. The backend installs only the lightweight MLflow client, so view them with the full MLflow UI through `uvx`, which keeps it out of the project's dependencies:
+
+```bash
+cd backend
+uvx --from mlflow==3.16.1 mlflow ui --backend-store-uri sqlite:///mlflow.db   # http://localhost:5000
+```
+
+To log to Databricks instead, set these in `.env` with your own workspace host and token, and start the backend with `uv run --env-file ../.env uvicorn ...`:
+
+```sh
+TRACK_TWIN_BUILDS=true
+MLFLOW_TRACKING_URI=databricks
+MLFLOW_EXPERIMENT_NAME=/Shared/twin-builds   # Databricks needs a workspace path
+DATABRICKS_HOST=https://<your-workspace>.cloud.databricks.com
+DATABRICKS_TOKEN=...
+```
+
+If tracking fails (no credentials, server unreachable), the backend logs a warning and the build carries on.
+
 ## Workstreams
 
 | Workstream | Owns | Starts from |
