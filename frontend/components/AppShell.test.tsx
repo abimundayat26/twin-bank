@@ -74,6 +74,17 @@ describe("provenance badge", () => {
     expect(screen.getByText("Backend connected")).toBeInTheDocument();
   });
 
+  it("names a twin the Databricks job built, rather than calling it unknown", async () => {
+    vi.mocked(api.getTwin).mockResolvedValue({
+      data: { ...TWIN, source: "databricks" },
+      source: "api",
+    });
+    renderShell();
+    expect(await screen.findByText("Databricks build")).toBeInTheDocument();
+    expect(screen.getByText("Backend connected")).toBeInTheDocument();
+    expect(screen.queryByText("Data source unavailable")).not.toBeInTheDocument();
+  });
+
   it("never claims live data while the backend is unreachable", async () => {
     vi.mocked(api.getTwin).mockResolvedValue({
       data: { ...TWIN, source: "nessie" },
