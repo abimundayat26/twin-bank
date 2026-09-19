@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { AppShell } from "@/components/AppShell";
 import { TwinProvider } from "@/lib/state/TwinProvider";
 import "./globals.css";
 
@@ -26,7 +27,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col font-sans">
         {/* The twin and the latest simulation outlive any one route (SPEC section 9). */}
-        <TwinProvider>{children}</TwinProvider>
+        <TwinProvider>
+          <AppShell>{children}</AppShell>
+        </TwinProvider>
       </body>
     </html>
   );
