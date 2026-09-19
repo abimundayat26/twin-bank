@@ -2,9 +2,11 @@
 
 import type { ReactNode } from "react";
 import { money, moneyExact, longDate, ordinalDay, percent } from "@/lib/format";
+import { forecastSummary, seasonalSummary } from "@/lib/seasonal";
 import type { FinancialObligation, FinancialTwin, ObligationCategory } from "@/lib/types";
 import { CATEGORY_LABELS, CategoryQuestion } from "./CategoryQuestion";
 import { MinimumBalanceCard } from "./MinimumBalanceCard";
+import { SeasonalSparkline } from "./SeasonalSparkline";
 import { Badge, Card, ProvenanceTag, Row } from "./ui";
 
 /** Alex's declared category overrides the bank's observed mandatory flag. */
@@ -39,6 +41,7 @@ export function FinancialSummary({
     (o) => !isMandatory(o) && o.declared_category !== "not_recurring",
   );
   const upcoming = twin.obligations.filter(isMandatory);
+  const currentMonth = Number(twin.as_of.slice(5, 7));
 
   function obligationRow(obligation: FinancialObligation, meta: ReactNode) {
     if (obligation.category_candidates?.length) {
@@ -128,17 +131,37 @@ export function FinancialSummary({
         </Card>
       ) : null}
 
-      <Card title="Variable spending" subtitle="Observed 14-day averages">
+      <Card
+        title="Variable spending"
+        subtitle={twin.forecast ? forecastSummary(twin.forecast) : "Observed 14-day averages"}
+      >
         <ul>
-          {twin.variable_spending.map((bucket) => (
-            <Row
-              key={bucket.category}
-              label={bucket.category[0].toUpperCase() + bucket.category.slice(1)}
-              hint={`± ${money(bucket.std_dev_14d)} std dev per 14 days`}
-              value={`${money(bucket.mean_14d)} / 14d`}
-              meta={<ProvenanceTag provenance={bucket.provenance} />}
-            />
-          ))}
+          {twin.variable_spending.map((bucket) => {
+            // A flat or absent profile adds nothing: the row reads exactly as before.
+            const seasonal = bucket.seasonal ? seasonalSummary(bucket.seasonal) : null;
+            const spread = `± ${money(bucket.std_dev_14d)} std dev per 14 days`;
+            const label = bucket.category[0].toUpperCase() + bucket.category.slice(1);
+            return (
+              <Row
+                key={bucket.category}
+                label={label}
+                hint={seasonal ? `${spread} · ${seasonal}` : spread}
+                value={`${money(bucket.mean_14d)} / 14d`}
+                meta={
+                  <>
+                    {bucket.seasonal && seasonal ? (
+                      <SeasonalSparkline
+                        profile={bucket.seasonal}
+                        currentMonth={currentMonth}
+                        label={`${label} spending by month: ${seasonal}`}
+                      />
+                    ) : null}
+                    <ProvenanceTag provenance={bucket.provenance} />
+                  </>
+                }
+              />
+            );
+          })}
         </ul>
       </Card>
 
