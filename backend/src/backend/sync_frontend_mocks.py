@@ -24,7 +24,8 @@ def sync() -> list[Path]:
     written = []
     for name, model in payloads.items():
         path = FRONTEND_MOCK_DIR / name
-        path.write_text(json.dumps(model.model_dump(mode="json"), indent=2) + "\n")
+        payload = json.dumps(model.model_dump(mode="json"), indent=2, ensure_ascii=False)
+        path.write_text(payload + "\n")
         written.append(path)
     return written
 
