@@ -18,7 +18,7 @@
   "baseline": {
     "ending_balance": 3544.18,
     "min_balance": 2399.69,
-    "prob_low_balance": 0.003,
+    "prob_low_balance": 0.0,
     "prob_below_reserve": 0.0,
     "goal_shortfall": 0.0,
     "obligations_covered": true,
@@ -29,7 +29,7 @@
   "counterfactual": {
     "ending_balance": 2744.18,
     "min_balance": 1599.7,
-    "prob_low_balance": 1.0,
+    "prob_low_balance": 0.821,
     "prob_below_reserve": 0.199,
     "goal_shortfall": 755.82,
     "obligations_covered": true,
@@ -37,7 +37,7 @@
     "prob_goal_met": 0.027,
     "prob_savings_sweep": 0.059
   },
-  "summary": "Across 1,000 simulated futures, buying the $800 laptop changes Alex's median projected balance on 2027-05-01 from $3,544 to $2,744 (middle 80% of futures: $2,244 to $3,226). Alex meets the $2,000 summer housing goal on top of the $1,500 emergency reserve in 3% of futures with the purchase, versus 54% without it. Checking falls below the $500 low-balance line in 100% of futures, versus under 1% without it. Total savings dip below the $1,500 emergency reserve in 20% of futures, versus 0%. In 6% of futures Alex would have to move money out of savings to pay a mandatory bill, versus 0% without the purchase. On the expected-value path, checking bottoms out at $124 on 2026-10-09 (baseline: $924).",
+  "summary": "Across 1,000 simulated futures, buying the $800 laptop changes Alex's median projected balance on 2027-05-01 from $3,544 to $2,744 (middle 80% of futures: $2,244 to $3,226). Alex meets the $2,000 summer housing goal on top of the $1,500 emergency reserve in 3% of futures with the purchase, versus 54% without it. Checking falls below the $200 low-balance line in 82% of futures, versus 0% without it. Total savings dip below the $1,500 emergency reserve in 20% of futures, versus 0%. In 6% of futures Alex would have to move money out of savings to pay a mandatory bill, versus 0% without the purchase. On the expected-value path, checking bottoms out at $124 on 2026-10-09 (baseline: $924).",
   "drivers": [
     {
       "label": "Laptop",
@@ -73,7 +73,7 @@
     "Bill amounts, bill due dates, and paycheck dates are fixed; bill confidence is not used.",
     "A mandatory bill checking cannot cover is paid by moving money from savings, even if that breaks the emergency reserve; it counts as uncovered only when checking and savings together fall short.",
     "Everyday spending and optional charges are never paid from savings.",
-    "Low balance means checking below $500 (default; Alex has not set a minimum).",
+    "Low balance means checking below $200 (default; Alex has not set a minimum).",
     "The emergency reserve counts checking plus savings.",
     "Goals must be met on top of the emergency reserve.",
     "Income, bills, and everyday spending all flow through checking.",

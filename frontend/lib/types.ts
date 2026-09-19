@@ -177,4 +177,4 @@ export interface SimulationResponse {
  * Only for telling the user what the default is. Every displayed result already has the
  * threshold applied server-side; never re-derive a low-balance verdict from this.
  */
-export const DEFAULT_LOW_BALANCE_THRESHOLD = 500;
+export const DEFAULT_LOW_BALANCE_THRESHOLD = 200;
