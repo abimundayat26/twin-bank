@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from backend.fixtures import load_twin
 from backend.main import app
 from backend.schemas import FinancialTwin, SimulationResponse
 
@@ -30,6 +31,12 @@ def test_get_twin_alex_conforms_to_schema():
     assert response.status_code == 200
     twin = FinancialTwin.model_validate(response.json())
     assert twin.user_id == "alex"
+
+
+def test_get_twin_alex_matches_fixture():
+    response = client.get("/twin/alex")
+    twin = FinancialTwin.model_validate(response.json())
+    assert twin == load_twin()
 
 
 def test_get_twin_unknown_user_404():
