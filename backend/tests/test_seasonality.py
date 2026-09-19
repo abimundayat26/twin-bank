@@ -186,10 +186,10 @@ def test_the_forecast_recovers_the_groceries_shape() -> None:
     """The forecast, blind to the generator, finds groceries' term/away shape.
 
     Unlike `test_the_seasonal_levels_are_recoverable`, the forecast is not told
-    which months share a level; it has to find the grouping itself, from about
-    two fortnights a month. The committed feed is too noisy for that to come out
-    right month by month (a single $53 fortnight is enough to send April to the
-    summer level), so this checks the shape on aggregates, never a single month.
+    which months share a level; it has to estimate every month from about two
+    fortnights. The committed feed is too noisy for that to come out right month
+    by month (April's two fortnights are $53 and $137, so it fits low beside
+    June), so this checks the shape on aggregates, never a single month.
 
     Groceries only. Whether discretionary gets a profile depends on this seed's
     draws, and asserting either way would be asserting an artifact of the seed.
@@ -204,11 +204,13 @@ def test_the_forecast_recovers_the_groceries_shape() -> None:
     fitted_on_campus = statistics.fmean(seasonal.factors[m] for m in on_campus)
     assert fitted_away < fitted_on_campus
 
-    # A signal that survives estimation has to keep most of its spread. Without
-    # this, flattening every level to 1.0 would pass the ordering above.
+    # Without this, flattening every month to 1.0 would pass the ordering above.
+    # The bar is well below the true spread on purpose: the forecast shrinks
+    # each month toward 1.0 by how noisy its fortnights are, so on one year of
+    # history it recovers roughly half the true spread, not all of it.
     true_spread = truth[on_campus[0]] - truth[away[0]]
     seen_spread = fitted_on_campus - fitted_away
-    assert seen_spread > 0.5 * true_spread
+    assert seen_spread > 0.3 * true_spread
 
 
 @pytest.mark.parametrize("category", SEASONAL_CATEGORIES)
