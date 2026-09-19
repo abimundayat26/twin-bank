@@ -1,8 +1,9 @@
 """Template-based explanations built only from computed simulation results."""
 
 import calendar
-from datetime import date
+from datetime import date, timedelta
 
+from backend.forecast import MIN_SEASONAL_EFFECT
 from backend.schemas import (
     ExplanationDriver,
     FinancialTwin,
@@ -11,7 +12,7 @@ from backend.schemas import (
     SeasonalProfile,
     SimulationEvent,
 )
-from backend.simulation.engine import low_balance_threshold
+from backend.simulation.engine import expected_daily_spending, low_balance_threshold
 from backend.simulation.monte_carlo import (
     INCOME_CLAMP_SDS,
     SPENDING_BLOCK_DAYS,
@@ -87,6 +88,59 @@ def build_summary(twin: FinancialTwin, events: list[SimulationEvent], mc: MonteC
     return " ".join(sentences)
 
 
+def window_spending(twin: FinancialTwin, start: date, end: date) -> dict[str, tuple[float, float]]:
+    """Per category, the spending the simulation expects over the simulated days in [start, end],
+    and what an average stretch of the year would spend over the same days.
+
+    The two differ only for a category with a seasonal profile.
+    """
+    spending = {}
+    for category in twin.variable_spending:
+        only_category = twin.model_copy(update={"variable_spending": [category]})
+        daily = expected_daily_spending(only_category, end)
+        days = [d for d in daily if d >= start]
+        expected = sum(daily[d] for d in days)
+        average = category.mean_14d / SPENDING_BLOCK_DAYS * len(days)
+        spending[category.category] = (expected, average)
+    return spending
+
+
+def seasonal_timing_driver(
+    twin: FinancialTwin, events: list[SimulationEvent], horizon_end: date
+) -> ExplanationDriver | None:
+    """Whether the purchase lands at the start of a busy or quiet stretch of everyday spending.
+
+    None when the fortnight from the first purchase is within MIN_SEASONAL_EFFECT of an
+    average one, which includes every twin with no seasonal profile.
+    """
+    if not events:
+        return None
+    first = min(events, key=lambda e: e.date)
+    end = min(first.date + timedelta(days=SPENDING_BLOCK_DAYS - 1), horizon_end)
+    by_category = window_spending(twin, first.date, end)
+    expected = sum(e for e, _ in by_category.values())
+    average = sum(a for _, a in by_category.values())
+    if average <= 0 or abs(expected / average - 1) < MIN_SEASONAL_EFFECT:
+        return None
+
+    busy = expected > average
+    shifted = [
+        f"{category.replace('_', ' ')} {e / a:.2f}×"
+        for category, (e, a) in by_category.items()
+        if a > 0 and abs(e / a - 1) >= MIN_SEASONAL_EFFECT and (e > a) == busy
+    ]
+    change = round(average - expected, 2)
+    return ExplanationDriver(
+        label="Busy spending stretch" if busy else "Quiet spending stretch",
+        impact_amount=change,
+        direction="negative" if busy else "positive",
+        detail=f"The {first.description.lower()} on {first.date} lands at the start of a "
+        f"{'busy' if busy else 'quiet'} stretch: everyday spending through {end} is expected to be "
+        f"{money(expected)}, versus {money(average)} in an average stretch of the year "
+        f"({', '.join(shifted)} their usual). This happens with or without the purchase.",
+    )
+
+
 def build_drivers(
     twin: FinancialTwin, events: list[SimulationEvent], mc: MonteCarloComparison
 ) -> list[ExplanationDriver]:
@@ -127,6 +181,10 @@ def build_drivers(
                     f"versus {money(base_goal.median_available)}.",
                 )
             )
+
+    timing = seasonal_timing_driver(twin, events, mc.horizon_end)
+    if timing is not None:
+        drivers.append(timing)
 
     expected_income = mc.expected.counterfactual.total_income
     if expected_income > 0:

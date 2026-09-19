@@ -1,9 +1,17 @@
 from datetime import date
 
+import pytest
+
 from backend.fixtures import load_twin
 from backend.schemas import ForecastMetadata, SeasonalProfile, SimulationEvent, SimulationRequest
 from backend.simulation import run_simulation
-from backend.simulation.explain import forecast_assumptions, seasonal_assumption
+from backend.simulation.explain import (
+    forecast_assumptions,
+    money,
+    seasonal_assumption,
+    seasonal_timing_driver,
+    window_spending,
+)
 
 FLAT = {month: 1.0 for month in range(1, 13)}
 TERM_START = {**FLAT, 8: 1.3, 9: 1.3, 6: 0.85, 7: 0.85, 12: 0.8}  # averages 1.0
@@ -86,3 +94,81 @@ def test_simulation_assumptions_include_the_forecast():
 
     assert any(a.startswith("Groceries spending is highest in") for a in assumptions)
     assert any(a.startswith("Spending figures are fitted to 26 fortnights") for a in assumptions)
+
+
+# --- Seasonal timing of the purchase --------------------------------------------
+
+LAPTOP = SimulationEvent(
+    type="purchase", description="Laptop", amount=800, date=date(2026, 9, 20), account_id="acc_checking"
+)
+HORIZON = date(2027, 5, 1)
+SEPTEMBER_BUSY = {**FLAT, 9: 1.3, 3: 0.7}  # averages 1.0
+SEPTEMBER_QUIET = {**FLAT, 9: 0.7, 3: 1.3}
+
+
+def test_a_flat_twin_gets_no_timing_driver():
+    twin = load_twin()
+
+    assert seasonal_timing_driver(twin, [LAPTOP], HORIZON) is None
+    drivers = run_simulation(twin, SimulationRequest(user_id="alex", events=[LAPTOP]), n_simulations=20, seed=1).drivers
+    assert not any("stretch" in d.label for d in drivers)
+
+
+def test_window_spending_scales_only_the_seasonal_category():
+    twin = with_groceries_seasonal(SEPTEMBER_BUSY)
+
+    # 2026-09-20 to 2026-10-03: eleven September days at 1.3x, three October days at 1.0x.
+    spending = window_spending(twin, date(2026, 9, 20), date(2026, 10, 3))
+
+    assert spending["groceries"] == pytest.approx((150 * (11 * 1.3 + 3) / 14, 150))
+    assert spending["discretionary"] == pytest.approx((110, 110))
+
+
+def test_a_purchase_before_a_busy_stretch_is_pointed_out():
+    driver = seasonal_timing_driver(with_groceries_seasonal(SEPTEMBER_BUSY), [LAPTOP], HORIZON)
+
+    extra = 150 * (11 * 1.3 + 3) / 14 - 150
+    assert driver.label == "Busy spending stretch"
+    assert driver.direction == "negative"
+    assert driver.impact_amount == pytest.approx(-extra, abs=0.01)
+    assert driver.detail == (
+        "The laptop on 2026-09-20 lands at the start of a busy stretch: everyday spending through "
+        f"2026-10-03 is expected to be {money(260 + extra)}, versus $260 in an average stretch of the "
+        "year (groceries 1.24× their usual). This happens with or without the purchase."
+    )
+
+
+def test_a_purchase_before_a_quiet_stretch_is_pointed_out():
+    driver = seasonal_timing_driver(with_groceries_seasonal(SEPTEMBER_QUIET), [LAPTOP], HORIZON)
+
+    assert driver.label == "Quiet spending stretch"
+    assert driver.direction == "positive"
+    assert driver.impact_amount > 0
+    assert "(groceries 0.76× their usual)" in driver.detail
+
+
+def test_a_small_seasonal_effect_says_nothing():
+    slight = {**FLAT, 9: 1.04, 3: 0.96}
+
+    assert seasonal_timing_driver(with_groceries_seasonal(slight), [LAPTOP], HORIZON) is None
+
+
+def test_the_window_starts_at_the_earliest_purchase_and_stops_at_the_horizon():
+    late = LAPTOP.model_copy(update={"date": date(2026, 9, 28)})
+    early = LAPTOP.model_copy(update={"date": date(2026, 9, 20)})
+
+    driver = seasonal_timing_driver(with_groceries_seasonal(SEPTEMBER_BUSY), [late, early], date(2026, 9, 25))
+
+    # Six days, 2026-09-20 to 2026-09-25: $260 per 14 days on average, groceries at 1.3x.
+    expected = (150 * 1.3 + 110) / 14 * 6
+    assert f"through 2026-09-25 is expected to be {money(expected)}, versus $111" in driver.detail
+
+
+def test_the_timing_driver_sits_between_the_goal_and_income_drivers():
+    twin = with_groceries_seasonal(SEPTEMBER_BUSY)
+    request = SimulationRequest(user_id="alex", events=[LAPTOP])
+
+    labels = [d.label for d in run_simulation(twin, request, n_simulations=20, seed=1).drivers]
+
+    assert labels[0] == "Laptop"
+    assert labels[-2:] == ["Busy spending stretch", "Expected income"]
