@@ -54,14 +54,16 @@ Interactive docs: http://localhost:8000/docs
 
 ## Frontend
 
-Requires Node 22.
+Requires Node 22. On WSL, install Node inside Linux (for example with nvm): the Windows
+`npm` under `/mnt/c` cannot run scripts from a WSL path.
 
 ```bash
 cd frontend
 npm install
 npm run dev        # http://localhost:3000
 npm run lint
-npm run typecheck
+npm run typecheck  # generates Next's route types first, so it works on a fresh clone
+npm test           # Vitest unit tests (lib/*.test.ts)
 npm run build
 ```
 
