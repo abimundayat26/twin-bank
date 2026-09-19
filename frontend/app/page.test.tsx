@@ -59,9 +59,34 @@ describe("Overview page", () => {
     expect(screen.queryByTestId("intent-graph")).not.toBeInTheDocument();
   });
 
-  it("prompts for a simulation before one exists", async () => {
+  it("summarises goals and obligations without embedding their editors", async () => {
     renderPage();
     await waitFor(() => expect(screen.getByTestId("intent-graph")).toBeInTheDocument());
-    expect(screen.getByText(/to compare the/)).toBeInTheDocument();
+
+    expect(screen.getByText("Savings goals")).toBeInTheDocument();
+    expect(screen.getByText("Upcoming obligations")).toBeInTheDocument();
+
+    // SPEC 3.1: the full compiler, the purchase form and the obligation editor
+    // belong on their own pages, not here.
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Simulate/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Minimum checking balance")).not.toBeInTheDocument();
+  });
+
+  it("offers a way on to the pages that do the work", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId("intent-graph")).toBeInTheDocument());
+
+    expect(screen.getByRole("link", { name: "Simulate a purchase" })).toHaveAttribute(
+      "href",
+      "/simulate",
+    );
+    expect(screen.getByRole("link", { name: "Add a goal" })).toHaveAttribute("href", "/plans");
+  });
+
+  it("shows the accounts and the total they add up to", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Current balance")).toBeInTheDocument());
+    expect(screen.getByText(/Not all of this is free to spend/)).toBeInTheDocument();
   });
 });
