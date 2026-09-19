@@ -9,8 +9,10 @@
  * To drop the mocks later, delete the `catch` fallbacks below. No component
  * needs to change: they only ever see `FinancialTwin` / `SimulationResponse`.
  *
- * `lib/mock/*.json` are copies of `backend/fixtures/*.json`. If the fixtures
- * change there, re-copy them here.
+ * `lib/mock/*.json` are generated from the API payloads. If a backend fixture
+ * changes, regenerate them with `cd backend && uv run python -m
+ * backend.sync_frontend_mocks`; `backend/tests/test_fixtures.py` fails if they
+ * drift apart. Do not hand-edit them.
  */
 
 import mockSimulation from "./mock/simulation.json";

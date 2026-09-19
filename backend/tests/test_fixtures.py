@@ -1,4 +1,10 @@
+import json
+from pathlib import Path
+
 from backend.fixtures import load_simulation, load_twin
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+FRONTEND_MOCK_DIR = REPO_ROOT / "frontend" / "lib" / "mock"
 
 
 def test_twin_fixture_validates():
@@ -66,3 +72,19 @@ def test_simulation_fixture_references_twin_account():
     account_ids = {a.id for a in load_twin().accounts}
     for event in load_simulation().request.events:
         assert event.account_id in account_ids
+
+
+def test_frontend_mock_twin_matches_api_payload():
+    """The files in frontend/lib/mock/ are the frontend's offline fallback.
+
+    They must equal what the API serves, or the demo shows a different Alex when
+    the backend is down. After changing a fixture, regenerate them with
+    `uv run python -m backend.sync_frontend_mocks`.
+    """
+    mock = json.loads((FRONTEND_MOCK_DIR / "twin.json").read_text())
+    assert mock == load_twin().model_dump(mode="json")
+
+
+def test_frontend_mock_simulation_matches_api_payload():
+    mock = json.loads((FRONTEND_MOCK_DIR / "simulation.json").read_text())
+    assert mock == load_simulation().model_dump(mode="json")

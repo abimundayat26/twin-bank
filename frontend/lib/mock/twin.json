@@ -1,7 +1,7 @@
 {
   "user_id": "alex",
   "display_name": "Alex",
-  "as_of": "2026-09-18",
+  "as_of": "2026-09-19",
   "accounts": [
     {
       "id": "acc_checking",
@@ -62,6 +62,15 @@
       "due_day": 10,
       "mandatory": false,
       "confidence": 0.95,
+      "provenance": "observed"
+    },
+    {
+      "id": "obl_mystery_transfer",
+      "name": "Recurring transfer of unclear purpose (destination unclear \u2014 possibly savings or repayment)",
+      "expected_amount": 75.0,
+      "due_day": 5,
+      "mandatory": false,
+      "confidence": 0.55,
       "provenance": "observed"
     }
   ],
