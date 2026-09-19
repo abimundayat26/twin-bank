@@ -10,10 +10,13 @@ from backend.schemas import (
     ClarificationResponseRequest,
     FinancialTwin,
     MinimumBalanceRequest,
+    OptimizationRequest,
+    OptimizationResponse,
     SimulationRequest,
     SimulationResponse,
 )
 from backend.simulation import SimulationError, run_simulation
+from backend.simulation.optimize import run_optimization
 
 # Optional: fix the Monte Carlo seed so demo numbers repeat. Unset means fresh randomness.
 SIMULATION_SEED = int(seed) if (seed := os.getenv("SIMULATION_SEED")) else None
@@ -67,5 +70,14 @@ def simulate(request: SimulationRequest) -> SimulationResponse:
     twin = twin_for(request.user_id)
     try:
         return run_simulation(twin, request, seed=SIMULATION_SEED)
+    except SimulationError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@app.post("/optimize", response_model=OptimizationResponse)
+def optimize(request: OptimizationRequest) -> OptimizationResponse:
+    twin = twin_for(request.user_id)
+    try:
+        return run_optimization(twin, request, seed=SIMULATION_SEED)
     except SimulationError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e

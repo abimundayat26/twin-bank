@@ -1,6 +1,14 @@
 """Template-based explanations built only from computed simulation results."""
 
-from backend.schemas import ExplanationDriver, FinancialTwin, SimulationEvent
+from datetime import date
+
+from backend.schemas import (
+    ExplanationDriver,
+    FinancialTwin,
+    OptimizationCandidate,
+    ScenarioMetrics,
+    SimulationEvent,
+)
 from backend.simulation.engine import low_balance_threshold
 from backend.simulation.monte_carlo import (
     INCOME_CLAMP_SDS,
@@ -199,3 +207,91 @@ def build_assumptions(twin: FinancialTwin, mc: MonteCarloComparison) -> list[str
     if any(g.deadline > mc.horizon_end for g in twin.goals):
         assumptions.append("Goals with deadlines after the horizon are not evaluated.")
     return assumptions
+
+
+# --- Optimization -------------------------------------------------------------
+
+
+def goal_chance(metrics: ScenarioMetrics) -> str:
+    return pct(metrics.prob_goal_met) if metrics.prob_goal_met is not None else "n/a"
+
+
+def build_optimization_summary(
+    twin: FinancialTwin,
+    baseline: ScenarioMetrics,
+    buy_now: OptimizationCandidate,
+    recommended: OptimizationCandidate | None,
+    candidates: list[OptimizationCandidate],
+) -> str:
+    name = twin.display_name
+    has_goal = buy_now.metrics.prob_goal_met is not None
+    if has_goal:
+        sentences = [
+            f"Buying now, {name} meets every goal in the horizon in {goal_chance(buy_now.metrics)} "
+            f"of futures, versus {goal_chance(baseline)} without the purchase."
+        ]
+    else:
+        sentences = [
+            f"Buying now, {name}'s median ending balance is {money(buy_now.metrics.ending_balance)}, "
+            f"versus {money(baseline.ending_balance)} without the purchase."
+        ]
+
+    if recommended is None:
+        closest = candidates[0]
+        sentences.append(
+            f"None of the {len(candidates)} options keeps every limit {name} declared. "
+            f"The closest is \"{closest.label}\": {closest.violations[0]}"
+        )
+    elif recommended.kind == "buy_now":
+        sentences.append(
+            f"Buying now keeps every limit {name} declared, and none of the other "
+            f"{len(candidates) - 1} options scores better on the goal or on risk."
+        )
+    else:
+        m = recommended.metrics
+        outcome = (
+            f"meets the goal in {goal_chance(m)} of futures"
+            if has_goal
+            else f"ends with a median {money(m.ending_balance)}"
+        )
+        sentences.append(
+            f"The best-scoring option that keeps every limit {name} declared is "
+            f"\"{recommended.label}\": it {outcome}, and checking plus savings dips below the "
+            f"reserve in {pct(m.prob_below_reserve)} of futures (buying now: "
+            f"{pct(buy_now.metrics.prob_below_reserve)})."
+        )
+
+    breaking = sum(not c.meets_constraints for c in candidates)
+    if breaking and recommended is not None:
+        sentences.append(f"{breaking} of the {len(candidates)} options break a declared limit.")
+    return " ".join(sentences)
+
+
+def build_optimization_assumptions(
+    twin: FinancialTwin,
+    horizon_end: date,
+    n_simulations: int,
+    max_constraint_risk: float,
+    max_delay_paydays: int,
+) -> list[str]:
+    name = twin.display_name
+    declared_floor = any(c.type == "minimum_checking_balance" for c in twin.constraints)
+    return [
+        f"Every option is scored on the same {n_simulations:,} simulated futures, so differences "
+        "between options come from the action, not from luck.",
+        f"A declared limit counts as kept if it is broken in at most {pct(max_constraint_risk)} of "
+        f"futures. This is a team default; {name} did not set it.",
+        "An option breaks a limit if any future leaves a mandatory bill unpaid, even after moving "
+        "money from savings.",
+        f"The {money(low_balance_threshold(twin))} minimum checking balance {name} set is a hard limit."
+        if declared_floor
+        else f"The low-balance line is not a hard limit, because {name} has not set one.",
+        "The emergency reserve counts checking plus savings.",
+        "Goals must be met on top of the emergency reserve.",
+        f"Delays move the purchase to the day after one of the next {max_delay_paydays} paydays, "
+        "within the horizon.",
+        f"Spending cuts scale that category's average and spread for the whole horizon, "
+        f"{twin.as_of} to {horizon_end}.",
+        "Options are ranked by the chance of meeting every goal, then risk to the reserve and to "
+        "bills, then by how little they change the plan.",
+    ]

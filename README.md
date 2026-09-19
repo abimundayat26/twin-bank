@@ -46,6 +46,7 @@ Endpoints:
 | GET | `/health` | `{"status": "ok"}` |
 | GET | `/twin/{user_id}` | `FinancialTwin` (only `alex` exists) |
 | POST | `/simulate` | `SimulationResponse` for a `SimulationRequest` |
+| POST | `/optimize` | `OptimizationResponse`: alternatives to a purchase, ranked, for an `OptimizationRequest` |
 
 Interactive docs: http://localhost:8000/docs
 
