@@ -27,6 +27,7 @@
 
 import { useState, type FormEvent } from "react";
 import { longDate, money } from "@/lib/format";
+import { GOALS_SCOPE } from "@/lib/scopes";
 import {
   appendAnswers,
   applyEdits,
@@ -50,7 +51,6 @@ import type {
 import { Badge, Card } from "./ui";
 
 /** Names this card's save, so only this button says "Saving…". */
-export const GOALS_SCOPE = "declared-goals";
 
 const PLACEHOLDER = "I need $1,600 for summer housing by May 1st, and keep $300 in checking.";
 

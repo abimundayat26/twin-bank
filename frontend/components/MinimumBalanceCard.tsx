@@ -7,11 +7,9 @@
 
 import { useState, type FormEvent } from "react";
 import { money } from "@/lib/format";
+import { MINIMUM_BALANCE_SCOPE } from "@/lib/scopes";
 import { DEFAULT_LOW_BALANCE_THRESHOLD, type FinancialConstraint } from "@/lib/types";
 import { Card, ProvenanceTag } from "./ui";
-
-/** Names this card's save, so only this button says "Saving…". */
-export const MINIMUM_BALANCE_SCOPE = "minimum-balance";
 
 export function MinimumBalanceCard({
   minimum,
