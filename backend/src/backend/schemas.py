@@ -114,6 +114,20 @@ class ScenarioMetrics(BaseModel):
     prob_below_reserve: float = Probability
     goal_shortfall: float = Field(ge=0, description="USD short of the goal at its deadline.")
     obligations_covered: bool
+    prob_obligations_uncovered: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description="Share of simulated futures where checking misses a mandatory bill. "
+        "None when not computed (mock results).",
+    )
+    prob_goal_met: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description="Share of simulated futures meeting every goal due within the horizon. "
+        "None when not computed or no goal is due within the horizon.",
+    )
 
 
 class ExplanationDriver(BaseModel):
@@ -134,3 +148,6 @@ class SimulationResponse(BaseModel):
     drivers: list[ExplanationDriver]
     assumptions: list[str]
     is_mock: bool
+    num_simulations: int | None = Field(
+        default=None, ge=1, description="Monte Carlo runs behind the metrics. None for mock results."
+    )
