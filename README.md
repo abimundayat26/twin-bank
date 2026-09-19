@@ -47,6 +47,8 @@ Endpoints:
 | GET | `/twin/{user_id}` | `FinancialTwin` (only `alex` exists) |
 | POST | `/simulate` | `SimulationResponse` for a `SimulationRequest` |
 | POST | `/optimize` | `OptimizationResponse`: alternatives to a purchase, ranked, for an `OptimizationRequest` |
+| POST | `/goals/compile` | `GoalCompileResponse`: draft goals, constraints and clarification questions from a `GoalCompileRequest` (saves nothing) |
+| PUT | `/twin/{user_id}/goals` | `FinancialTwin` after saving the confirmed goals and emergency reserve (`DeclaredGoalsRequest`) |
 
 Interactive docs: http://localhost:8000/docs
 
