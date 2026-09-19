@@ -66,7 +66,7 @@ export function Nav() {
           <div
             aria-hidden="true"
             onClick={() => setIsOpen(false)}
-            className="fixed inset-0 z-40 bg-canvas/70"
+            className="fixed inset-0 z-40 bg-ink/50"
           />
           <div
             id="primary-menu"
@@ -99,7 +99,7 @@ export function Nav() {
                         aria-current={current ? "page" : undefined}
                         className={`block rounded-lg border px-3 py-2 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-baseline ${
                           current
-                            ? "border-baseline/50 bg-raised text-ink"
+                            ? "border-baseline bg-raised text-ink"
                             : "border-transparent text-muted hover:bg-raised hover:text-ink"
                         }`}
                       >

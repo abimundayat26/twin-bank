@@ -77,7 +77,7 @@ export function GoalCard({
                 type="button"
                 onClick={() => onRemove(goal.id)}
                 disabled={isBusy}
-                className="rounded-lg border border-bad/40 px-3 py-1.5 font-semibold text-bad transition hover:bg-bad/10 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg border border-bad/70 px-3 py-1.5 font-semibold text-bad transition hover:bg-bad/10 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSaving ? "Removing…" : "Remove"}
               </button>
