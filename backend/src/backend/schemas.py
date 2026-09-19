@@ -257,3 +257,41 @@ class OptimizationResponse(BaseModel):
     summary: str
     assumptions: list[str]
     num_simulations: int = Field(ge=1, description="Monte Carlo runs behind each candidate.")
+
+
+# --- Goal compiler ------------------------------------------------------------
+
+GoalClarificationField = Literal["amount", "deadline", "name", "type"]
+
+
+class GoalCompileRequest(BaseModel):
+    user_id: str
+    text: str = Field(min_length=1, max_length=2000)
+
+
+class GoalClarification(BaseModel):
+    field: GoalClarificationField = Field(description="What is missing or ambiguous.")
+    question: str
+    fragment: str = Field(description="The part of the text the question is about.")
+
+
+class GoalCompileResponse(BaseModel):
+    """Drafts only: nothing is saved until the user confirms them."""
+
+    user_id: str
+    text: str
+    goals: list[Goal]
+    constraints: list[FinancialConstraint]
+    clarifications: list[GoalClarification] = Field(
+        description="Asked instead of guessing. A goal missing a detail is not in goals."
+    )
+    unparsed: list[str] = Field(description="Parts of the text that matched nothing.")
+    compiler: Literal["rules", "llm"]
+
+
+class DeclaredGoalsRequest(BaseModel):
+    """Replaces the user's goals and emergency reserve. A minimum_checking_balance
+    here sets the same value as PUT /twin/{user_id}/minimum-balance."""
+
+    goals: list[Goal]
+    constraints: list[FinancialConstraint] = []
