@@ -114,6 +114,29 @@ class FinancialObligation(BaseModel):
         return candidates
 
 
+class OneTimeObligation(BaseModel):
+    """A known future expense that happens once: tuition, a deposit, an annual premium.
+
+    Deliberately not a `FinancialObligation`. That one is keyed on `due_day`, a day of
+    the month, and the engine expands it through `monthly_due_dates()` -- a single
+    absolute date has no place in recurrence logic, and squeezing it in there would be
+    the easiest way to corrupt it.
+
+    Always declared: the user tells TwinBank about this, it is never inferred from
+    transactions (SPEC section 2), and it only reaches the twin after the user confirms
+    the draft. A confirmed one belongs to the *baseline* future -- it is a commitment
+    already made, not a hypothetical purchase being simulated.
+    """
+
+    id: str
+    name: str
+    amount: float = Field(gt=0, description="Always a withdrawal, so the sign is implied.")
+    due_date: date = Field(description="The one absolute date it is paid. It does not repeat.")
+    account_id: str = Field(description="The account it is paid from.")
+    mandatory: bool = True
+    provenance: Literal["declared"] = "declared"
+
+
 class SeasonalProfile(BaseModel):
     """How a category's spending moves around the year.
 
@@ -208,6 +231,12 @@ class FinancialTwin(BaseModel):
     variable_spending: list[VariableSpendingDistribution]
     goals: list[Goal]
     constraints: list[FinancialConstraint]
+    one_time_obligations: list[OneTimeObligation] = Field(
+        default=[],
+        description="Known one-off future expenses the user declared and confirmed. "
+        "Empty on a twin that predates the contract, and on any twin built purely from "
+        "transactions: these can only come from the user.",
+    )
     forecast: ForecastMetadata | None = Field(
         default=None,
         description="How the observed figures above were estimated. None when they were "
