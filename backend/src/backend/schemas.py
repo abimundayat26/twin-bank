@@ -246,6 +246,27 @@ class ExplanationDriver(BaseModel):
     detail: str
 
 
+class BalanceBandPoint(BaseModel):
+    """One day's spread of a balance across simulated futures."""
+
+    date: date
+    p10: float
+    median: float
+    p90: float
+
+
+class ScenarioBands(BaseModel):
+    """End-of-day balances per day, from as_of through horizon_end."""
+
+    total: list[BalanceBandPoint] = Field(description="Checking plus savings.")
+    checking: list[BalanceBandPoint]
+
+
+class BalanceBands(BaseModel):
+    baseline: ScenarioBands
+    counterfactual: ScenarioBands
+
+
 class SimulationResponse(BaseModel):
     simulation_id: str
     user_id: str
@@ -260,3 +281,95 @@ class SimulationResponse(BaseModel):
     num_simulations: int | None = Field(
         default=None, ge=1, description="Monte Carlo runs behind the metrics. None for mock results."
     )
+    balance_bands: BalanceBands | None = Field(
+        default=None,
+        description="Daily p10/median/p90 balances for charts. None when not computed.",
+    )
+
+
+# --- Optimization -------------------------------------------------------------
+
+CandidateKind = Literal["buy_now", "delay", "reduce_spending", "from_savings"]
+
+
+class OptimizationRequest(BaseModel):
+    user_id: str
+    events: list[SimulationEvent] = Field(min_length=1)
+    horizon_end: date | None = Field(
+        default=None, description="Defaults to the earliest goal deadline."
+    )
+
+
+class SpendingAdjustment(BaseModel):
+    category: str
+    multiplier: float = Field(
+        ge=0, le=1, description="Scales the category's mean and spread for the whole horizon."
+    )
+
+
+class OptimizationCandidate(BaseModel):
+    id: str
+    kind: CandidateKind
+    label: str
+    detail: str
+    events: list[SimulationEvent] = Field(description="The purchase as this action makes it.")
+    spending_adjustments: list[SpendingAdjustment] = []
+    metrics: ScenarioMetrics
+    meets_constraints: bool
+    violations: list[str] = Field(
+        default=[], description="Declared hard constraints this action breaks, in words."
+    )
+
+
+class OptimizationResponse(BaseModel):
+    optimization_id: str
+    user_id: str
+    request: OptimizationRequest
+    horizon_end: date
+    baseline: ScenarioMetrics = Field(description="The future without the purchase.")
+    candidates: list[OptimizationCandidate] = Field(description="Best first.")
+    recommended_id: str | None = Field(
+        default=None,
+        description="Best candidate that meets every hard constraint. None when none does.",
+    )
+    summary: str
+    assumptions: list[str]
+    num_simulations: int = Field(ge=1, description="Monte Carlo runs behind each candidate.")
+
+
+# --- Goal compiler ------------------------------------------------------------
+
+GoalClarificationField = Literal["amount", "deadline", "name", "type"]
+
+
+class GoalCompileRequest(BaseModel):
+    user_id: str
+    text: str = Field(min_length=1, max_length=2000)
+
+
+class GoalClarification(BaseModel):
+    field: GoalClarificationField = Field(description="What is missing or ambiguous.")
+    question: str
+    fragment: str = Field(description="The part of the text the question is about.")
+
+
+class GoalCompileResponse(BaseModel):
+    """Drafts only: nothing is saved until the user confirms them."""
+
+    user_id: str
+    text: str
+    goals: list[Goal]
+    constraints: list[FinancialConstraint]
+    clarifications: list[GoalClarification] = Field(
+        description="Asked instead of guessing. A goal missing a detail is not in goals."
+    )
+    unparsed: list[str] = Field(description="Parts of the text that matched nothing.")
+    compiler: Literal["rules", "llm"]
+
+
+class DeclaredGoalsRequest(BaseModel):
+    """Replaces the user's goals and emergency reserve. A minimum_checking_balance
+    here sets the same value as PUT /twin/{user_id}/minimum-balance."""
+
+    goals: list[Goal]
+    constraints: list[FinancialConstraint] = []

@@ -195,6 +195,26 @@ export interface ExplanationDriver {
   detail: string;
 }
 
+/** One day's spread of a balance across simulated futures. */
+export interface BalanceBandPoint {
+  date: IsoDate;
+  p10: number;
+  median: number;
+  p90: number;
+}
+
+/** End-of-day balances per day, from as_of through horizon_end. */
+export interface ScenarioBands {
+  /** Checking plus savings. */
+  total: BalanceBandPoint[];
+  checking: BalanceBandPoint[];
+}
+
+export interface BalanceBands {
+  baseline: ScenarioBands;
+  counterfactual: ScenarioBands;
+}
+
 export interface SimulationResponse {
   simulation_id: string;
   user_id: string;
@@ -208,6 +228,96 @@ export interface SimulationResponse {
   is_mock: boolean;
   /** Monte Carlo runs behind the metrics. Absent/null on mock results. */
   num_simulations?: number | null;
+  /** Daily p10/median/p90 balances for charts. Absent/null when not computed. */
+  balance_bands?: BalanceBands | null;
+}
+
+// --- Optimization -----------------------------------------------------------
+
+export type CandidateKind = "buy_now" | "delay" | "reduce_spending" | "from_savings";
+
+export interface OptimizationRequest {
+  user_id: string;
+  events: SimulationEvent[];
+  /** Defaults server-side to the earliest goal deadline. */
+  horizon_end?: IsoDate | null;
+}
+
+export interface SpendingAdjustment {
+  category: string;
+  /** 0-1. Scales the category's mean and spread for the whole horizon. */
+  multiplier: number;
+}
+
+export interface OptimizationCandidate {
+  id: string;
+  kind: CandidateKind;
+  label: string;
+  detail: string;
+  /** The purchase as this action makes it. */
+  events: SimulationEvent[];
+  spending_adjustments: SpendingAdjustment[];
+  metrics: ScenarioMetrics;
+  meets_constraints: boolean;
+  /** Declared hard constraints this action breaks, in words. */
+  violations: string[];
+}
+
+export interface OptimizationResponse {
+  optimization_id: string;
+  user_id: string;
+  request: OptimizationRequest;
+  horizon_end: IsoDate;
+  /** The future without the purchase. */
+  baseline: ScenarioMetrics;
+  /** Best first. */
+  candidates: OptimizationCandidate[];
+  /** Best candidate that meets every hard constraint. Null when none does. */
+  recommended_id: string | null;
+  summary: string;
+  assumptions: string[];
+  /** Monte Carlo runs behind each candidate. */
+  num_simulations: number;
+}
+
+// --- Goal compiler ------------------------------------------------------------
+
+export type GoalClarificationField = "amount" | "deadline" | "name" | "type";
+
+export interface GoalCompileRequest {
+  user_id: string;
+  /** 1-2000 characters. */
+  text: string;
+}
+
+export interface GoalClarification {
+  /** What is missing or ambiguous. */
+  field: GoalClarificationField;
+  question: string;
+  /** The part of the text the question is about. */
+  fragment: string;
+}
+
+/** Drafts only: nothing is saved until the user confirms them. */
+export interface GoalCompileResponse {
+  user_id: string;
+  text: string;
+  goals: Goal[];
+  constraints: FinancialConstraint[];
+  /** Asked instead of guessing. A goal missing a detail is not in goals. */
+  clarifications: GoalClarification[];
+  /** Parts of the text that matched nothing. */
+  unparsed: string[];
+  compiler: "rules" | "llm";
+}
+
+/**
+ * Replaces the user's goals and emergency reserve. A minimum_checking_balance here
+ * sets the same value as PUT /twin/{user_id}/minimum-balance.
+ */
+export interface DeclaredGoalsRequest {
+  goals: Goal[];
+  constraints?: FinancialConstraint[];
 }
 
 /**

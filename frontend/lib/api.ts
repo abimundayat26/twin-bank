@@ -109,6 +109,26 @@ export async function runSimulation(
 }
 
 /**
+ * Fetches a recent simulation again by id (`GET /explain/{simulation_id}`).
+ * The backend keeps results in memory, so an id from before a restart is a 404.
+ * Offline, only the bundled fixture's id can be answered.
+ */
+export async function getExplanation(simulationId: string): Promise<Loaded<SimulationResponse>> {
+  try {
+    const data = await getJson<SimulationResponse>(
+      `/explain/${encodeURIComponent(simulationId)}`,
+    );
+    return { data, source: "api" };
+  } catch (error) {
+    unlessApiError(error);
+    const fixture = mockSimulation as SimulationResponse;
+    if (simulationId !== fixture.simulation_id) throw error;
+    console.warn("Falling back to the bundled simulation fixture.", error);
+    return { data: fixture, source: "fixture" };
+  }
+}
+
+/**
  * Records Alex's answer to "What is this?" for an ambiguous obligation.
  * Offline, the answer is applied to the local twin so the UI still reflects it.
  */
