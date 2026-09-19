@@ -217,6 +217,46 @@ export interface OptimizationResponse {
   num_simulations: number;
 }
 
+// --- Goal compiler ------------------------------------------------------------
+
+export type GoalClarificationField = "amount" | "deadline" | "name" | "type";
+
+export interface GoalCompileRequest {
+  user_id: string;
+  /** 1-2000 characters. */
+  text: string;
+}
+
+export interface GoalClarification {
+  /** What is missing or ambiguous. */
+  field: GoalClarificationField;
+  question: string;
+  /** The part of the text the question is about. */
+  fragment: string;
+}
+
+/** Drafts only: nothing is saved until the user confirms them. */
+export interface GoalCompileResponse {
+  user_id: string;
+  text: string;
+  goals: Goal[];
+  constraints: FinancialConstraint[];
+  /** Asked instead of guessing. A goal missing a detail is not in goals. */
+  clarifications: GoalClarification[];
+  /** Parts of the text that matched nothing. */
+  unparsed: string[];
+  compiler: "rules" | "llm";
+}
+
+/**
+ * Replaces the user's goals and emergency reserve. A minimum_checking_balance here
+ * sets the same value as PUT /twin/{user_id}/minimum-balance.
+ */
+export interface DeclaredGoalsRequest {
+  goals: Goal[];
+  constraints?: FinancialConstraint[];
+}
+
 /**
  * What the simulator treats as a low checking balance when the user has not declared a
  * minimum_checking_balance constraint of their own. Mirrors LOW_BALANCE_THRESHOLD in

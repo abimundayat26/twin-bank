@@ -4,8 +4,11 @@ from pydantic import ValidationError
 from backend.fixtures import load_simulation, load_twin
 from backend.schemas import (
     ClarificationResponseRequest,
+    DeclaredGoalsRequest,
     FinancialConstraint,
     FinancialObligation,
+    GoalCompileRequest,
+    GoalCompileResponse,
     MinimumBalanceRequest,
     OptimizationRequest,
     OptimizationResponse,
@@ -188,3 +191,49 @@ def test_unknown_candidate_kind_is_rejected():
     data["candidates"][0]["kind"] = "take_a_loan"
     with pytest.raises(ValidationError):
         OptimizationResponse.model_validate(data)
+
+
+# --- Goal compiler -----------------------------------------------------------
+
+
+def goal_compile_response(**overrides):
+    twin = load_twin()
+    return {
+        "user_id": "alex",
+        "text": "I need $2,000 for summer housing by May and want to save for a car",
+        "goals": [g.model_dump(mode="json") for g in twin.goals],
+        "constraints": [],
+        "clarifications": [
+            {"field": "amount", "question": "How much do you need for a car?", "fragment": "save for a car"}
+        ],
+        "unparsed": [],
+        "compiler": "rules",
+        **overrides,
+    }
+
+
+def test_goal_compile_response_round_trips():
+    response = GoalCompileResponse.model_validate(goal_compile_response())
+    assert GoalCompileResponse.model_validate_json(response.model_dump_json()) == response
+    assert response.goals[0].provenance == "declared"
+
+
+def test_unknown_clarification_field_is_rejected():
+    data = goal_compile_response()
+    data["clarifications"][0]["field"] = "mood"
+    with pytest.raises(ValidationError):
+        GoalCompileResponse.model_validate(data)
+
+
+@pytest.mark.parametrize("text", ["", "x" * 2001])
+def test_goal_text_is_bounded(text):
+    with pytest.raises(ValidationError):
+        GoalCompileRequest(user_id="alex", text=text)
+
+
+def test_declared_goals_request_defaults_to_no_constraints():
+    request = DeclaredGoalsRequest.model_validate({"goals": []})
+    assert request.constraints == []
+    twin = load_twin()
+    request = DeclaredGoalsRequest(goals=twin.goals, constraints=twin.constraints)
+    assert request.goals == twin.goals
