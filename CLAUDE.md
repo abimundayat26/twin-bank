@@ -26,7 +26,8 @@ backend/            Python, FastAPI, uv
   src/backend/
     main.py         FastAPI app and routes
     schemas.py      shared Pydantic contracts (source of truth)
-    fixtures.py     mock data (Alex)
+    fixtures.py     loads mock fixtures
+  fixtures/         mock JSON data (Alex)
   tests/
 frontend/           Next.js, TypeScript
 .env.example        configuration names, no values

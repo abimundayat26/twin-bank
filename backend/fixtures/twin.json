@@ -1,0 +1,49 @@
+{
+  "user_id": "alex",
+  "display_name": "Alex",
+  "as_of": "2026-09-18",
+  "accounts": [
+    { "id": "acc_checking", "name": "Everyday Checking", "type": "checking", "balance": 1340.0 },
+    { "id": "acc_savings", "name": "Savings", "type": "savings", "balance": 1500.0 }
+  ],
+  "income": [
+    {
+      "id": "inc_paycheck",
+      "source": "Campus bookstore paycheck",
+      "expected_amount": 720.0,
+      "interval_days": 14,
+      "next_date": "2026-09-25",
+      "uncertainty": 60.0,
+      "provenance": "observed"
+    }
+  ],
+  "obligations": [
+    { "id": "obl_rent", "name": "Rent", "expected_amount": 650.0, "due_day": 1, "mandatory": true, "confidence": 0.99, "provenance": "observed" },
+    { "id": "obl_utilities", "name": "Utilities", "expected_amount": 60.0, "due_day": 15, "mandatory": true, "confidence": 0.9, "provenance": "observed" },
+    { "id": "obl_phone", "name": "Phone plan", "expected_amount": 40.0, "due_day": 20, "mandatory": true, "confidence": 0.98, "provenance": "observed" },
+    { "id": "obl_subscriptions", "name": "Streaming subscriptions", "expected_amount": 25.0, "due_day": 10, "mandatory": false, "confidence": 0.95, "provenance": "observed" }
+  ],
+  "variable_spending": [
+    { "category": "groceries", "mean_14d": 150.0, "std_dev_14d": 40.0, "provenance": "observed" },
+    { "category": "discretionary", "mean_14d": 110.0, "std_dev_14d": 65.0, "provenance": "observed" }
+  ],
+  "goals": [
+    {
+      "id": "goal_summer_housing",
+      "name": "Summer housing",
+      "target_amount": 2000.0,
+      "deadline": "2027-05-01",
+      "current_amount": 0.0,
+      "provenance": "declared"
+    }
+  ],
+  "constraints": [
+    {
+      "id": "con_emergency_reserve",
+      "type": "minimum_reserve",
+      "amount": 1500.0,
+      "description": "Keep at least $1,500 across checking and savings for emergencies.",
+      "provenance": "declared"
+    }
+  ]
+}
