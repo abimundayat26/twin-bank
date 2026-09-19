@@ -123,6 +123,11 @@ export interface FinancialTwin {
   variable_spending: VariableSpendingDistribution[];
   goals: Goal[];
   constraints: FinancialConstraint[];
+  /**
+   * Where the observed half came from. Absent on a twin the backend did not
+   * load from a source, and on the offline mock.
+   */
+  source?: "fixture" | "nessie" | null;
   /** Computed server-side; present in the JSON payload. */
   total_balance: number;
 }
