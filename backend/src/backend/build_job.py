@@ -14,6 +14,10 @@ identity, balances, goals and constraints come from the twin on file, exactly
 as they do for the endpoint (SPEC section 2). With `TRACK_TWIN_BUILDS` on, the
 build is recorded like any other.
 
+The twin on file defaults to `fixtures/twin.json`. An installed wheel does not
+carry the fixtures, so on Databricks `--twin` points at an uploaded copy; the
+`databricks.yml` bundle next to `pyproject.toml` passes it.
+
 A year of one person's transactions is a few hundred rows, so this is plain
 Python rather than Spark. Nothing here reads the network. Nothing in the app
 imports it.
@@ -27,7 +31,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from backend.fixtures import load_twin
+from backend.fixtures import FIXTURES_DIR, load_twin
 from backend.ingest.build import latest_transaction_date, rebuild
 from backend.ingest.models import RawTransaction
 from backend.ingest.normalize import normalize_all
@@ -52,8 +56,22 @@ def load_raw_transactions(path: Path) -> list[RawTransaction]:
         raise BuildJobError(f"{path} holds a transaction in an unknown shape: {e}") from e
 
 
-def build(raw: list[RawTransaction], as_of: date | None = None) -> FinancialTwin:
-    """The twin on file, with its observed half rebuilt from `raw`.
+def load_twin_on_file(path: Path) -> FinancialTwin:
+    try:
+        return FinancialTwin.model_validate_json(path.read_text())
+    except OSError as e:
+        raise BuildJobError(
+            f"Cannot read the twin on file from {path}: {e}. "
+            "An installed wheel has no fixtures; pass --twin."
+        ) from e
+    except ValidationError as e:
+        raise BuildJobError(f"{path} is not a FinancialTwin: {e}") from e
+
+
+def build(
+    raw: list[RawTransaction], as_of: date | None = None, on_file: FinancialTwin | None = None
+) -> FinancialTwin:
+    """`on_file` (default: the fixture twin), with its observed half rebuilt from `raw`.
 
     Same rules as `POST /twin/build`: `as_of` defaults to the last transaction,
     and nothing after it is seen.
@@ -62,20 +80,29 @@ def build(raw: list[RawTransaction], as_of: date | None = None) -> FinancialTwin
     as_of = as_of or latest_transaction_date(transactions)
     if as_of is None:
         raise BuildJobError("No settled transactions: there is no history to build from")
-    return rebuild(load_twin(), [t for t in transactions if t.date <= as_of], as_of)
+    on_file = on_file or load_twin()
+    return rebuild(on_file, [t for t in transactions if t.date <= as_of], as_of)
 
 
-def main(argv: list[str] | None = None) -> int:
+def arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--transactions", type=Path, required=True, help="Raw transactions JSON")
     parser.add_argument("--out", type=Path, required=True, help="Where to write the twin JSON")
     parser.add_argument(
+        "--twin", type=Path, default=None, help="The twin on file; defaults to the fixture"
+    )
+    parser.add_argument(
         "--as-of", type=date.fromisoformat, default=None, help="Defaults to the last transaction"
     )
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = arg_parser().parse_args(argv)
 
     try:
-        twin = build(load_raw_transactions(args.transactions), args.as_of)
+        on_file = load_twin_on_file(args.twin or FIXTURES_DIR / "twin.json")
+        twin = build(load_raw_transactions(args.transactions), args.as_of, on_file)
     except BuildJobError as e:
         print(e, file=sys.stderr)
         return 1
@@ -86,5 +113,15 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-if __name__ == "__main__":
+def cli() -> None:
+    """Entry point for the installed wheel (`twin-build-job`).
+
+    Raises rather than returns the exit code, so a failed build fails whatever
+    runs it, including a Databricks wheel task, whether or not it checks a
+    return value.
+    """
     raise SystemExit(main())
+
+
+if __name__ == "__main__":
+    cli()

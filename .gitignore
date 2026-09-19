@@ -16,6 +16,10 @@ backend/.data/
 mlflow.db
 mlruns/
 
+# Databricks bundle: built wheel and local deploy state
+backend/dist/
+.databricks/
+
 # Node / Next.js
 node_modules/
 .next/
