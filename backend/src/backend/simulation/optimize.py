@@ -24,7 +24,6 @@ from uuid import uuid4
 from backend.schemas import (
     CandidateKind,
     FinancialTwin,
-    OneTimeObligation,
     OptimizationCandidate,
     OptimizationRequest,
     OptimizationResponse,
@@ -36,6 +35,7 @@ from backend.schemas import (
 from backend.simulation import to_metrics
 from backend.simulation.engine import (
     SPENDING_BLOCK_DAYS,
+    declared_commitments,
     expected_daily_spending,
     income_dates,
     low_balance_threshold,
@@ -79,11 +79,6 @@ class Candidate:
     events: list[SimulationEvent]
     spending_adjustments: list[SpendingAdjustment]
     disruption: float  # days delayed, or share of spending cut
-
-
-def declared_commitments(twin: FinancialTwin, horizon_end: date) -> list[OneTimeObligation]:
-    """One-time obligations that actually fall inside this run, in the engine's window."""
-    return [o for o in twin.one_time_obligations if twin.as_of < o.due_date <= horizon_end]
 
 
 def commitments_assumption(twin: FinancialTwin, horizon_end: date) -> list[str]:

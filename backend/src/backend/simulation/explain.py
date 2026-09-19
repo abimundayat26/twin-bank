@@ -12,7 +12,11 @@ from backend.schemas import (
     SeasonalProfile,
     SimulationEvent,
 )
-from backend.simulation.engine import expected_daily_spending, low_balance_threshold
+from backend.simulation.engine import (
+    declared_commitments,
+    expected_daily_spending,
+    low_balance_threshold,
+)
 from backend.simulation.monte_carlo import (
     SPENDING_BLOCK_DAYS,
     MonteCarloComparison,
@@ -48,6 +52,16 @@ def build_summary(twin: FinancialTwin, events: list[SimulationEvent], mc: MonteC
         f"to {money(cf.ending_balance)} (middle 80% of futures: {money(cf.ending_balance_p10)} "
         f"to {money(cf.ending_balance_p90)})."
     ]
+
+    owed = declared_commitments(twin, mc.horizon_end)
+    if owed:
+        total = money(sum(o.amount for o in owed))
+        noun = "commitment" if len(owed) == 1 else "commitments"
+        sentences.append(
+            f"{name} has already declared {total} of one-time {noun} due before "
+            f"{mc.horizon_end}. They are spent in both futures above, so the change between "
+            f"them is {describe_events(events)} alone."
+        )
 
     for base_goal, cf_goal in zip(base.goals, cf.goals):
         sentences.append(
@@ -141,6 +155,30 @@ def seasonal_timing_driver(
     )
 
 
+def commitment_drivers(
+    twin: FinancialTwin, horizon_end: date, account_names: dict[str, str]
+) -> list[ExplanationDriver]:
+    """One driver per declared one-time obligation inside the horizon.
+
+    Listed next to the purchase drivers so the contrast is visible, and worded so it
+    cannot be read as one: a purchase is being considered, a commitment already
+    exists. It is spent in both scenarios, so it is never part of the difference the
+    purchase makes, and the detail says so in words rather than relying on position
+    or colour (frontend/SPEC.md 13:768).
+    """
+    return [
+        ExplanationDriver(
+            label=f"{owed.name} (already owed)",
+            impact_amount=-owed.amount,
+            direction="negative",
+            detail=f"A commitment {twin.display_name} declared: {money(owed.amount)} due "
+            f"{owed.due_date} from {account_names.get(owed.account_id, 'checking')}. It is "
+            "spent in both scenarios, so it is not part of the difference the purchase makes.",
+        )
+        for owed in declared_commitments(twin, horizon_end)
+    ]
+
+
 def build_drivers(
     twin: FinancialTwin, events: list[SimulationEvent], mc: MonteCarloComparison
 ) -> list[ExplanationDriver]:
@@ -148,13 +186,15 @@ def build_drivers(
     account_names = {a.id: a.name for a in twin.accounts}
     drivers = [
         ExplanationDriver(
-            label=event.description,
+            label=f"{event.description} (this purchase)",
             impact_amount=-event.amount,
             direction="negative",
-            detail=f"One-time {money(event.amount)} from {account_names[event.account_id]} on {event.date}.",
+            detail=f"The purchase being simulated: a one-time {money(event.amount)} from "
+            f"{account_names[event.account_id]} on {event.date}. It happens in one scenario only.",
         )
         for event in events
     ]
+    drivers += commitment_drivers(twin, mc.horizon_end, account_names)
 
     checking_change = round(cf.min_checking - base.min_checking, 2)
     if checking_change != 0:

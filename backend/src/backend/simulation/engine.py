@@ -11,7 +11,12 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from backend.forecast import block_factor
-from backend.schemas import FinancialObligation, FinancialTwin, SimulationEvent
+from backend.schemas import (
+    FinancialObligation,
+    FinancialTwin,
+    OneTimeObligation,
+    SimulationEvent,
+)
 
 # SPEC section 13: "low balance" means checking below this amount, unless the user
 # declares their own minimum_checking_balance constraint. Mirrored in the frontend as
@@ -151,6 +156,13 @@ def is_mandatory(obligation: FinancialObligation) -> bool:
     if obligation.declared_category in ("optional_spending", "savings_transfer"):
         return False
     return obligation.mandatory
+
+
+def declared_commitments(twin: FinancialTwin, horizon_end: date) -> list[OneTimeObligation]:
+    """One-time obligations that actually fall inside a run, in the same window as
+    every other flow. One outside it never happens, so nothing may claim it was
+    weighed or explained."""
+    return [o for o in twin.one_time_obligations if twin.as_of < o.due_date <= horizon_end]
 
 
 def savings_account_id(twin: FinancialTwin) -> str | None:

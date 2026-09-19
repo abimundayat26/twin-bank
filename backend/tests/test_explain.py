@@ -3,7 +3,13 @@ from datetime import date
 import pytest
 
 from backend.fixtures import load_twin
-from backend.schemas import ForecastMetadata, SeasonalProfile, SimulationEvent, SimulationRequest
+from backend.schemas import (
+    ForecastMetadata,
+    OneTimeObligation,
+    SeasonalProfile,
+    SimulationEvent,
+    SimulationRequest,
+)
 from backend.simulation import run_simulation
 from backend.simulation.explain import (
     forecast_assumptions,
@@ -170,7 +176,7 @@ def test_the_timing_driver_sits_between_the_goal_and_income_drivers():
 
     labels = [d.label for d in run_simulation(twin, request, n_simulations=20, seed=1).drivers]
 
-    assert labels[0] == "Laptop"
+    assert labels[0] == "Laptop (this purchase)"
     assert labels[-2:] == ["Busy spending stretch", "Expected income"]
 
 
@@ -181,3 +187,63 @@ def test_the_demo_twin_explains_its_seasonal_spending():
 
     assert "Busy spending stretch" in [d.label for d in result.drivers]
     assert any(a.startswith("Discretionary spending is usually highest in December") for a in result.assumptions)
+
+
+# --- A declared commitment is not a hypothetical purchase -------------------------
+
+
+def owing(twin, amount: float = 1200.0, due: str = "2026-11-10"):
+    return twin.model_copy(
+        update={
+            "one_time_obligations": [
+                OneTimeObligation(
+                    id="one_tuition",
+                    name="Tuition",
+                    amount=amount,
+                    due_date=date.fromisoformat(due),
+                    account_id="acc_checking",
+                )
+            ]
+        }
+    )
+
+
+def explain(twin, n: int = 20, seed: int = 1):
+    return run_simulation(twin, SimulationRequest(user_id="alex", events=[LAPTOP]), n_simulations=n, seed=seed)
+
+
+def test_a_commitment_and_a_purchase_are_never_described_the_same_way():
+    drivers = {d.label: d.detail for d in explain(owing(load_twin())).drivers}
+    [purchase] = [label for label in drivers if label.startswith("Laptop")]
+    [commitment] = [label for label in drivers if label.startswith("Tuition")]
+    assert purchase == "Laptop (this purchase)"
+    assert commitment == "Tuition (already owed)"
+    # The distinction is in the words, not in position or colour.
+    assert "being simulated" in drivers[purchase]
+    assert "one scenario only" in drivers[purchase]
+    assert "commitment Alex declared" in drivers[commitment]
+    assert "both scenarios" in drivers[commitment]
+    # And the commitment is never described as something being considered.
+    assert "purchase" not in drivers[commitment].replace(
+        "not part of the difference the purchase makes", ""
+    )
+
+
+def test_the_summary_attributes_the_difference_to_the_purchase_alone():
+    summary = explain(owing(load_twin())).summary
+    assert "$1,200 of one-time commitment due before 2027-05-01" in summary
+    assert "spent in both futures above" in summary
+    assert "the change between them is the $800 laptop alone" in summary
+
+
+def test_a_commitment_outside_the_horizon_is_neither_shown_nor_claimed():
+    """It never happens in this run, so explaining it would be explaining nothing."""
+    result = explain(owing(load_twin(), due="2027-09-01"))
+    assert not [d for d in result.drivers if "Tuition" in d.label]
+    assert "already declared" not in result.summary
+
+
+def test_a_twin_with_no_commitments_explains_exactly_as_before():
+    result = explain(load_twin())
+    assert not [d for d in result.drivers if "already owed" in d.label]
+    assert "already declared" not in result.summary
