@@ -1,0 +1,55 @@
+"""Rebuilding backend/fixtures/twin.json from the mock feed.
+
+The seed and the served twin are two files with two jobs: `twin_seed.json` is
+the hand-written structure the generator plants in the feed, and `twin.json` is
+what a detector recovers from it. These tests cover the rebuild itself — that it
+reads the seed, dates itself from the feed, and carries declared data through
+untouched.
+"""
+
+from backend.fixtures import load_raw_transactions, load_seed_twin
+from backend.ingest import normalize_all
+from backend.regenerate_twin_fixture import build
+
+
+def test_the_seed_is_loadable_and_is_alex():
+    seed = load_seed_twin()
+    assert seed.user_id == "alex"
+    assert seed.accounts, "the generator needs accounts to post transactions to"
+
+
+def test_the_rebuild_is_dated_from_the_feed_not_the_seed():
+    """A twin must not describe a day it has not observed.
+
+    The feed ends the day before the seed's own `as_of`, and that one day is a
+    27th fortnight holding a single day of spending if it is let in.
+    """
+    last_day = max(t.date for t in normalize_all(load_raw_transactions()))
+    assert build().as_of == last_day
+    assert build().as_of < load_seed_twin().as_of
+
+
+def test_declared_data_is_carried_from_the_seed_never_detected():
+    """SPEC section 2: no transaction history can produce a goal or a reserve."""
+    seed, built = load_seed_twin(), build()
+    assert built.goals == seed.goals
+    assert built.constraints == seed.constraints
+    assert built.user_id == seed.user_id
+    assert built.display_name == seed.display_name
+
+
+def test_balances_are_carried_because_a_statement_cannot_produce_them():
+    assert build().accounts == load_seed_twin().accounts
+
+
+def test_the_rebuild_records_how_it_estimated():
+    """The point of the split: the served twin can say where its figures came from."""
+    forecast = build().forecast
+    assert forecast is not None
+    assert forecast.as_of == build().as_of
+    assert forecast.observed_fortnights > 0
+
+
+def test_the_rebuild_is_deterministic():
+    """Same feed, same bytes, so a regenerated fixture diffs cleanly or not at all."""
+    assert build() == build()
