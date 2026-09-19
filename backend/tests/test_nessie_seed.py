@@ -12,6 +12,7 @@ import pytest
 from backend.fixtures import load_raw_transactions, load_twin
 from backend.nessie.client import NessieError
 from backend.nessie.seed import (
+    MERCHANT,
     TYPE_TO_KIND,
     Seeder,
     customer_name,
@@ -174,3 +175,8 @@ def test_a_rejected_write_does_not_leak_the_key(monkeypatch: pytest.MonkeyPatch)
     with pytest.raises(NessieError) as caught:
         seed("secret-key", "https://nessie.test", force=False, pause=0)
     assert "secret-key" not in str(caught.value)
+
+
+def test_merchant_category_is_a_string() -> None:
+    # Nessie answered a list with "category: str type expected" (400).
+    assert isinstance(MERCHANT["category"], str)

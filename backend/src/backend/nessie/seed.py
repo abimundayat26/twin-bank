@@ -47,7 +47,8 @@ TYPE_TO_KIND = {
 # description carries the payee, and that is what the categorizer reads.
 MERCHANT = {
     "name": "TwinBank Demo Merchant",
-    "category": ["demo"],
+    # A string, not a list: Nessie rejects a list with a 400 on POST /merchants.
+    "category": "demo",
     "address": {
         "street_number": "1",
         "street_name": "Demo",
