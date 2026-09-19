@@ -44,8 +44,10 @@ from backend.schemas import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "claude-haiku-4-5"
-TIMEOUT_SECONDS = 10
+DEFAULT_MODEL = "claude-sonnet-5"
+# One attempt, well inside the frontend's 8 s request timeout, so a slow call
+# falls back to the rules compiler instead of hanging the UI.
+TIMEOUT_SECONDS = 6
 
 
 class LlmItem(BaseModel):
@@ -88,11 +90,13 @@ def llm_enabled() -> bool:
 
 def extract_with_claude(text: str, as_of: date) -> LlmDraft | None:
     """One Claude call. None when the model returns nothing usable (refusal, cut off)."""
-    client = anthropic.Anthropic(timeout=TIMEOUT_SECONDS, max_retries=1)
+    client = anthropic.Anthropic(timeout=TIMEOUT_SECONDS, max_retries=0)
     response = client.messages.parse(
         model=os.getenv("LLM_MODEL") or DEFAULT_MODEL,
         max_tokens=2000,
         system=SYSTEM_PROMPT,
+        # Extraction, not reasoning: thinking off keeps the call fast for the demo.
+        thinking={"type": "disabled"},
         messages=[{"role": "user", "content": f"Today is {as_of.isoformat()}.\n\nText:\n{text}"}],
         output_format=LlmDraft,
     )
@@ -192,10 +196,14 @@ def compile_goals_auto(
         return compile_goals(user_id, text, as_of)
     try:
         draft = extract(text, as_of)
+        if draft is None:
+            logger.warning("LLM goal compiler returned no draft, using rules")
+            return compile_goals(user_id, text, as_of)
+        return validate_draft(user_id, text, as_of, draft)
     except (anthropic.APIError, ValidationError) as e:
         logger.warning("LLM goal compiler failed, using rules: %s", e)
-        return compile_goals(user_id, text, as_of)
-    if draft is None:
-        logger.warning("LLM goal compiler returned no draft, using rules")
-        return compile_goals(user_id, text, as_of)
-    return validate_draft(user_id, text, as_of, draft)
+    except Exception:
+        # Anything else (an SDK change, a draft shape validate_draft does not expect)
+        # must still not break the demo.
+        logger.exception("LLM goal compiler crashed, using rules")
+    return compile_goals(user_id, text, as_of)

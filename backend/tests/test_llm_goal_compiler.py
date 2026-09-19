@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.fixtures import load_twin
+from backend import llm_goal_compiler
 from backend.llm_goal_compiler import LlmDraft, LlmItem, compile_goals_auto, validate_draft
 from backend.main import app
 
@@ -168,6 +169,32 @@ def test_api_failure_falls_back_to_rules(llm_on):
     result = compile_goals_auto("alex", ALEX, AS_OF, extract=down)
     assert result.compiler == "rules"
     assert len(result.goals) == 1
+
+
+def test_unexpected_error_falls_back_to_rules(llm_on):
+    def broken(text, as_of):
+        raise KeyError("items")
+
+    assert compile_goals_auto("alex", ALEX, AS_OF, extract=broken).compiler == "rules"
+
+
+def test_claude_call_uses_sonnet_5_with_thinking_off(monkeypatch):
+    calls = []
+
+    class FakeMessages:
+        def parse(self, **kwargs):
+            calls.append(kwargs)
+            return type("Response", (), {"parsed_output": LlmDraft(items=[], unparsed=[])})()
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.messages = FakeMessages()
+
+    monkeypatch.setattr(llm_goal_compiler.anthropic, "Anthropic", FakeClient)
+    llm_goal_compiler.extract_with_claude(ALEX, AS_OF)
+    [call] = calls
+    assert call["model"] == "claude-sonnet-5"
+    assert call["thinking"] == {"type": "disabled"}
 
 
 def test_empty_llm_answer_falls_back_to_rules(llm_on):
