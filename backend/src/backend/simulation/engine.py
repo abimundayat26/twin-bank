@@ -2,12 +2,15 @@
 
 Pure functions only: no FastAPI, no I/O, no randomness. Every flow uses its
 expected value unless a sampled Draws is passed in (see simulation/monte_carlo.py).
+Variable spending runs in 14-day blocks from the day after as_of; a category with a
+seasonal profile spends mean_14d times the block's factor (see forecast.block_factor).
 """
 
 import calendar
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+from backend.forecast import block_factor
 from backend.schemas import FinancialObligation, FinancialTwin, SimulationEvent
 
 # SPEC section 13: "low balance" means checking below this amount, unless the user
@@ -18,6 +21,8 @@ LOW_BALANCE_THRESHOLD = 200.0
 DEFAULT_HORIZON_DAYS = 180
 # Longest horizon a request may ask for; run time grows with every simulated day.
 MAX_HORIZON_DAYS = 730
+# Variable spending is modelled per block of this many days (mean_14d, std_dev_14d).
+SPENDING_BLOCK_DAYS = 14
 
 
 class SimulationError(ValueError):
@@ -183,6 +188,23 @@ def monthly_due_dates(due_day: int, start: date, end: date) -> list[date]:
     return dates
 
 
+def spending_blocks(as_of: date, horizon_end: date) -> list[list[date]]:
+    """The simulated days (as_of, horizon_end] in consecutive 14-day blocks; the last may be short."""
+    days = [as_of + timedelta(days=i) for i in range(1, (horizon_end - as_of).days + 1)]
+    return [days[i : i + SPENDING_BLOCK_DAYS] for i in range(0, len(days), SPENDING_BLOCK_DAYS)]
+
+
+def expected_daily_spending(twin: FinancialTwin, horizon_end: date) -> dict[date, float]:
+    """Expected variable spending per day: each block's mean, scaled by its seasonal factor."""
+    spending: dict[date, float] = {}
+    for block in spending_blocks(twin.as_of, horizon_end):
+        per_day = sum(
+            v.mean_14d * block_factor(v.seasonal, block[0], len(block)) for v in twin.variable_spending
+        ) / SPENDING_BLOCK_DAYS
+        spending.update(dict.fromkeys(block, per_day))
+    return spending
+
+
 def validate_events(twin: FinancialTwin, events: list[SimulationEvent], horizon_end: date) -> None:
     account_ids = {a.id for a in twin.accounts}
     for event in events:
@@ -233,7 +255,9 @@ def simulate_scenario(
     for event in events:
         events_by_day.setdefault(event.date, []).append(event)
 
-    expected_daily_spending = sum(v.mean_14d for v in twin.variable_spending) / 14
+    spending = draws.daily_spending if draws else {}
+    if len(spending) < (horizon_end - start).days:
+        spending = {**expected_daily_spending(twin, horizon_end), **spending}
 
     for event in events_by_day.get(start, []):
         balances[event.account_id] -= event.amount
@@ -274,9 +298,7 @@ def simulate_scenario(
                 )
             elif swept > 0:
                 sweeps.append(SavingsSweep(obligation.id, obligation.name, day, round(swept, 2)))
-        balances[primary] -= (
-            draws.daily_spending.get(day, expected_daily_spending) if draws else expected_daily_spending
-        )
+        balances[primary] -= spending[day]
 
         low_total = sum(balances.values())
         min_total = min(min_total, low_total)
