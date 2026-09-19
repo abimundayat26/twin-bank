@@ -21,14 +21,20 @@ export const CATEGORY_LABELS: Record<ObligationCategory, string> = {
 
 export function CategoryQuestion({
   obligation,
-  isSaving,
+  isBusy,
+  savingScope,
   onAnswer,
 }: {
   obligation: FinancialObligation;
-  isSaving: boolean;
+  /** A twin update is in flight somewhere on the page; no second one may start. */
+  isBusy: boolean;
+  /** Which control started it. This question's scope is the obligation's own id. */
+  savingScope?: string;
   onAnswer: (category: ObligationCategory) => void;
 }) {
   const declared = obligation.declared_category;
+  // Every obligation has one of these: only the one being answered says so.
+  const isSaving = savingScope === obligation.id;
   const [isChanging, setIsChanging] = useState(false);
   const candidates = obligation.category_candidates ?? [];
   const asking = !declared || isChanging;
@@ -54,12 +60,12 @@ export function CategoryQuestion({
           <p className="mt-0.5 text-xs text-faint">
             TwinBank can&rsquo;t tell from the transactions alone. Your answer changes the simulation.
           </p>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             {candidates.map((candidate, i) => (
               <button
                 key={candidate.category}
                 type="button"
-                disabled={isSaving}
+                disabled={isBusy}
                 onClick={() => answer(candidate.category)}
                 className={`rounded-full border px-3 py-1 text-xs disabled:opacity-50 ${
                   i === 0 ? "border-counter text-counter" : "border-line text-muted"
@@ -71,6 +77,7 @@ export function CategoryQuestion({
                 </span>
               </button>
             ))}
+            {isSaving ? <span className="text-xs text-muted">Saving…</span> : null}
           </div>
         </div>
       ) : (
@@ -78,12 +85,13 @@ export function CategoryQuestion({
           <Badge tone="info">You declared: {CATEGORY_LABELS[declared]}</Badge>
           <button
             type="button"
-            disabled={isSaving}
+            disabled={isBusy}
             onClick={() => setIsChanging(true)}
             className="text-xs text-muted underline disabled:opacity-50"
           >
             Change
           </button>
+          {isSaving ? <span className="text-xs text-muted">Saving…</span> : null}
         </div>
       )}
     </li>
