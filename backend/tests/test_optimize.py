@@ -173,6 +173,30 @@ def test_declared_minimum_checking_balance_is_a_hard_limit(twin):
     assert len(check_constraints(floor_twin, metrics)) == 1
 
 
+def test_a_limit_the_baseline_already_breaks_only_counts_if_made_worse(twin):
+    base = optimize(twin).baseline.model_copy(
+        update={"prob_below_reserve": 0.3, "prob_obligations_uncovered": 0}
+    )
+    assert len(check_constraints(twin, base)) == 1
+    assert check_constraints(twin, base, base) == []
+    worse = base.model_copy(update={"prob_below_reserve": 0.4})
+    [violation] = check_constraints(twin, worse, base)
+    assert "up from 30%" in violation
+
+
+def test_purchase_is_not_blamed_for_a_limit_already_broken_without_it(twin):
+    reserve = FinancialConstraint(
+        id="con_emergency_reserve", type="minimum_reserve", amount=10_000,
+        description="Keep $10,000 across checking and savings.",
+    )
+    big_reserve = twin.model_copy(update={"constraints": [reserve]})
+    result = optimize(big_reserve)
+    assert result.baseline.prob_below_reserve == 1
+    assert result.recommended_id is not None
+    assert "Even without the purchase" in result.summary
+    assert "None of the" not in result.summary
+
+
 def test_fixed_seed_is_repeatable(twin):
     a = optimize(twin).model_dump(exclude={"optimization_id"})
     b = optimize(twin).model_dump(exclude={"optimization_id"})

@@ -208,26 +208,47 @@ def adjusted_twin(twin: FinancialTwin, adjustments: list[SpendingAdjustment]) ->
     return twin.model_copy(update={"variable_spending": spending})
 
 
-def check_constraints(twin: FinancialTwin, metrics: ScenarioMetrics) -> list[str]:
-    """Declared limits this outcome breaks, in words. Empty means every limit is kept."""
+def check_constraints(
+    twin: FinancialTwin, metrics: ScenarioMetrics, baseline: ScenarioMetrics | None = None
+) -> list[str]:
+    """Declared limits this outcome breaks, in words. Empty means every limit is kept.
+
+    With a baseline, a limit the future without the purchase already breaks only
+    counts against this outcome if it makes that limit worse: the purchase should
+    not be blamed for a problem it did not cause.
+    """
+
+    def allowed(risk: float, base_risk: float | None) -> float:
+        return max(risk, base_risk) if base_risk is not None else risk
+
+    def versus(base_risk: float | None, limit: float) -> str:
+        if base_risk is not None and base_risk > limit:
+            return f"up from {pct(base_risk)} without the purchase"
+        return f"limit: {pct(limit)}"
+
     violations = []
     uncovered = metrics.prob_obligations_uncovered or 0
-    if uncovered > 0:
+    base_uncovered = (baseline.prob_obligations_uncovered or 0) if baseline else None
+    if uncovered > allowed(0, base_uncovered):
+        suffix = f" ({versus(base_uncovered, 0)})" if base_uncovered else ""
         violations.append(
             f"A mandatory bill goes unpaid in {pct(uncovered)} of futures, even after moving "
-            "money from savings."
+            f"money from savings{suffix}."
         )
     reserve = reserve_amount(twin)
-    if reserve > 0 and metrics.prob_below_reserve > MAX_CONSTRAINT_RISK:
+    base_reserve = baseline.prob_below_reserve if baseline else None
+    if reserve > 0 and metrics.prob_below_reserve > allowed(MAX_CONSTRAINT_RISK, base_reserve):
         violations.append(
             f"Checking plus savings dips below the {money(reserve)} emergency reserve in "
-            f"{pct(metrics.prob_below_reserve)} of futures (limit: {pct(MAX_CONSTRAINT_RISK)})."
+            f"{pct(metrics.prob_below_reserve)} of futures "
+            f"({versus(base_reserve, MAX_CONSTRAINT_RISK)})."
         )
     declared_floor = any(c.type == "minimum_checking_balance" for c in twin.constraints)
-    if declared_floor and metrics.prob_low_balance > MAX_CONSTRAINT_RISK:
+    base_low = baseline.prob_low_balance if baseline else None
+    if declared_floor and metrics.prob_low_balance > allowed(MAX_CONSTRAINT_RISK, base_low):
         violations.append(
             f"Checking falls below the {money(low_balance_threshold(twin))} minimum in "
-            f"{pct(metrics.prob_low_balance)} of futures (limit: {pct(MAX_CONSTRAINT_RISK)})."
+            f"{pct(metrics.prob_low_balance)} of futures ({versus(base_low, MAX_CONSTRAINT_RISK)})."
         )
     return violations
 
@@ -279,7 +300,7 @@ def run_optimization(
             # buy_now comes first and runs on the unadjusted twin, so its baseline is the real one.
             baseline = to_metrics(mc.baseline)
         metrics = to_metrics(mc.counterfactual)
-        violations = check_constraints(twin, metrics)
+        violations = check_constraints(twin, metrics, baseline)
         scored = OptimizationCandidate(
             id=candidate.id,
             kind=candidate.kind,
@@ -307,7 +328,9 @@ def run_optimization(
         baseline=baseline,
         candidates=ordered,
         recommended_id=recommended.id if recommended else None,
-        summary=build_optimization_summary(twin, baseline, buy_now, recommended, ordered),
+        summary=build_optimization_summary(
+            twin, baseline, buy_now, recommended, ordered, check_constraints(twin, baseline)
+        ),
         assumptions=build_optimization_assumptions(
             twin, horizon_end, n_simulations, MAX_CONSTRAINT_RISK, MAX_DELAY_PAYDAYS
         ),
