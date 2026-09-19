@@ -184,19 +184,17 @@ Phases describe what the demo on `main` does. Workstreams (Section 10) may build
 | 2. Deterministic calculations | Done |
 | 3. Nessie data | Client, seeder and twin source are wired, and Alex is seeded in the live sandbox. `USE_MOCKS=false` plus a key builds the twin from Nessie. Reading that twin back has not been checked yet. |
 | 4. Monte Carlo | Done, including a fan chart in the UI |
-| 5. Goal compilation and optimization | Backend done (rule-based). No UI yet. |
+| 5. Goal compilation and optimization | Done. Goal entry and the alternatives panel are in the UI. The rule-based compiler is the default; an LLM compiler sits behind `GOAL_COMPILER=llm` and falls back to rules. |
 | 6. Databricks and MLflow | Not started |
 | 7. Demo polish | Not started |
 
 Main gaps, in priority order:
 
-1. The Phase 5 features (goal entry and alternatives to a purchase) are not visible in the demo.
-2. The demo still shows the hand-written twin, which is the intended default. Building it from transaction data works and Alex is seeded in the sandbox, but nobody has yet confirmed that a twin read back out of Nessie describes the same person.
-3. There is no forecasting step. The simulation uses the twin's current averages.
-4. No LLM is used yet. Goal compilation and explanations are rule- and template-based.
-5. Databricks and MLflow are not integrated.
-6. User answers are lost when the server restarts.
-7. There is no scripted demo walkthrough.
+1. The demo still shows the hand-written twin, which is the intended default. Building it from transaction data works and Alex is seeded in the sandbox, but nobody has yet confirmed that a twin read back out of Nessie describes the same person.
+2. There is no forecasting step. The simulation uses the twin's current averages.
+3. The LLM goal compiler is off by default and explanations are template-based (Section 13).
+4. Databricks and MLflow are not integrated.
+5. There is no scripted demo walkthrough.
 
 ---
 
@@ -394,14 +392,12 @@ Focus:
 
 Owns the simulator, Monte Carlo, the goal compiler, counterfactual simulation, explainability and optimization. It also owns the alternatives UI.
 
-Built: the deterministic and Monte Carlo simulation, explanations, optimization, and the rule-based goal compiler.
+Built: the deterministic and Monte Carlo simulation, explanations, optimization, the rule-based goal compiler, the LLM goal compiler behind a flag with rules as the fallback, the alternatives panel, and user answers kept across a server restart.
 
 Focus:
 
-1. Alternatives panel: show the optimizer's ranked alternatives to a purchase and their tradeoffs in the UI, without telling the user what to do (Section 3).
-2. Finish the LLM goal compiler behind a flag, with the rule-based compiler as the fallback.
-3. Optionally, have the LLM write explanations, rephrasing only the computed results.
-4. Keep user answers across a server restart.
+1. Let the simulator use a spending forecast that changes over time (for example, a per-month factor per category), agreed with Workstream 1 so it matches their forecaster's output. Without a forecast on the twin, keep today's flat behaviour.
+2. Optionally, and only if the team reverses the Section 13 decision, have the LLM write explanations, rephrasing only the computed results.
 
 ### Workstream 3: Frontend / Integration (mkrishiv)
 
