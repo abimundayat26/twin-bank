@@ -444,6 +444,8 @@ def detect_structure(transactions: list[Transaction], as_of: date) -> DetectedSt
             as_of=as_of,
             window_start=window_start,
             observed_fortnights=len(fortnight_blocks(window_start, as_of)),
-            half_life_days=HALF_LIFE_DAYS if seasonal else None,
+            # fit_category recency-weights every category, with or without a
+            # seasonal profile, so the half-life always applies.
+            half_life_days=HALF_LIFE_DAYS,
         ),
     )

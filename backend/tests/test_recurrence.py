@@ -402,5 +402,6 @@ def test_a_short_history_stays_flat() -> None:
     assert structure.forecast is not None
     assert structure.forecast.observed_fortnights < MIN_FORTNIGHTS_FOR_SEASONALITY
     assert structure.forecast.method == "flat_mean"
-    assert structure.forecast.half_life_days is None
+    # No profile, but the mean is still recency-weighted, and the metadata says so.
+    assert structure.forecast.half_life_days == HALF_LIFE_DAYS
     assert all(v.seasonal is None for v in structure.variable_spending)
