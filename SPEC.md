@@ -269,7 +269,7 @@ Optimization:
 
 LLM:
 
-* OpenAI or Anthropic.
+* Anthropic (Claude Sonnet 5, `claude-sonnet-5`; see Section 13).
 
 ---
 
@@ -463,7 +463,7 @@ Decided:
 | What balance counts as "low balance"? | Checking below the user's own minimum checking balance, which they set in the app (`PUT /twin/{user_id}/minimum-balance`); $200 until they set one |
 | Does the emergency reserve count checking only, or checking plus savings? | Checking plus savings |
 | What is the simulation horizon? | Through the earliest goal deadline (2027-05-01 for Alex); 180 days when there are no goals; at most 730 days |
-| Which LLM provider do we use? | Anthropic, Claude Haiku (`claude-haiku-4-5`), off by default behind `GOAL_COMPILER=llm`; explanations stay template-based |
+| Which LLM provider do we use? | Anthropic, Claude Sonnet 5 (`claude-sonnet-5`), off by default behind `GOAL_COMPILER=llm`; explanations stay template-based. Changed from Haiku 4.5 by the group lead on 2026-09-19. |
 | Does the housing goal draw from the same money as the emergency reserve? | No; the goal must be met on top of the reserve |
 
 Open:
