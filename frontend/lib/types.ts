@@ -169,6 +169,54 @@ export interface SimulationResponse {
   num_simulations?: number | null;
 }
 
+// --- Optimization -----------------------------------------------------------
+
+export type CandidateKind = "buy_now" | "delay" | "reduce_spending" | "from_savings";
+
+export interface OptimizationRequest {
+  user_id: string;
+  events: SimulationEvent[];
+  /** Defaults server-side to the earliest goal deadline. */
+  horizon_end?: IsoDate | null;
+}
+
+export interface SpendingAdjustment {
+  category: string;
+  /** 0-1. Scales the category's mean and spread for the whole horizon. */
+  multiplier: number;
+}
+
+export interface OptimizationCandidate {
+  id: string;
+  kind: CandidateKind;
+  label: string;
+  detail: string;
+  /** The purchase as this action makes it. */
+  events: SimulationEvent[];
+  spending_adjustments: SpendingAdjustment[];
+  metrics: ScenarioMetrics;
+  meets_constraints: boolean;
+  /** Declared hard constraints this action breaks, in words. */
+  violations: string[];
+}
+
+export interface OptimizationResponse {
+  optimization_id: string;
+  user_id: string;
+  request: OptimizationRequest;
+  horizon_end: IsoDate;
+  /** The future without the purchase. */
+  baseline: ScenarioMetrics;
+  /** Best first. */
+  candidates: OptimizationCandidate[];
+  /** Best candidate that meets every hard constraint. Null when none does. */
+  recommended_id: string | null;
+  summary: string;
+  assumptions: string[];
+  /** Monte Carlo runs behind each candidate. */
+  num_simulations: number;
+}
+
 /**
  * What the simulator treats as a low checking balance when the user has not declared a
  * minimum_checking_balance constraint of their own. Mirrors LOW_BALANCE_THRESHOLD in

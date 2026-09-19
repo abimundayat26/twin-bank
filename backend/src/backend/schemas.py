@@ -207,3 +207,53 @@ class SimulationResponse(BaseModel):
     num_simulations: int | None = Field(
         default=None, ge=1, description="Monte Carlo runs behind the metrics. None for mock results."
     )
+
+
+# --- Optimization -------------------------------------------------------------
+
+CandidateKind = Literal["buy_now", "delay", "reduce_spending", "from_savings"]
+
+
+class OptimizationRequest(BaseModel):
+    user_id: str
+    events: list[SimulationEvent] = Field(min_length=1)
+    horizon_end: date | None = Field(
+        default=None, description="Defaults to the earliest goal deadline."
+    )
+
+
+class SpendingAdjustment(BaseModel):
+    category: str
+    multiplier: float = Field(
+        ge=0, le=1, description="Scales the category's mean and spread for the whole horizon."
+    )
+
+
+class OptimizationCandidate(BaseModel):
+    id: str
+    kind: CandidateKind
+    label: str
+    detail: str
+    events: list[SimulationEvent] = Field(description="The purchase as this action makes it.")
+    spending_adjustments: list[SpendingAdjustment] = []
+    metrics: ScenarioMetrics
+    meets_constraints: bool
+    violations: list[str] = Field(
+        default=[], description="Declared hard constraints this action breaks, in words."
+    )
+
+
+class OptimizationResponse(BaseModel):
+    optimization_id: str
+    user_id: str
+    request: OptimizationRequest
+    horizon_end: date
+    baseline: ScenarioMetrics = Field(description="The future without the purchase.")
+    candidates: list[OptimizationCandidate] = Field(description="Best first.")
+    recommended_id: str | None = Field(
+        default=None,
+        description="Best candidate that meets every hard constraint. None when none does.",
+    )
+    summary: str
+    assumptions: list[str]
+    num_simulations: int = Field(ge=1, description="Monte Carlo runs behind each candidate.")
