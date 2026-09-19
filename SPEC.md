@@ -182,7 +182,7 @@ Phases describe what the demo on `main` does. Workstreams (Section 10) may build
 | --- | --- |
 | 1. Mocked end-to-end demo | Done |
 | 2. Deterministic calculations | Done |
-| 3. Nessie data | Done. Alex is seeded in the live sandbox, and `USE_MOCKS=false` plus a key builds the twin from Nessie. Read back from the live sandbox, Alex is recognisable (`backend.nessie.readback`, #65); Nessie stores amounts in whole dollars (#68). The demo stays on fixtures by default. |
+| 3. Nessie data | Done. Alex is seeded in the live sandbox, and `USE_MOCKS=false` plus a key builds the twin from Nessie. Read back from the live sandbox on 2026-09-19, Alex is recognisable (`backend.nessie.readback`, #65); Nessie stores amounts in whole dollars (#68). The demo stays on fixtures by default. |
 | 4. Monte Carlo | Done, including a fan chart in the UI |
 | 5. Goal compilation and optimization | Done. Goal entry and the alternatives panel are in the UI. The rule-based compiler is the default; an LLM compiler sits behind `GOAL_COMPILER=llm` and falls back to rules. |
 | 6. Databricks and MLflow | Not started |
