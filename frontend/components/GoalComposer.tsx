@@ -52,7 +52,7 @@ import { Badge, Card } from "./ui";
 /** Names this card's save, so only this button says "Saving…". */
 export const GOALS_SCOPE = "declared-goals";
 
-const PLACEHOLDER = "I need $2,000 for summer housing by May 1st, and keep $300 in checking.";
+const PLACEHOLDER = "I need $1,600 for summer housing by May 1st, and keep $300 in checking.";
 
 const CHANGE_TONE = {
   new: "info",

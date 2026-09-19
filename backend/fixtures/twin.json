@@ -4,7 +4,7 @@
   "as_of": "2026-09-19",
   "accounts": [
     { "id": "acc_checking", "name": "Everyday Checking", "type": "checking", "balance": 1340.0 },
-    { "id": "acc_savings", "name": "Savings", "type": "savings", "balance": 1500.0 }
+    { "id": "acc_savings", "name": "Savings", "type": "savings", "balance": 1800.0 }
   ],
   "income": [
     {
@@ -38,7 +38,7 @@
     {
       "id": "goal_summer_housing",
       "name": "Summer housing",
-      "target_amount": 2000.0,
+      "target_amount": 1600.0,
       "deadline": "2027-05-01",
       "current_amount": 0.0,
       "provenance": "declared"
