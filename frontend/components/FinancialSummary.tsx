@@ -1,13 +1,57 @@
 /** Renders the observed + declared facts of Alex's Financial Twin. Props only. */
 
+import type { ReactNode } from "react";
 import { money, moneyExact, longDate, ordinalDay, percent } from "@/lib/format";
-import type { FinancialTwin } from "@/lib/types";
+import type { FinancialObligation, FinancialTwin, ObligationCategory } from "@/lib/types";
+import { CategoryQuestion } from "./CategoryQuestion";
+import { MinimumBalanceCard } from "./MinimumBalanceCard";
 import { Badge, Card, ProvenanceTag, Row } from "./ui";
 
-export function FinancialSummary({ twin }: { twin: FinancialTwin }) {
+/** Alex's declared category overrides the bank's observed mandatory flag. */
+function isMandatory(obligation: FinancialObligation): boolean {
+  const declared = obligation.declared_category;
+  if (declared === "bill" || declared === "debt_repayment") return true;
+  if (declared) return false;
+  return obligation.mandatory;
+}
+
+export function FinancialSummary({
+  twin,
+  isSaving = false,
+  onAnswer,
+  onSetMinimum,
+}: {
+  twin: FinancialTwin;
+  isSaving?: boolean;
+  onAnswer: (obligationId: string, category: ObligationCategory) => void;
+  onSetMinimum: (amount: number) => void;
+}) {
   const reserve = twin.constraints.find((c) => c.type === "minimum_reserve");
-  const recurring = twin.obligations.filter((o) => !o.mandatory);
-  const upcoming = twin.obligations.filter((o) => o.mandatory);
+  const minimum = twin.constraints.find((c) => c.type === "minimum_checking_balance");
+  const recurring = twin.obligations.filter((o) => !isMandatory(o));
+  const upcoming = twin.obligations.filter(isMandatory);
+
+  function obligationRow(obligation: FinancialObligation, meta: ReactNode) {
+    if (obligation.category_candidates?.length) {
+      return (
+        <CategoryQuestion
+          key={obligation.id}
+          obligation={obligation}
+          isSaving={isSaving}
+          onAnswer={(category) => onAnswer(obligation.id, category)}
+        />
+      );
+    }
+    return (
+      <Row
+        key={obligation.id}
+        label={obligation.name}
+        hint={`Due the ${ordinalDay(obligation.due_day)} · ${percent(obligation.confidence)} confidence`}
+        value={money(obligation.expected_amount)}
+        meta={meta}
+      />
+    );
+  }
 
   return (
     <div className="grid gap-4">
@@ -43,29 +87,17 @@ export function FinancialSummary({ twin }: { twin: FinancialTwin }) {
 
       <Card title="Upcoming obligations" subtitle="Mandatory bills TwinBank must cover">
         <ul>
-          {upcoming.map((obligation) => (
-            <Row
-              key={obligation.id}
-              label={obligation.name}
-              hint={`Due the ${ordinalDay(obligation.due_day)} · ${percent(obligation.confidence)} confidence`}
-              value={money(obligation.expected_amount)}
-              meta={<ProvenanceTag provenance={obligation.provenance} />}
-            />
-          ))}
+          {upcoming.map((obligation) =>
+            obligationRow(obligation, <ProvenanceTag provenance={obligation.provenance} />),
+          )}
         </ul>
       </Card>
 
       <Card title="Recurring expenses" subtitle="Recurring but not mandatory">
         <ul>
-          {recurring.map((obligation) => (
-            <Row
-              key={obligation.id}
-              label={obligation.name}
-              hint={`Due the ${ordinalDay(obligation.due_day)} · ${percent(obligation.confidence)} confidence`}
-              value={money(obligation.expected_amount)}
-              meta={<Badge tone="caution">Optional</Badge>}
-            />
-          ))}
+          {recurring.map((obligation) =>
+            obligationRow(obligation, <Badge tone="caution">Optional</Badge>),
+          )}
         </ul>
       </Card>
 
@@ -92,6 +124,13 @@ export function FinancialSummary({ twin }: { twin: FinancialTwin }) {
           <p className="mt-2 text-sm text-muted">{reserve.description}</p>
         </Card>
       ) : null}
+
+      <MinimumBalanceCard
+        key={minimum?.amount ?? "unset"}
+        minimum={minimum}
+        isSaving={isSaving}
+        onSave={onSetMinimum}
+      />
     </div>
   );
 }

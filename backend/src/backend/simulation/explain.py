@@ -1,7 +1,7 @@
 """Template-based explanations built only from computed simulation results."""
 
 from backend.schemas import ExplanationDriver, FinancialTwin, SimulationEvent
-from backend.simulation.engine import LOW_BALANCE_THRESHOLD
+from backend.simulation.engine import low_balance_threshold
 from backend.simulation.monte_carlo import (
     INCOME_CLAMP_SDS,
     SPENDING_BLOCK_DAYS,
@@ -48,7 +48,7 @@ def build_summary(twin: FinancialTwin, events: list[SimulationEvent], mc: MonteC
 
     if base.prob_low_balance or cf.prob_low_balance:
         sentences.append(
-            f"Checking falls below the {money(LOW_BALANCE_THRESHOLD)} low-balance line in "
+            f"Checking falls below the {money(low_balance_threshold(twin))} low-balance line in "
             f"{pct(cf.prob_low_balance)} of futures, versus {pct(base.prob_low_balance)} without it."
         )
     if base.prob_below_reserve or cf.prob_below_reserve:
@@ -126,6 +126,46 @@ def build_drivers(
     return drivers
 
 
+CATEGORY_LABELS = {
+    "bill": "a bill",
+    "savings_transfer": "a transfer to savings",
+    "debt_repayment": "a debt repayment",
+    "optional_spending": "optional spending",
+    "not_recurring": "not recurring",
+}
+
+
+def low_balance_assumption(twin: FinancialTwin) -> str:
+    threshold = money(low_balance_threshold(twin))
+    if any(c.type == "minimum_checking_balance" for c in twin.constraints):
+        return f"Low balance means checking below {threshold}, the minimum {twin.display_name} set."
+    return f"Low balance means checking below {threshold} (default; {twin.display_name} has not set a minimum)."
+
+
+def category_assumptions(twin: FinancialTwin) -> list[str]:
+    assumptions = []
+    for o in twin.obligations:
+        if o.declared_category is None:
+            continue
+        label = CATEGORY_LABELS[o.declared_category]
+        if o.declared_category == "not_recurring":
+            effect = "so it is left out of the projection"
+        elif o.declared_category == "savings_transfer":
+            effect = "so it moves from checking to savings and total savings are unchanged"
+        elif o.declared_category == "optional_spending":
+            effect = "so it is charged but does not count as a mandatory bill"
+        else:
+            effect = "so it counts as a mandatory bill"
+        assumptions.append(f"{twin.display_name} declared {o.name} as {label}, {effect}.")
+    if any(o.declared_category is None for o in twin.obligations):
+        assumptions.append(
+            "Every other recurring bill, including optional ones, is charged in full."
+            if assumptions
+            else "Every recurring bill, including optional ones, is charged in full."
+        )
+    return assumptions
+
+
 def build_assumptions(twin: FinancialTwin, mc: MonteCarloComparison) -> list[str]:
     assumptions = [
         f"Monte Carlo over {mc.n_simulations:,} simulated futures. In each future, the baseline and the "
@@ -140,11 +180,11 @@ def build_assumptions(twin: FinancialTwin, mc: MonteCarloComparison) -> list[str
         "the period and never below $0 (which raises average spending slightly).",
         "Bill amounts, bill due dates, and paycheck dates are fixed; bill confidence is not used.",
         "Bills count as covered only if checking covers every mandatory bill in every simulated future.",
-        f"Low balance means checking below {money(LOW_BALANCE_THRESHOLD)}.",
+        low_balance_assumption(twin),
         "The emergency reserve counts checking plus savings.",
         "Goals must be met on top of the emergency reserve.",
         "Income, bills, and everyday spending all flow through checking.",
-        "Every recurring bill, including optional ones, is charged in full.",
+        *category_assumptions(twin),
         f"The horizon runs from {twin.as_of} to {mc.horizon_end}.",
     ]
     if any(g.deadline > mc.horizon_end for g in twin.goals):
