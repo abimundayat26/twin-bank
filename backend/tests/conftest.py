@@ -1,13 +1,14 @@
 import pytest
 
-from backend import simulation_store, twin_store
+from backend import simulation_store, twin_source, twin_store
 
 
 @pytest.fixture(autouse=True)
 def reset_twin_store():
-    """User answers and stored simulations are process-wide, so clear them around every test."""
-    twin_store.reset()
-    simulation_store.reset()
+    """User answers, stored simulations and the cached twin are process-wide, so
+    clear them around every test."""
+    for module in (twin_store, simulation_store, twin_source):
+        module.reset()
     yield
-    twin_store.reset()
-    simulation_store.reset()
+    for module in (twin_store, simulation_store, twin_source):
+        module.reset()
