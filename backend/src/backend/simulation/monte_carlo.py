@@ -107,9 +107,26 @@ class ScenarioAggregate:
     prob_below_reserve: float
     prob_obligations_uncovered: float
     prob_savings_sweep: float  # savings had to cover a mandatory bill checking could not
+    prob_savings_overdrawn: float  # a purchase took savings below $0
     prob_goal_met: float | None  # every evaluated goal met; None if no goal is evaluated
     goal_shortfall: float  # median total shortfall
     goals: list[GoalAggregate]
+
+
+@dataclass(frozen=True)
+class BandSeries:
+    """Per-day percentiles of one balance across runs, aligned with ScenarioBands.dates."""
+
+    p10: list[float]
+    median: list[float]
+    p90: list[float]
+
+
+@dataclass(frozen=True)
+class ScenarioBands:
+    dates: list[date]  # as_of, then each simulated day
+    total: BandSeries
+    checking: BandSeries
 
 
 @dataclass(frozen=True)
@@ -120,6 +137,8 @@ class MonteCarloComparison:
     baseline: ScenarioAggregate
     counterfactual: ScenarioAggregate
     expected: Comparison  # single expected-value run, for dated explanations
+    baseline_bands: ScenarioBands | None = None  # only when run with bands=True
+    counterfactual_bands: ScenarioBands | None = None
 
 
 def percentile_range(values: list[float]) -> tuple[float, float]:
@@ -127,6 +146,25 @@ def percentile_range(values: list[float]) -> tuple[float, float]:
         return values[0], values[0]
     deciles = statistics.quantiles(values, n=10)
     return deciles[0], deciles[-1]
+
+
+def band_series(series: list[list[float]]) -> BandSeries:
+    """series[run][day] -> p10/median/p90 per day."""
+    p10, median, p90 = [], [], []
+    for day_values in zip(*series):
+        low, high = percentile_range(list(day_values))
+        p10.append(round(low, 2))
+        median.append(round(statistics.median(day_values), 2))
+        p90.append(round(high, 2))
+    return BandSeries(p10=p10, median=median, p90=p90)
+
+
+def scenario_bands(results: list[ScenarioResult]) -> ScenarioBands:
+    return ScenarioBands(
+        dates=results[0].dates,
+        total=band_series([r.total for r in results]),
+        checking=band_series([r.checking for r in results]),
+    )
 
 
 def aggregate(results: list[ScenarioResult]) -> ScenarioAggregate:
@@ -159,6 +197,7 @@ def aggregate(results: list[ScenarioResult]) -> ScenarioAggregate:
         prob_below_reserve=sum(r.reserve_violated for r in results) / n,
         prob_obligations_uncovered=sum(not r.obligations_covered for r in results) / n,
         prob_savings_sweep=sum(bool(r.savings_sweeps) for r in results) / n,
+        prob_savings_overdrawn=sum(r.savings_overdrawn for r in results) / n,
         prob_goal_met=sum(r.goal_shortfall == 0 for r in results) / n if goals else None,
         goal_shortfall=round(statistics.median(r.goal_shortfall for r in results), 2),
         goals=goals,
@@ -180,10 +219,13 @@ def run_monte_carlo(
     horizon_end: date | None = None,
     n_simulations: int = DEFAULT_SIMULATIONS,
     seed: int | None = None,
+    bands: bool = False,
 ) -> MonteCarloComparison:
     """Baseline vs counterfactual over n_simulations paired futures.
 
     seed=None draws fresh randomness each call; pass a seed for repeatable results.
+    bands=True also returns per-day balance percentiles (for charts); it keeps every
+    run's daily series in memory, so leave it off when only the metrics are needed.
     """
     validate_simulation_count(n_simulations)
     end = resolve_horizon_end(twin, horizon_end)
@@ -192,9 +234,12 @@ def run_monte_carlo(
 
     baselines, counterfactuals = [], []
     for _, base, cf in simulate_pairs(twin, events, end, n_simulations, rng):
-        # Aggregation only uses summary fields, so drop the daily series.
-        baselines.append(replace(base, dates=[], checking=[], total=[]))
-        counterfactuals.append(replace(cf, dates=[], checking=[], total=[]))
+        if not bands:
+            # Aggregation only uses summary fields, so drop the daily series.
+            base = replace(base, dates=[], checking=[], total=[])
+            cf = replace(cf, dates=[], checking=[], total=[])
+        baselines.append(base)
+        counterfactuals.append(cf)
 
     return MonteCarloComparison(
         horizon_end=end,
@@ -203,4 +248,6 @@ def run_monte_carlo(
         baseline=aggregate(baselines),
         counterfactual=aggregate(counterfactuals),
         expected=expected,
+        baseline_bands=scenario_bands(baselines) if bands else None,
+        counterfactual_bands=scenario_bands(counterfactuals) if bands else None,
     )
