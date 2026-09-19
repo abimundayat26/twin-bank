@@ -12,6 +12,8 @@ from datetime import date, timedelta
 import pytest
 
 from backend.fixtures import load_raw_transactions, load_twin
+from backend.forecast import HALF_LIFE_DAYS, MIN_FORTNIGHTS_FOR_SEASONALITY
+from backend.ingest.build import build_twin
 from backend.ingest.models import Category, Transaction
 from backend.ingest.normalize import normalize_all
 from backend.ingest.recurrence import (
@@ -321,3 +323,85 @@ def test_recovery_invents_no_goals_or_constraints(recovered) -> None:
 def test_an_empty_history_detects_nothing() -> None:
     empty = detect_structure([], AS_OF)
     assert (empty.income, empty.obligations, empty.variable_spending) == ([], [], [])
+    assert empty.forecast is None
+
+
+# --- The forecast behind the spending -----------------------------------------
+
+
+def test_detected_spending_carries_a_seasonal_profile(recovered) -> None:
+    # Groceries only. Whether discretionary gets a profile depends on this seed's
+    # draws, and asserting either way would be asserting an artifact of the seed.
+    found = {v.category: v for v in recovered.variable_spending}
+    assert found["groceries"].seasonal is not None
+
+
+def test_a_flat_category_carries_no_profile() -> None:
+    """A category with no calendar in it comes back flat, not with a fitted shape.
+
+    Synthetic, because the committed feed has no such category: everything it
+    leaves outside the obligations is groceries or discretionary, both seasonal.
+    The totals wobble in a three-fortnight cycle so the fit has variation to
+    work with, but none of it follows the calendar.
+    """
+    trips = [
+        txn(
+            AS_OF - timedelta(days=14 * block + offset),
+            -(20.0 + 5 * (block % 3)),
+            "MISC",
+            "other",
+            offset,
+        )
+        for block in range(26)
+        for offset in (0, 3, 7, 11)
+    ]
+    (spending,) = detect_variable_spending(trips, set(), WINDOW_START, AS_OF)
+    assert spending.seasonal is None
+
+
+def test_the_built_twin_records_how_it_forecast() -> None:
+    twin = load_twin()
+    transactions = normalize_all(load_raw_transactions())
+    built = build_twin(
+        user_id=twin.user_id,
+        display_name=twin.display_name,
+        accounts=twin.accounts,
+        transactions=transactions,
+        as_of=twin.as_of,
+        goals=twin.goals,
+        constraints=twin.constraints,
+    )
+
+    assert built.forecast is not None
+    assert built.forecast.method == "seasonal_ewma"
+    assert built.forecast.as_of == twin.as_of
+    assert built.forecast.window_start == min(t.date for t in transactions)
+    assert built.forecast.observed_fortnights == 26
+    assert built.forecast.half_life_days == HALF_LIFE_DAYS
+
+
+def test_a_short_history_stays_flat() -> None:
+    """The Nessie path: a freshly seeded account has only a few months of history.
+
+    It must degrade to a plain recency-weighted mean rather than fit a shape to
+    a few fortnights, even when those fortnights swing hard.
+    """
+    trips = [
+        txn(
+            AS_OF - timedelta(days=14 * block + offset),
+            -(10.0 if block < 4 else 60.0),
+            "ALDI MARKET",
+            "groceries",
+            offset,
+        )
+        for block in range(8)
+        for offset in (0, 4, 9, 13)
+    ]
+    structure = detect_structure(trips, AS_OF)
+
+    assert structure.forecast is not None
+    assert structure.forecast.observed_fortnights < MIN_FORTNIGHTS_FOR_SEASONALITY
+    assert structure.forecast.method == "flat_mean"
+    # No profile, but the mean is still recency-weighted, and the metadata says so.
+    assert structure.forecast.half_life_days == HALF_LIFE_DAYS
+    assert all(v.seasonal is None for v in structure.variable_spending)

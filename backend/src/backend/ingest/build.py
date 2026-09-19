@@ -11,7 +11,8 @@ plainly, because it is the whole point of the module:
 * account balances are **reported**, not derived. A statement records what moved,
   not what is left, so balances are an input too.
 
-Nothing here calculates a forecast; it describes the present.
+The forecast behind the observed figures is computed in `backend.forecast`
+during detection; this module only carries its metadata onto the twin.
 """
 
 from datetime import date
@@ -52,6 +53,7 @@ def build_twin(
         variable_spending=structure.variable_spending,
         goals=goals,
         constraints=constraints,
+        forecast=structure.forecast,
     )
 
 
