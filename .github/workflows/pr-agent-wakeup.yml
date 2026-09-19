@@ -1,0 +1,24 @@
+name: Wake TwinBank PR agent
+
+'on':
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited, closed]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: twinbank-pr-agent
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(fromJSON('["abimundayat26","Jordan12369","mkrishiv"]'), github.event.pull_request.user.login)
+    runs-on: [self-hosted, linux, x64, twinbank-pr-agent]
+    timeout-minutes: 30
+    steps:
+      - name: Dispatch trusted local PR agent
+        shell: bash
+        run: twinbank-pr-dispatch
