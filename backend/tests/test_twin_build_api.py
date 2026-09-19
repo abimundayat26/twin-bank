@@ -97,3 +97,12 @@ def test_a_built_twin_can_be_simulated():
 
     assert result.counterfactual.ending_balance < result.baseline.ending_balance
     assert result.summary
+
+
+def test_a_past_as_of_ignores_later_transactions():
+    """Building as of March must not use April onwards, or the next paycheck lands in September."""
+    as_of = date(2026, 3, 1)
+    twin = build(as_of=as_of.isoformat())
+    assert twin.income
+    for stream in twin.income:
+        assert as_of < stream.next_date <= date.fromordinal(as_of.toordinal() + stream.interval_days)

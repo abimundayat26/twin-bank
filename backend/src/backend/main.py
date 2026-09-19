@@ -76,7 +76,8 @@ def build_twin(request: TwinBuildRequest) -> FinancialTwin:
         )
     if request.accounts is not None:
         twin = twin.model_copy(update={"accounts": request.accounts})
-    return rebuild(twin, transactions, as_of)
+    # A twin as of a past date must not see what happened after it.
+    return rebuild(twin, [t for t in transactions if t.date <= as_of], as_of)
 
 
 @app.put("/twin/{user_id}/minimum-balance", response_model=FinancialTwin)
