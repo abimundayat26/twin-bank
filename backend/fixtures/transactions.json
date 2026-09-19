@@ -4,7 +4,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-09-20",
-    "amount": 24.11,
+    "amount": 31.58,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -22,7 +22,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-09-21",
-    "amount": 35.21,
+    "amount": 46.13,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -31,7 +31,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-09-21",
-    "amount": 12.2,
+    "amount": 21.78,
     "description": "CINEMA 12",
     "status": "completed"
   },
@@ -40,7 +40,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-09-22",
-    "amount": 26.96,
+    "amount": 48.14,
     "description": "STEAM GAMES",
     "status": "completed"
   },
@@ -58,7 +58,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-09-26",
-    "amount": 38.77,
+    "amount": 50.79,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -67,7 +67,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-09-29",
-    "amount": 9.25,
+    "amount": 16.53,
     "description": "CAMPUS COFFEE CO",
     "status": "completed"
   },
@@ -76,7 +76,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-09-29",
-    "amount": 29.52,
+    "amount": 38.67,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -85,7 +85,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-10-01",
-    "amount": 44.43,
+    "amount": 58.2,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -103,7 +103,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-10-01",
-    "amount": 24.44,
+    "amount": 32.02,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -112,7 +112,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-10-03",
-    "amount": 20.39,
+    "amount": 36.42,
     "description": "CAMPUS COFFEE CO",
     "status": "completed"
   },
@@ -148,7 +148,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-10-09",
-    "amount": 57.66,
+    "amount": 75.54,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -184,7 +184,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-10-14",
-    "amount": 35.54,
+    "amount": 46.56,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -202,7 +202,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-10-15",
-    "amount": 59.37,
+    "amount": 77.78,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -238,7 +238,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-10-21",
-    "amount": 31.43,
+    "amount": 41.17,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -247,7 +247,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-10-23",
-    "amount": 12.47,
+    "amount": 16.34,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -274,7 +274,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-10-25",
-    "amount": 18.22,
+    "amount": 23.86,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -283,7 +283,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-10-25",
-    "amount": 23.83,
+    "amount": 31.21,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -292,7 +292,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-10-25",
-    "amount": 28.71,
+    "amount": 37.61,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -310,7 +310,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-10-29",
-    "amount": 23.49,
+    "amount": 30.78,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -373,7 +373,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-11-08",
-    "amount": 25.4,
+    "amount": 33.28,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -382,7 +382,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-11-08",
-    "amount": 40.78,
+    "amount": 53.43,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -391,7 +391,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-11-09",
-    "amount": 70.91,
+    "amount": 92.89,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -481,7 +481,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-11-24",
-    "amount": 38.14,
+    "amount": 49.96,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -499,7 +499,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-11-25",
-    "amount": 25.41,
+    "amount": 33.29,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -508,7 +508,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-11-25",
-    "amount": 54.5,
+    "amount": 71.4,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -517,7 +517,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-11-28",
-    "amount": 35.12,
+    "amount": 46.01,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -526,7 +526,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-11-28",
-    "amount": 40.19,
+    "amount": 52.65,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -535,7 +535,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-11-29",
-    "amount": 21.72,
+    "amount": 12.85,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -544,7 +544,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-11-29",
-    "amount": 22.21,
+    "amount": 13.14,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -553,7 +553,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-01",
-    "amount": 57.13,
+    "amount": 106.11,
     "description": "CAMPUS COFFEE CO",
     "status": "completed"
   },
@@ -562,7 +562,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-01",
-    "amount": 67.53,
+    "amount": 125.4,
     "description": "CINEMA 12",
     "status": "completed"
   },
@@ -571,7 +571,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-01",
-    "amount": 17.36,
+    "amount": 10.27,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -589,7 +589,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-01",
-    "amount": 40.11,
+    "amount": 23.72,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -598,7 +598,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-02",
-    "amount": 39.91,
+    "amount": 23.6,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -616,7 +616,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-06",
-    "amount": 33.5,
+    "amount": 19.81,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -634,7 +634,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-11",
-    "amount": 87.47,
+    "amount": 162.44,
     "description": "CAMPUS COFFEE CO",
     "status": "completed"
   },
@@ -643,7 +643,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-13",
-    "amount": 47.75,
+    "amount": 95.5,
     "description": "DOORDASH*ORDER",
     "status": "completed"
   },
@@ -652,7 +652,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-15",
-    "amount": 69.7,
+    "amount": 32.87,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -670,7 +670,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-16",
-    "amount": 83.21,
+    "amount": 39.24,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -679,7 +679,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-17",
-    "amount": 33.5,
+    "amount": 67.01,
     "description": "STEAM GAMES",
     "status": "completed"
   },
@@ -706,7 +706,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-22",
-    "amount": 43.66,
+    "amount": 87.32,
     "description": "STEAM GAMES",
     "status": "completed"
   },
@@ -715,7 +715,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-22",
-    "amount": 64.83,
+    "amount": 30.57,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -724,7 +724,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-24",
-    "amount": 27.7,
+    "amount": 55.4,
     "description": "DOORDASH*ORDER",
     "status": "completed"
   },
@@ -733,7 +733,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-28",
-    "amount": 4.7,
+    "amount": 6.38,
     "description": "DOORDASH*ORDER",
     "status": "completed"
   },
@@ -742,7 +742,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-29",
-    "amount": 4.38,
+    "amount": 5.94,
     "description": "CINEMA 12",
     "status": "completed"
   },
@@ -751,7 +751,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-31",
-    "amount": 3.05,
+    "amount": 4.14,
     "description": "DOORDASH*ORDER",
     "status": "completed"
   },
@@ -760,7 +760,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-31",
-    "amount": 1.82,
+    "amount": 2.47,
     "description": "STEAM GAMES",
     "status": "completed"
   },
@@ -769,7 +769,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2025-12-31",
-    "amount": 42.16,
+    "amount": 42.61,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -796,7 +796,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-01-05",
-    "amount": 37.84,
+    "amount": 38.24,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -805,7 +805,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-01-06",
-    "amount": 3.92,
+    "amount": 5.32,
     "description": "CAMPUS COFFEE CO",
     "status": "completed"
   },
@@ -814,7 +814,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-01-06",
-    "amount": 47.27,
+    "amount": 47.77,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -823,7 +823,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-01-07",
-    "amount": 21.15,
+    "amount": 21.37,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -832,7 +832,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-01-09",
-    "amount": 35.87,
+    "amount": 36.25,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -859,7 +859,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-01-13",
-    "amount": 54.64,
+    "amount": 71.58,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -886,7 +886,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-01-17",
-    "amount": 26.4,
+    "amount": 34.58,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -904,7 +904,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-01-19",
-    "amount": 26.56,
+    "amount": 34.8,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -931,7 +931,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-01-22",
-    "amount": 42.97,
+    "amount": 56.29,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -940,7 +940,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-01-23",
-    "amount": 54.37,
+    "amount": 71.22,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -958,7 +958,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-01-23",
-    "amount": 25.83,
+    "amount": 33.84,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -985,7 +985,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-01-28",
-    "amount": 56.76,
+    "amount": 74.36,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -1003,7 +1003,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-02-01",
-    "amount": 63.4,
+    "amount": 83.06,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -1021,7 +1021,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-02-02",
-    "amount": 131.72,
+    "amount": 172.56,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -1048,7 +1048,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-02-07",
-    "amount": 28.25,
+    "amount": 37.01,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -1057,7 +1057,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-02-07",
-    "amount": 34.88,
+    "amount": 45.7,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -1066,7 +1066,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-02-08",
-    "amount": 19.84,
+    "amount": 25.99,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -1075,7 +1075,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-02-10",
-    "amount": 44.4,
+    "amount": 58.17,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -1102,7 +1102,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-02-10",
-    "amount": 21.95,
+    "amount": 28.75,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -1138,7 +1138,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-02-14",
-    "amount": 26.25,
+    "amount": 34.39,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -1201,7 +1201,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-02-23",
-    "amount": 24.68,
+    "amount": 32.34,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -1210,7 +1210,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-02-25",
-    "amount": 21.12,
+    "amount": 27.67,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -1219,7 +1219,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-02-25",
-    "amount": 21.77,
+    "amount": 28.52,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -1228,7 +1228,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-02-26",
-    "amount": 17.44,
+    "amount": 22.85,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -1255,7 +1255,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-03-03",
-    "amount": 32.88,
+    "amount": 43.08,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -1291,7 +1291,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-03-10",
-    "amount": 15.87,
+    "amount": 20.79,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -1336,7 +1336,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-03-13",
-    "amount": 17.38,
+    "amount": 22.77,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -1372,7 +1372,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-03-18",
-    "amount": 37.74,
+    "amount": 49.44,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -1381,7 +1381,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-03-18",
-    "amount": 41.5,
+    "amount": 54.37,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -1390,7 +1390,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-03-19",
-    "amount": 25.42,
+    "amount": 33.3,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -1426,7 +1426,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-03-23",
-    "amount": 13.99,
+    "amount": 18.33,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -1435,7 +1435,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-03-23",
-    "amount": 25.41,
+    "amount": 33.29,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -1444,7 +1444,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-03-24",
-    "amount": 16.07,
+    "amount": 21.06,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -1462,7 +1462,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-03-30",
-    "amount": 16.29,
+    "amount": 21.34,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -1489,7 +1489,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-03-31",
-    "amount": 21.03,
+    "amount": 27.55,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -1507,7 +1507,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-04-03",
-    "amount": 25.13,
+    "amount": 32.93,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -1534,7 +1534,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-04-07",
-    "amount": 7.29,
+    "amount": 9.55,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -1543,7 +1543,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-04-09",
-    "amount": 8.26,
+    "amount": 10.82,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -1570,7 +1570,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-04-14",
-    "amount": 12.59,
+    "amount": 16.49,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -1588,7 +1588,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-04-17",
-    "amount": 12.63,
+    "amount": 16.54,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -1597,7 +1597,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-04-19",
-    "amount": 28.71,
+    "amount": 36.87,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -1615,7 +1615,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-04-22",
-    "amount": 13.66,
+    "amount": 13.18,
     "description": "DOORDASH*ORDER",
     "status": "completed"
   },
@@ -1624,7 +1624,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-04-23",
-    "amount": 36.98,
+    "amount": 47.48,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -1642,7 +1642,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-04-24",
-    "amount": 10.67,
+    "amount": 10.29,
     "description": "STEAM GAMES",
     "status": "completed"
   },
@@ -1651,7 +1651,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-04-27",
-    "amount": 13.4,
+    "amount": 12.92,
     "description": "PHO 79 RESTAURANT",
     "status": "completed"
   },
@@ -1660,7 +1660,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-04-28",
-    "amount": 41.13,
+    "amount": 52.81,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -1669,7 +1669,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-04-28",
-    "amount": 17.81,
+    "amount": 17.17,
     "description": "CAMPUS COFFEE CO",
     "status": "completed"
   },
@@ -1678,7 +1678,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-04-28",
-    "amount": 17.69,
+    "amount": 17.06,
     "description": "PHO 79 RESTAURANT",
     "status": "completed"
   },
@@ -1696,7 +1696,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-05",
-    "amount": 52.6,
+    "amount": 49.62,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -1705,7 +1705,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-06",
-    "amount": 44.76,
+    "amount": 42.22,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -1714,7 +1714,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-07",
-    "amount": 13.29,
+    "amount": 6.64,
     "description": "PHO 79 RESTAURANT",
     "status": "completed"
   },
@@ -1732,7 +1732,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-10",
-    "amount": 16.86,
+    "amount": 8.43,
     "description": "DOORDASH*ORDER",
     "status": "completed"
   },
@@ -1750,7 +1750,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-11",
-    "amount": 12.57,
+    "amount": 6.29,
     "description": "CINEMA 12",
     "status": "completed"
   },
@@ -1759,7 +1759,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-14",
-    "amount": 45.64,
+    "amount": 43.05,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -1777,7 +1777,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-16",
-    "amount": 28.53,
+    "amount": 26.91,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -1795,7 +1795,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-21",
-    "amount": 25.86,
+    "amount": 24.4,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -1804,7 +1804,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-21",
-    "amount": 20.83,
+    "amount": 19.65,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -1813,7 +1813,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-21",
-    "amount": 24.77,
+    "amount": 12.39,
     "description": "PHO 79 RESTAURANT",
     "status": "completed"
   },
@@ -1831,7 +1831,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-24",
-    "amount": 54.47,
+    "amount": 27.24,
     "description": "CINEMA 12",
     "status": "completed"
   },
@@ -1840,7 +1840,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-24",
-    "amount": 30.13,
+    "amount": 28.42,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -1849,7 +1849,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-25",
-    "amount": 43.97,
+    "amount": 21.99,
     "description": "CINEMA 12",
     "status": "completed"
   },
@@ -1858,7 +1858,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-25",
-    "amount": 18.66,
+    "amount": 9.33,
     "description": "PHO 79 RESTAURANT",
     "status": "completed"
   },
@@ -1867,7 +1867,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-26",
-    "amount": 21.44,
+    "amount": 20.22,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -1876,7 +1876,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-27",
-    "amount": 24.52,
+    "amount": 23.13,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -1885,7 +1885,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-31",
-    "amount": 30.78,
+    "amount": 15.39,
     "description": "CINEMA 12",
     "status": "completed"
   },
@@ -1894,7 +1894,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-05-31",
-    "amount": 36.58,
+    "amount": 18.29,
     "description": "DOORDASH*ORDER",
     "status": "completed"
   },
@@ -1903,7 +1903,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-01",
-    "amount": 63.77,
+    "amount": 34.37,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -1921,7 +1921,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-01",
-    "amount": 56.75,
+    "amount": 30.59,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -1930,7 +1930,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-04",
-    "amount": 37.71,
+    "amount": 20.33,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -1948,7 +1948,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-06",
-    "amount": 32.76,
+    "amount": 17.66,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -1957,7 +1957,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-06",
-    "amount": 50.2,
+    "amount": 25.1,
     "description": "UBER TRIP",
     "status": "completed"
   },
@@ -1966,7 +1966,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-08",
-    "amount": 34.63,
+    "amount": 17.31,
     "description": "PHO 79 RESTAURANT",
     "status": "completed"
   },
@@ -1975,7 +1975,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-09",
-    "amount": 51.4,
+    "amount": 25.7,
     "description": "DOORDASH*ORDER",
     "status": "completed"
   },
@@ -1984,7 +1984,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-09",
-    "amount": 37.62,
+    "amount": 18.81,
     "description": "PHO 79 RESTAURANT",
     "status": "completed"
   },
@@ -2011,7 +2011,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-16",
-    "amount": 28.52,
+    "amount": 13.45,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -2020,7 +2020,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-16",
-    "amount": 54.37,
+    "amount": 27.19,
     "description": "DOORDASH*ORDER",
     "status": "completed"
   },
@@ -2029,7 +2029,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-16",
-    "amount": 32.56,
+    "amount": 15.36,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -2038,7 +2038,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-17",
-    "amount": 57.88,
+    "amount": 28.94,
     "description": "DOORDASH*ORDER",
     "status": "completed"
   },
@@ -2047,7 +2047,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-19",
-    "amount": 30.17,
+    "amount": 14.23,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -2065,7 +2065,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-20",
-    "amount": 41.92,
+    "amount": 20.96,
     "description": "STEAM GAMES",
     "status": "completed"
   },
@@ -2083,7 +2083,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-21",
-    "amount": 25.29,
+    "amount": 11.93,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -2092,7 +2092,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-22",
-    "amount": 44.58,
+    "amount": 22.29,
     "description": "CINEMA 12",
     "status": "completed"
   },
@@ -2101,7 +2101,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-24",
-    "amount": 41.94,
+    "amount": 19.78,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -2110,7 +2110,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-26",
-    "amount": 33.06,
+    "amount": 15.59,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -2119,7 +2119,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-27",
-    "amount": 13.23,
+    "amount": 6.24,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -2128,7 +2128,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-06-30",
-    "amount": 19.52,
+    "amount": 9.21,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -2137,7 +2137,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-01",
-    "amount": 22.02,
+    "amount": 11.01,
     "description": "DOORDASH*ORDER",
     "status": "completed"
   },
@@ -2155,7 +2155,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-02",
-    "amount": 38.75,
+    "amount": 18.27,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -2173,7 +2173,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-03",
-    "amount": 12.09,
+    "amount": 6.04,
     "description": "UBER TRIP",
     "status": "completed"
   },
@@ -2191,7 +2191,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-06",
-    "amount": 18.59,
+    "amount": 9.29,
     "description": "UBER TRIP",
     "status": "completed"
   },
@@ -2200,7 +2200,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-07",
-    "amount": 38.82,
+    "amount": 18.31,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -2209,7 +2209,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-07",
-    "amount": 25.3,
+    "amount": 11.93,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -2218,7 +2218,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-09",
-    "amount": 21.58,
+    "amount": 10.18,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -2236,7 +2236,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-11",
-    "amount": 31.22,
+    "amount": 15.61,
     "description": "CINEMA 12",
     "status": "completed"
   },
@@ -2245,7 +2245,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-11",
-    "amount": 32.41,
+    "amount": 16.2,
     "description": "STEAM GAMES",
     "status": "completed"
   },
@@ -2254,7 +2254,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-12",
-    "amount": 29.6,
+    "amount": 13.96,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -2263,7 +2263,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-13",
-    "amount": 29.16,
+    "amount": 14.58,
     "description": "DOORDASH*ORDER",
     "status": "completed"
   },
@@ -2272,7 +2272,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-15",
-    "amount": 26.15,
+    "amount": 12.33,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -2290,7 +2290,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-16",
-    "amount": 27.26,
+    "amount": 13.63,
     "description": "CAMPUS COFFEE CO",
     "status": "completed"
   },
@@ -2308,7 +2308,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-18",
-    "amount": 49.53,
+    "amount": 23.36,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -2317,7 +2317,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-18",
-    "amount": 26.45,
+    "amount": 13.22,
     "description": "STEAM GAMES",
     "status": "completed"
   },
@@ -2326,7 +2326,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-20",
-    "amount": 17.78,
+    "amount": 8.89,
     "description": "PHO 79 RESTAURANT",
     "status": "completed"
   },
@@ -2344,7 +2344,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-24",
-    "amount": 52.52,
+    "amount": 24.77,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -2353,7 +2353,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-25",
-    "amount": 37.07,
+    "amount": 17.48,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -2362,7 +2362,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-25",
-    "amount": 39.01,
+    "amount": 18.4,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -2371,7 +2371,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-29",
-    "amount": 31.09,
+    "amount": 14.66,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -2389,7 +2389,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-07-31",
-    "amount": 44.23,
+    "amount": 22.11,
     "description": "PHO 79 RESTAURANT",
     "status": "completed"
   },
@@ -2407,7 +2407,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-04",
-    "amount": 40.38,
+    "amount": 20.19,
     "description": "CAMPUS COFFEE CO",
     "status": "completed"
   },
@@ -2425,7 +2425,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-07",
-    "amount": 44.42,
+    "amount": 22.21,
     "description": "STEAM GAMES",
     "status": "completed"
   },
@@ -2434,7 +2434,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-08",
-    "amount": 30.68,
+    "amount": 14.47,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -2443,7 +2443,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-09",
-    "amount": 30.43,
+    "amount": 15.21,
     "description": "CAMPUS COFFEE CO",
     "status": "completed"
   },
@@ -2452,7 +2452,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-09",
-    "amount": 22.47,
+    "amount": 11.23,
     "description": "CINEMA 12",
     "status": "completed"
   },
@@ -2461,7 +2461,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-10",
-    "amount": 24.67,
+    "amount": 12.33,
     "description": "PHO 79 RESTAURANT",
     "status": "completed"
   },
@@ -2479,7 +2479,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-14",
-    "amount": 34.2,
+    "amount": 16.13,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -2506,7 +2506,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-16",
-    "amount": 47.37,
+    "amount": 22.34,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -2515,7 +2515,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-19",
-    "amount": 34.48,
+    "amount": 17.24,
     "description": "STEAM GAMES",
     "status": "completed"
   },
@@ -2524,7 +2524,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-20",
-    "amount": 28.35,
+    "amount": 14.18,
     "description": "DOORDASH*ORDER",
     "status": "completed"
   },
@@ -2542,7 +2542,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-21",
-    "amount": 36.66,
+    "amount": 17.29,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -2551,7 +2551,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-21",
-    "amount": 32.8,
+    "amount": 15.47,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -2560,7 +2560,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-25",
-    "amount": 16.31,
+    "amount": 15.15,
     "description": "CINEMA 12",
     "status": "completed"
   },
@@ -2569,7 +2569,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-26",
-    "amount": 29.29,
+    "amount": 20.83,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -2578,7 +2578,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-26",
-    "amount": 9.31,
+    "amount": 8.64,
     "description": "CINEMA 12",
     "status": "completed"
   },
@@ -2587,7 +2587,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-26",
-    "amount": 32.01,
+    "amount": 22.76,
     "description": "FOOD LION 2231",
     "status": "completed"
   },
@@ -2596,7 +2596,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-26",
-    "amount": 31.12,
+    "amount": 22.13,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -2605,7 +2605,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-27",
-    "amount": 33.53,
+    "amount": 23.84,
     "description": "ALDI MARKET",
     "status": "completed"
   },
@@ -2623,7 +2623,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-28",
-    "amount": 21.18,
+    "amount": 19.67,
     "description": "DOORDASH*ORDER",
     "status": "completed"
   },
@@ -2632,7 +2632,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-29",
-    "amount": 22.64,
+    "amount": 21.02,
     "description": "DOORDASH*ORDER",
     "status": "completed"
   },
@@ -2641,7 +2641,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-30",
-    "amount": 9.98,
+    "amount": 9.26,
     "description": "DOORDASH*ORDER",
     "status": "completed"
   },
@@ -2650,7 +2650,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-08-30",
-    "amount": 47.78,
+    "amount": 33.98,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -2668,7 +2668,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-09-04",
-    "amount": 13.67,
+    "amount": 12.69,
     "description": "CAMPUS COFFEE CO",
     "status": "completed"
   },
@@ -2677,7 +2677,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-09-04",
-    "amount": 29.39,
+    "amount": 20.9,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -2695,7 +2695,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-09-09",
-    "amount": 29.78,
+    "amount": 59.56,
     "description": "PHO 79 RESTAURANT",
     "status": "completed"
   },
@@ -2704,7 +2704,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-09-09",
-    "amount": 44.42,
+    "amount": 58.19,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -2713,7 +2713,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-09-10",
-    "amount": 29.89,
+    "amount": 59.79,
     "description": "PHO 79 RESTAURANT",
     "status": "completed"
   },
@@ -2740,7 +2740,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-09-12",
-    "amount": 43.61,
+    "amount": 57.14,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -2758,7 +2758,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-09-16",
-    "amount": 50.52,
+    "amount": 66.19,
     "description": "KROGER #418",
     "status": "completed"
   },
@@ -2767,7 +2767,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-09-16",
-    "amount": 32.53,
+    "amount": 42.62,
     "description": "TRADER JOES 552",
     "status": "completed"
   },
@@ -2776,7 +2776,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-09-18",
-    "amount": 28.86,
+    "amount": 57.71,
     "description": "CAMPUS COFFEE CO",
     "status": "completed"
   },
@@ -2785,7 +2785,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-09-18",
-    "amount": 47.77,
+    "amount": 95.55,
     "description": "DOORDASH*ORDER",
     "status": "pending"
   },
@@ -2794,7 +2794,7 @@
     "account_id": "acc_checking",
     "type": "purchase",
     "transaction_date": "2026-09-18",
-    "amount": 29.32,
+    "amount": 38.41,
     "description": "KROGER #418",
     "status": "pending"
   }
