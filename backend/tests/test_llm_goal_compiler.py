@@ -13,7 +13,7 @@ from backend.llm_goal_compiler import LlmDraft, LlmItem, compile_goals_auto, val
 from backend.main import app
 
 AS_OF = date(2026, 9, 19)
-ALEX = "I need $2,000 for summer housing by May and want to keep at least $1,500 for emergencies"
+ALEX = "I need $1,600 for summer housing by May and want to keep at least $1,500 for emergencies"
 
 
 def item(kind="goal", fragment="", name=None, amount=None, deadline=None, question=None, question_field=None):
@@ -45,7 +45,7 @@ def test_alex_draft_compiles_to_the_fixture_goal_and_reserve():
     twin = load_twin()
     result = validate(
         ALEX,
-        item(fragment="I need $2,000 for summer housing by May", name="Summer housing", amount=2000,
+        item(fragment="I need $1,600 for summer housing by May", name="Summer housing", amount=1600,
              deadline="2027-05-01"),
         item(kind="reserve", fragment="keep at least $1,500 for emergencies", amount=1500),
     )

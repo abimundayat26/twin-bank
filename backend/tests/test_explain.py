@@ -30,22 +30,22 @@ def forecast(half_life_days: float | None = 180.0) -> ForecastMetadata:
 def with_groceries_seasonal(factors: dict[int, float]):
     twin = load_twin()
     spending = [
-        v.model_copy(update={"seasonal": SeasonalProfile(factors=factors)}) if v.category == "groceries" else v
+        v.model_copy(update={"seasonal": SeasonalProfile(factors=factors) if v.category == "groceries" else None})
         for v in twin.variable_spending
     ]
     return twin.model_copy(update={"variable_spending": spending, "forecast": forecast()})
 
 
-def test_twin_without_a_forecast_adds_nothing():
-    twin = load_twin()
+def test_twin_without_a_forecast_adds_nothing(flat_twin):
+    twin = flat_twin
     assert twin.forecast is None
     assert all(v.seasonal is None for v in twin.variable_spending)
 
     assert forecast_assumptions(twin) == []
 
 
-def test_forecast_window_and_recency_weighting_are_stated():
-    twin = load_twin().model_copy(update={"forecast": forecast()})
+def test_forecast_window_and_recency_weighting_are_stated(flat_twin):
+    twin = flat_twin.model_copy(update={"forecast": forecast()})
 
     assert forecast_assumptions(twin) == [
         "Spending figures are fitted to 26 fortnights of observed spending, 2025-09-19 to 2026-09-18; "
@@ -106,8 +106,8 @@ SEPTEMBER_BUSY = {**FLAT, 9: 1.3, 3: 0.7}  # averages 1.0
 SEPTEMBER_QUIET = {**FLAT, 9: 0.7, 3: 1.3}
 
 
-def test_a_flat_twin_gets_no_timing_driver():
-    twin = load_twin()
+def test_a_flat_twin_gets_no_timing_driver(flat_twin):
+    twin = flat_twin
 
     assert seasonal_timing_driver(twin, [LAPTOP], HORIZON) is None
     drivers = run_simulation(twin, SimulationRequest(user_id="alex", events=[LAPTOP]), n_simulations=20, seed=1).drivers
@@ -172,3 +172,12 @@ def test_the_timing_driver_sits_between_the_goal_and_income_drivers():
 
     assert labels[0] == "Laptop"
     assert labels[-2:] == ["Busy spending stretch", "Expected income"]
+
+
+def test_the_demo_twin_explains_its_seasonal_spending():
+    """Alex's fixture carries fitted profiles, so the demo shows the forecast work."""
+    twin = load_twin()
+    result = run_simulation(twin, SimulationRequest(user_id="alex", events=[LAPTOP]), n_simulations=20, seed=1)
+
+    assert "Busy spending stretch" in [d.label for d in result.drivers]
+    assert any(a.startswith("Discretionary spending is highest in December") for a in result.assumptions)

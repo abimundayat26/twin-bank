@@ -3,7 +3,6 @@ from datetime import date
 
 import pytest
 
-from backend.fixtures import load_twin
 from backend.schemas import SeasonalProfile, SimulationEvent, SimulationRequest, VariableSpendingDistribution
 from backend.simulation import run_simulation
 from backend.simulation.engine import SimulationError, compare, simulate_scenario
@@ -27,8 +26,9 @@ def purchase(amount: float, on: str = "2026-09-20") -> SimulationEvent:
 
 
 @pytest.fixture
-def twin():
-    return load_twin()
+def twin(flat_twin):
+    # Hand-checked arithmetic below assumes flat 14-day spending.
+    return flat_twin
 
 
 def without_uncertainty(twin):

@@ -2,7 +2,6 @@ from datetime import date, timedelta
 
 import pytest
 
-from backend.fixtures import load_twin
 from backend.schemas import Goal, SeasonalProfile, SimulationEvent
 from backend.simulation.engine import (
     LOW_BALANCE_THRESHOLD,
@@ -23,8 +22,9 @@ def purchase(amount: float, on: str = "2026-09-20", account_id: str = "acc_check
 
 
 @pytest.fixture
-def twin():
-    return load_twin()
+def twin(flat_twin):
+    # Hand-checked arithmetic below assumes flat 14-day spending.
+    return flat_twin
 
 
 # --- No hypothetical purchase -------------------------------------------------
@@ -37,7 +37,7 @@ def test_baseline_ending_balance_matches_closed_form(twin):
     bills = 8 * 650 + 7 * 60 + 8 * 40 + 7 * 25 + 7 * 75
     spending = 260 / 14 * 224
     assert result.total_income == income
-    assert result.ending_balance == pytest.approx(2840 + income - bills - spending, abs=0.01)
+    assert result.ending_balance == pytest.approx(3140 + income - bills - spending, abs=0.01)
 
 
 def test_baseline_is_healthy(twin):
@@ -128,11 +128,11 @@ def test_a_sweep_moves_money_without_creating_or_destroying_any(twin):
         update={"accounts": [a for a in twin.accounts if a.type != "savings"]}
     )
     # Same total either way: a sweep relocates money, it does not conjure it. The
-    # savings account holds 1500 that the checking-only twin never had.
+    # savings account holds 1800 that the checking-only twin never had.
     assert result.savings_sweeps
     assert result.ending_balance == pytest.approx(
         simulate_scenario(no_sweep_possible, [purchase(1300, on="2026-09-26")], HORIZON).ending_balance
-        + 1500,
+        + 1800,
         abs=0.01,
     )
 
@@ -233,8 +233,8 @@ def test_laptop_creates_goal_shortfall(twin):
     # Available for the goal = balance at deadline minus the $1,500 reserve.
     assert base_goal.available == pytest.approx(c.baseline.ending_balance - 1500)
     assert base_goal.shortfall == 0
-    assert base_goal.surplus == pytest.approx(base_goal.available - 2000)
-    assert cf_goal.shortfall == pytest.approx(2000 - cf_goal.available)
+    assert base_goal.surplus == pytest.approx(base_goal.available - 1600)
+    assert cf_goal.shortfall == pytest.approx(1600 - cf_goal.available)
     assert c.counterfactual.goal_shortfall == cf_goal.shortfall > 0
 
 
