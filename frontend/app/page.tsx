@@ -15,7 +15,6 @@ import { ExplanationPanel } from "@/components/ExplanationPanel";
 import { FinancialSummary } from "@/components/FinancialSummary";
 import { GoalCard } from "@/components/GoalCard";
 import { GoalComposer } from "@/components/GoalComposer";
-import { Header } from "@/components/Header";
 import { IntentGraph } from "@/components/IntentGraph";
 import { PurchaseSimulator } from "@/components/PurchaseSimulator";
 import { ScenarioComparison } from "@/components/ScenarioComparison";
@@ -34,7 +33,6 @@ function byDeadline(goals: Goal[]): Goal[] {
 export default function Home() {
   const {
     twin,
-    source,
     twinError,
     isBusy,
     savingScope,
@@ -63,25 +61,19 @@ export default function Home() {
 
   if (twinError) {
     return (
-      <>
-        <Header />
-        <main className="mx-auto w-full max-w-6xl px-6 py-10">
-          <Card title="Could not load the Financial Twin">
-            <p className="text-sm text-bad">{twinError}</p>
-          </Card>
-        </main>
-      </>
+      <main className="mx-auto w-full max-w-6xl px-6 py-10">
+        <Card title="Could not load the Financial Twin">
+          <p className="text-sm text-bad">{twinError}</p>
+        </Card>
+      </main>
     );
   }
 
   if (!twin) {
     return (
-      <>
-        <Header />
-        <main className="mx-auto w-full max-w-6xl px-6 py-10">
-          <p className="text-sm text-muted">Loading Alex&rsquo;s Financial Twin…</p>
-        </main>
-      </>
+      <main className="mx-auto w-full max-w-6xl px-6 py-10">
+        <p className="text-sm text-muted">Loading Alex&rsquo;s Financial Twin…</p>
+      </main>
     );
   }
 
@@ -91,13 +83,6 @@ export default function Home() {
 
   return (
     <>
-      <Header
-        userName={twin.display_name}
-        backend={source}
-        twinSource={twin.source}
-        isMock={simulation?.is_mock}
-      />
-
       <main className="mx-auto w-full max-w-6xl px-6 py-8">
         {/* Full width and first: the structure of the money is what makes this
             more than a budgeting dashboard (SPEC §1). */}

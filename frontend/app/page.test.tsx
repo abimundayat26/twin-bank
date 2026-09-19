@@ -47,7 +47,6 @@ describe("Overview page", () => {
       expect(screen.getByText(/Financial Twin$/)).toBeInTheDocument(),
     );
     expect(screen.getByTestId("intent-graph")).toBeInTheDocument();
-    expect(screen.getByText(/Demo user:/)).toBeInTheDocument();
   });
 
   it("explains a failed load instead of rendering an empty twin", async () => {
@@ -64,50 +63,5 @@ describe("Overview page", () => {
     renderPage();
     await waitFor(() => expect(screen.getByTestId("intent-graph")).toBeInTheDocument());
     expect(screen.getByText(/to compare the/)).toBeInTheDocument();
-  });
-});
-
-describe("provenance badge", () => {
-  it("calls a connected backend serving fixture data a demo fixture", async () => {
-    vi.mocked(api.getTwin).mockResolvedValue({
-      data: { ...TWIN, source: "fixture" },
-      source: "api",
-    });
-    renderPage();
-    await waitFor(() => expect(screen.getByText("Backend connected")).toBeInTheDocument());
-    expect(screen.getByText("Demo fixture")).toBeInTheDocument();
-    expect(screen.queryByText("Nessie data")).not.toBeInTheDocument();
-  });
-
-  it("says Nessie data only when the twin came from Nessie", async () => {
-    vi.mocked(api.getTwin).mockResolvedValue({
-      data: { ...TWIN, source: "nessie" },
-      source: "api",
-    });
-    renderPage();
-    await waitFor(() => expect(screen.getByText("Nessie data")).toBeInTheDocument());
-    expect(screen.getByText("Backend connected")).toBeInTheDocument();
-  });
-
-  it("never claims live data while the backend is unreachable", async () => {
-    vi.mocked(api.getTwin).mockResolvedValue({
-      data: { ...TWIN, source: "nessie" },
-      source: "fixture",
-    });
-    renderPage();
-    await waitFor(() => expect(screen.getByText("Backend offline")).toBeInTheDocument());
-    expect(screen.getByText("Bundled example")).toBeInTheDocument();
-    expect(screen.queryByText("Nessie data")).not.toBeInTheDocument();
-  });
-
-  it("admits an unknown source rather than guessing one", async () => {
-    vi.mocked(api.getTwin).mockResolvedValue({
-      data: { ...TWIN, source: null },
-      source: "api",
-    });
-    renderPage();
-    await waitFor(() =>
-      expect(screen.getByText("Data source unavailable")).toBeInTheDocument(),
-    );
   });
 });

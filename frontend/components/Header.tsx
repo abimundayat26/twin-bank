@@ -1,16 +1,28 @@
-/** Product header. Carries the pitch and says plainly where the data came from. */
+/**
+ * The shell's header. Carries the pitch, the current page, and says plainly
+ * where the data came from.
+ *
+ * Presentational: `AppShell` reads the twin and hands the facts down, so this
+ * can be rendered in a test without a provider.
+ */
 
+import type { ReactNode } from "react";
 import type { DataSource } from "@/lib/api";
 import { provenanceLabel } from "@/lib/provenance";
 import type { FinancialTwin } from "@/lib/types";
 import { Badge } from "./ui";
 
 export function Header({
+  nav,
+  pageTitle,
   userName,
   backend,
   twinSource,
   isMock,
 }: {
+  /** The menu control, which sits in the top-left corner of every page. */
+  nav?: ReactNode;
+  pageTitle?: string;
   userName?: string;
   /** Whether the backend answered. Reachability only. */
   backend?: DataSource;
@@ -23,13 +35,20 @@ export function Header({
   const provenance = provenanceLabel(backend, twinSource);
   return (
     <header className="border-b border-line bg-surface/60">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-5">
-        <div>
-          <p className="text-xl font-semibold tracking-tight text-ink">TwinBank</p>
-          <p className="text-sm text-muted">
-            Your bank knows what happened.{" "}
-            <span className="text-baseline">TwinBank shows what happens next.</span>
-          </p>
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-4">
+        <div className="flex items-center gap-3">
+          {nav}
+          <div>
+            <p className="text-lg font-semibold tracking-tight text-ink">TwinBank</p>
+            {pageTitle ? (
+              <p className="text-sm text-muted">{pageTitle}</p>
+            ) : (
+              <p className="text-sm text-muted">
+                Your bank knows what happened.{" "}
+                <span className="text-baseline">TwinBank shows what happens next.</span>
+              </p>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {userName ? <Badge>Demo user: {userName}</Badge> : null}
