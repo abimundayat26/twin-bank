@@ -8,9 +8,10 @@ import calendar
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from backend.schemas import FinancialTwin, SimulationEvent
+from backend.schemas import FinancialObligation, FinancialTwin, SimulationEvent
 
-# Assumption (SPEC open question): "low balance" means checking below this amount.
+# Assumption (SPEC open question): "low balance" means checking below this amount,
+# unless the user declares their own minimum_checking_balance constraint.
 LOW_BALANCE_THRESHOLD = 500.0
 # Used when the request has no horizon_end and the twin has no goals.
 DEFAULT_HORIZON_DAYS = 180
@@ -92,6 +93,24 @@ def reserve_amount(twin: FinancialTwin) -> float:
     return max((c.amount for c in twin.constraints if c.type == "minimum_reserve"), default=0.0)
 
 
+def low_balance_threshold(twin: FinancialTwin) -> float:
+    declared = [c.amount for c in twin.constraints if c.type == "minimum_checking_balance"]
+    return max(declared) if declared else LOW_BALANCE_THRESHOLD
+
+
+def is_mandatory(obligation: FinancialObligation) -> bool:
+    """The user's declared category overrides the observed mandatory flag."""
+    if obligation.declared_category in ("bill", "debt_repayment"):
+        return True
+    if obligation.declared_category in ("optional_spending", "savings_transfer"):
+        return False
+    return obligation.mandatory
+
+
+def savings_account_id(twin: FinancialTwin) -> str | None:
+    return next((a.id for a in twin.accounts if a.type == "savings"), None)
+
+
 def primary_account_id(twin: FinancialTwin) -> str:
     """Income, bills and spending flow through the first checking account."""
     if not twin.accounts:
@@ -153,6 +172,7 @@ def simulate_scenario(
     validate_events(twin, events, horizon_end)
     start = twin.as_of
     primary = primary_account_id(twin)
+    savings = savings_account_id(twin)
     balances = {a.id: a.balance for a in twin.accounts}
     reserve = reserve_amount(twin)
 
@@ -166,6 +186,8 @@ def simulate_scenario(
 
     obligations_by_day: dict[date, list] = {}
     for obligation in twin.obligations:
+        if obligation.declared_category == "not_recurring":
+            continue
         for d in monthly_due_dates(obligation.due_day, start, horizon_end):
             obligations_by_day.setdefault(d, []).append(obligation)
 
@@ -194,8 +216,11 @@ def simulate_scenario(
         due_today = obligations_by_day.get(day, [])
         for obligation in due_today:
             balances[primary] -= obligation.expected_amount
+            # A declared savings transfer moves money within the twin instead of spending it.
+            if obligation.declared_category == "savings_transfer" and savings is not None:
+                balances[savings] += obligation.expected_amount
         for obligation in due_today:
-            if obligation.mandatory and balances[primary] < 0:
+            if is_mandatory(obligation) and balances[primary] < 0:
                 uncovered.append(
                     UncoveredObligation(obligation.id, obligation.name, day, round(balances[primary], 2))
                 )
@@ -222,7 +247,7 @@ def simulate_scenario(
         min_balance=round(min_total, 2),
         min_checking=round(min_checking, 2),
         min_checking_date=min_checking_date,
-        dropped_below_low=min_checking < LOW_BALANCE_THRESHOLD,
+        dropped_below_low=min_checking < low_balance_threshold(twin),
         reserve_violated=min_total < reserve,
         obligations_covered=not uncovered,
         uncovered_obligations=uncovered,

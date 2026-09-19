@@ -94,8 +94,11 @@ function buildRows(
       caption: "Every mandatory bill in the horizon",
       render: (m) => {
         const missed = m.prob_obligations_uncovered;
-        if (missed == null) return m.obligations_covered ? "Yes" : "No";
-        return missed === 0 ? "In every future" : `Missed in ${chance(missed)} of futures`;
+        const status = m.obligations_covered ? "Yes" : "No";
+        if (missed == null) return status;
+        return missed === 0
+          ? `${status} · covered in every future`
+          : `${status} · covered in ${chance(1 - missed)} of futures`;
       },
       worse: (b, c) =>
         b.prob_obligations_uncovered != null && c.prob_obligations_uncovered != null

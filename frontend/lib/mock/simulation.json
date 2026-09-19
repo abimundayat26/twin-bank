@@ -70,7 +70,7 @@
     "Spending in each category is drawn independently for every 14-day period from a normal distribution using the twin's mean and standard deviation, spread evenly over the period and never below $0 (which raises average spending slightly).",
     "Bill amounts, bill due dates, and paycheck dates are fixed; bill confidence is not used.",
     "Bills count as covered only if checking covers every mandatory bill in every simulated future.",
-    "Low balance means checking below $500.",
+    "Low balance means checking below $500 (default; Alex has not set a minimum).",
     "The emergency reserve counts checking plus savings.",
     "Goals must be met on top of the emergency reserve.",
     "Income, bills, and everyday spending all flow through checking.",
