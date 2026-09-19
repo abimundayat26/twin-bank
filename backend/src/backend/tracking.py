@@ -3,7 +3,9 @@
 Phase 6 records every twin build so that a change to the forecaster can be
 compared run against run. `twin_build_summary` decides what gets recorded and is
 pure; `log_twin_build` sends it to MLflow, and only when `TRACK_TWIN_BUILDS` is
-on. Nothing calls `log_twin_build` yet.
+on. It is called wherever a twin is built from transactions: `POST /twin/build`
+and each Nessie build in `twin_source`. The hand-written fixture twin is not a
+build, so serving it logs nothing.
 
 The summary describes the estimate, not the person: which method produced the
 observed figures, over what window, and what it fitted per category. Balances,

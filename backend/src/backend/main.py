@@ -27,6 +27,7 @@ from backend.schemas import (
 )
 from backend.simulation import SimulationError, run_simulation
 from backend.simulation.optimize import run_optimization
+from backend.tracking import log_twin_build
 
 # Optional: fix the Monte Carlo seed so demo numbers repeat. Unset means fresh randomness.
 SIMULATION_SEED = int(seed) if (seed := os.getenv("SIMULATION_SEED")) else None
@@ -77,7 +78,9 @@ def build_twin(request: TwinBuildRequest) -> FinancialTwin:
     if request.accounts is not None:
         twin = twin.model_copy(update={"accounts": request.accounts})
     # A twin as of a past date must not see what happened after it.
-    return rebuild(twin, [t for t in transactions if t.date <= as_of], as_of)
+    built = rebuild(twin, [t for t in transactions if t.date <= as_of], as_of)
+    log_twin_build(built)
+    return built
 
 
 @app.put("/twin/{user_id}/minimum-balance", response_model=FinancialTwin)
