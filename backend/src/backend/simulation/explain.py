@@ -222,7 +222,9 @@ def build_optimization_summary(
     buy_now: OptimizationCandidate,
     recommended: OptimizationCandidate | None,
     candidates: list[OptimizationCandidate],
+    baseline_violations: list[str],
 ) -> str:
+    """baseline_violations: declared limits already broken without the purchase."""
     name = twin.display_name
     has_goal = buy_now.metrics.prob_goal_met is not None
     if has_goal:
@@ -235,6 +237,12 @@ def build_optimization_summary(
             f"Buying now, {name}'s median ending balance is {money(buy_now.metrics.ending_balance)}, "
             f"versus {money(baseline.ending_balance)} without the purchase."
         ]
+
+    if baseline_violations:
+        sentences.append(
+            f"Even without the purchase, a declared limit is already broken: {baseline_violations[0]} "
+            "Options are only faulted for making that worse."
+        )
 
     if recommended is None:
         closest = candidates[0]
