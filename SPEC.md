@@ -182,7 +182,7 @@ Phases describe what the demo on `main` does. Workstreams (Section 10) may build
 | --- | --- |
 | 1. Mocked end-to-end demo | Done |
 | 2. Deterministic calculations | Done |
-| 3. Nessie data | Done. Client, seeder and twin source are wired, and Alex is seeded in the live sandbox. `USE_MOCKS=false` plus a key builds the twin from Nessie. Reading Alex back out of the live sandbox (`python -m backend.nessie.readback`) was checked on 2026-09-19 and he is recognisable. The demo stays on fixtures by default. |
+| 3. Nessie data | Done. Alex is seeded in the live sandbox, and `USE_MOCKS=false` plus a key builds the twin from Nessie. Read back from the live sandbox on 2026-09-19, Alex is recognisable (`backend.nessie.readback`, #65); Nessie stores amounts in whole dollars (#68). The demo stays on fixtures by default. |
 | 4. Monte Carlo | Done, including a fan chart in the UI |
 | 5. Goal compilation and optimization | Done. Goal entry and the alternatives panel are in the UI. The rule-based compiler is the default; an LLM compiler sits behind `GOAL_COMPILER=llm` and falls back to rules. |
 | 6. Databricks and MLflow | Not started |
@@ -190,7 +190,7 @@ Phases describe what the demo on `main` does. Workstreams (Section 10) may build
 
 Main gaps, in priority order:
 
-1. There is no forecasting step. The simulation uses the twin's current averages.
+1. The forecast is not in the demo yet. Twins built from transactions carry a recency-weighted, per-month seasonal forecast, and the simulator, explanations and optimizer all use it, but Alex's hand-written demo twin is still flat. Giving it seasonal profiles needs the demo twin rebalanced (#72).
 2. The LLM goal compiler is off by default and explanations are template-based (Section 13).
 3. Databricks and MLflow are not integrated.
 4. There is no scripted demo walkthrough.
@@ -362,7 +362,7 @@ Do not build all endpoints immediately.
 
 Build only what the current phase requires.
 
-All of these endpoints now exist. Several of them (goal compilation, optimization, twin build) are not yet used by the frontend. Wire existing endpoints into the UI before adding new ones.
+All of these endpoints now exist, and the frontend uses all of them except `POST /twin/build`. Wire existing endpoints into the UI before adding new ones.
 
 ---
 
@@ -374,40 +374,34 @@ Each workstream's focus below targets the gaps in Section 5 (Current Status), in
 
 Owns Nessie, transaction normalization, recurrence detection, forecasting, Databricks and Financial Twin generation.
 
-Built: normalization, recurrence detection, twin building, the Nessie client, the sandbox seeder, the switch that decides whether a twin comes from the fixture or from Nessie, and a read-back check (`backend.nessie.readback`) that confirmed a twin built from the live sandbox is still Alex.
+Built: normalization, recurrence detection, twin building, the Nessie client, the sandbox seeder, the switch that decides whether a twin comes from the fixture or from Nessie, and the read-back check that Alex comes out of the live sandbox recognisable (#65). The mock feed now carries a known seasonal signal (`SEASONAL_WEIGHTS` in `ingest/generate_transactions.py`), and recurrence detection fits a recency-weighted mean and a per-month seasonal profile per category, recorded on the twin as forecast metadata (#59).
 
 Focus:
 
-1. Give the mock feed something to forecast, then forecast it.
-
-   The generator draws every fortnight from the same distribution, so the feed has no trend and no seasonality in it. Measured over the year, grocery spending drifts by about one month-to-month standard deviation, which is noise. A forecaster fitted to this would be fitting noise, and a test asserting it found a trend would be asserting an artifact of the seed.
-
-   So add a known signal first — a start-of-term spike, a holiday bump, a gentle drift — the same way `transactions.json` was generated from `twin.json` so recurrence detection could be tested on recovering it. Then a forecast has something real to recover.
-2. Then the forecast itself. Today the simulation holds one flat `mean_14d` and `std_dev_14d` per category across the whole horizon, and recurrence detection computes that mean weighting a fortnight from eleven months ago the same as last fortnight. Recency weighting and a per-month seasonal factor are enough to start. Section 8 already calls for forecast metadata on the twin; there is no field for it yet, so that is a small shared-schema change of its own.
-3. After the above, move data processing into Databricks with MLflow tracking, behind a flag.
+1. Rebalance Alex's demo twin so it can carry its fitted seasonal profiles and the demo still tells its story: the laptop clearly risky, with at least one alternative that keeps every limit (#72).
+2. Then move data processing into Databricks with MLflow tracking, behind a flag.
 
 ### Workstream 2: Simulation / Intelligence (abimundayat26)
 
 Owns the simulator, Monte Carlo, the goal compiler, counterfactual simulation, explainability and optimization. It also owns the alternatives UI.
 
-Built: the deterministic and Monte Carlo simulation, explanations, optimization, the rule-based goal compiler, the LLM goal compiler behind a flag with rules as the fallback, the alternatives panel, and user answers kept across a server restart.
+Built: the deterministic and Monte Carlo simulation, explanations, optimization, the rule-based goal compiler, the LLM goal compiler behind a flag with rules as the fallback, the alternatives panel, and user answers kept across a server restart. Both simulators apply a twin's per-month seasonal spending profile, and a twin without one simulates flat as before (#63). Explanations describe the forecast and a busy or quiet spending stretch after a purchase (#64, #69), and when no single alternative keeps every limit, the optimizer also tries waiting combined with a spending cut (#70).
 
 Focus:
 
-1. Let the simulator use a spending forecast that changes over time (for example, a per-month factor per category), agreed with Workstream 1 so it matches their forecaster's output. Without a forecast on the twin, keep today's flat behaviour.
+1. Keep explanations and alternatives useful once Alex's demo twin carries seasonal profiles.
 2. Optionally, and only if the team reverses the Section 13 decision, have the LLM write explanations, rephrasing only the computed results.
 
 ### Workstream 3: Frontend / Integration (mkrishiv)
 
 Owns the Next.js frontend, Twin visualization, the scenario UI, charts, API integration, the Financial Intent Graph and demo polish.
 
-Built: the twin view, the scenario comparison, explanations, the Financial Intent Graph, the fan chart, and handling of an offline backend.
+Built: the twin view, the scenario comparison, explanations, the Financial Intent Graph, the fan chart, goal entry (type a goal, review the compiled draft and clarifications, confirm), and handling of an offline backend.
 
 Focus:
 
-1. Goal entry: the user types a goal, reviews the compiled draft and any clarification questions, and confirms.
-2. Show where the twin's data came from (fixture or Nessie).
-3. Demo polish and a scripted walkthrough from a fresh clone (Phase 7).
+1. Show where the twin's data came from (fixture or Nessie), separately from whether the backend is reachable.
+2. Demo polish and a scripted walkthrough from a fresh clone (Phase 7).
 
 Ownership means responsibility, not exclusive permission to modify code.
 
