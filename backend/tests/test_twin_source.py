@@ -15,6 +15,7 @@ from backend import twin_source, twin_store
 from backend.fixtures import FIXTURES_DIR, load_twin
 from backend.nessie import client as nessie_client
 from backend.nessie.config import NessieConfig
+from backend.schemas import FinancialTwin
 from backend.twin_source import build_from_nessie, load_source_twin
 
 SAMPLES = json.loads((FIXTURES_DIR / "nessie_samples.json").read_text())
@@ -22,6 +23,11 @@ CONFIG = NessieConfig(api_key="secret-key", base_url="https://nessie.test")
 
 CHECKING = {**SAMPLES["account"], "_id": "nessie_checking", "type": "Checking", "balance": 1000}
 SAVINGS = {**SAMPLES["savings_account"], "_id": "nessie_savings", "type": "Savings", "balance": 500}
+
+
+def fixture_twin() -> FinancialTwin:
+    """The fixture as a served twin: identical data, labelled fixture-derived."""
+    return load_twin().model_copy(update={"source": "fixture"})
 
 
 def paycheck(day: str, amount: float = 720.0) -> dict:
@@ -91,12 +97,12 @@ def use_nessie(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_a_fresh_clone_gets_the_fixture() -> None:
-    assert load_source_twin() == load_twin()
+    assert load_source_twin() == fixture_twin()
 
 
 def test_a_key_alone_does_not_switch_sources(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NESSIE_API_KEY", "secret-key")
-    assert load_source_twin() == load_twin()
+    assert load_source_twin() == fixture_twin()
 
 
 def test_nessie_is_used_when_asked_for(monkeypatch: pytest.MonkeyPatch, seeded) -> None:
@@ -104,6 +110,18 @@ def test_nessie_is_used_when_asked_for(monkeypatch: pytest.MonkeyPatch, seeded) 
     twin = load_source_twin()
     assert twin != load_twin()
     assert [a.id for a in twin.accounts] == ["nessie_checking", "nessie_savings"]
+
+
+def test_a_fixture_twin_says_it_is_a_fixture() -> None:
+    """A live backend with no Nessie key serves fixture data and must admit it."""
+    assert load_source_twin().source == "fixture"
+
+
+def test_a_nessie_twin_says_it_came_from_nessie(
+    monkeypatch: pytest.MonkeyPatch, seeded
+) -> None:
+    use_nessie(monkeypatch)
+    assert load_source_twin().source == "nessie"
 
 
 # --- What Nessie is allowed to decide ----------------------------------------
@@ -160,7 +178,7 @@ def test_an_outage_falls_back_to_the_fixture(
     )
 
     with caplog.at_level("WARNING"):
-        assert load_source_twin() == load_twin()
+        assert load_source_twin() == fixture_twin()
     assert "Falling back" in caplog.text
 
 
@@ -173,7 +191,18 @@ def test_a_bad_key_falls_back_rather_than_inventing_a_broke_alex(
     monkeypatch.setattr(
         twin_source, "fetch_accounts", lambda config: nessie_client.fetch_accounts(config, transport)
     )
-    assert load_source_twin() == load_twin()
+    assert load_source_twin() == fixture_twin()
+
+
+def test_the_fallback_reports_the_fixture_not_nessie(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The label follows the data: asking for Nessie and getting the fixture says fixture."""
+    use_nessie(monkeypatch)
+
+    def down(config: NessieConfig) -> list:
+        raise nessie_client.NessieError("sandbox down")
+
+    monkeypatch.setattr(twin_source, "fetch_accounts", down)
+    assert load_source_twin().source == "fixture"
 
 
 def test_a_failure_is_not_cached(monkeypatch: pytest.MonkeyPatch, seeded) -> None:
@@ -189,8 +218,8 @@ def test_a_failure_is_not_cached(monkeypatch: pytest.MonkeyPatch, seeded) -> Non
         return working(config)
 
     monkeypatch.setattr(twin_source, "fetch_accounts", flaky)
-    assert load_source_twin() == load_twin()
-    assert load_source_twin() != load_twin()
+    assert load_source_twin() == fixture_twin()
+    assert load_source_twin() != fixture_twin()
 
 
 # --- Caching ------------------------------------------------------------------
@@ -217,7 +246,7 @@ def test_reset_drops_the_cache(monkeypatch: pytest.MonkeyPatch, seeded) -> None:
     load_source_twin()
     twin_source.reset()
     monkeypatch.setenv("USE_MOCKS", "true")
-    assert load_source_twin() == load_twin()
+    assert load_source_twin() == fixture_twin()
 
 
 # --- The answers layered on top still work -----------------------------------

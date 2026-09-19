@@ -69,7 +69,7 @@ def test_as_of_can_be_given():
 def test_building_does_not_change_what_get_twin_serves():
     build()
     served = FinancialTwin.model_validate(client.get("/twin/alex").json())
-    assert served == load_twin()
+    assert served == load_twin().model_copy(update={"source": "fixture"})
 
 
 def test_unknown_user_is_not_found():

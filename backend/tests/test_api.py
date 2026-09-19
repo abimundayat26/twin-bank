@@ -36,7 +36,8 @@ def test_get_twin_alex_conforms_to_schema():
 def test_get_twin_alex_matches_fixture():
     response = client.get("/twin/alex")
     twin = FinancialTwin.model_validate(response.json())
-    assert twin == load_twin()
+    # A served twin carries its source; the data is the fixture's.
+    assert twin == load_twin().model_copy(update={"source": "fixture"})
 
 
 def test_get_twin_unknown_user_404():
