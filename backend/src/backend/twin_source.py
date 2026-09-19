@@ -1,4 +1,4 @@
-"""Where a twin's observed half comes from: the fixture, or Nessie.
+"""Where a twin's observed half comes from: the fixture, Nessie, or Databricks.
 
 One decision, in one place, so `twin_store` does not have to know a network
 exists. Everything it layers on top of the twin -- declared categories, the
@@ -14,6 +14,11 @@ Two rules shape this module:
   because an external API is unavailable" (CLAUDE.md). This mirrors the rule
   the frontend already follows in `lib/api.ts`.
 
+Databricks, when configured, wins over Nessie: pointing the backend at a twin
+the Databricks job built (`DATABRICKS_TWIN_PATH`) is the more specific ask. That
+twin was built elsewhere, so it is served as read, and recording its build was
+the job's business, not this module's.
+
 The twin is cached. `get_twin()` runs on every twin request and again inside
 `/simulate` and `/optimize`; without a cache each of those would be a fresh
 round trip to a rate-limited sandbox.
@@ -22,6 +27,8 @@ round trip to a rate-limited sandbox.
 import logging
 import time
 
+from backend.databricks_twin import DatabricksConfig, DatabricksError, fetch_twin
+from backend.databricks_twin import load_config as load_databricks_config
 from backend.fixtures import load_twin
 from backend.ingest.build import latest_transaction_date, rebuild
 from backend.ingest.normalize import normalize_all
@@ -58,6 +65,29 @@ def build_from_nessie(config: NessieConfig) -> FinancialTwin:
     return twin.model_copy(update={"source": "nessie"})
 
 
+def from_databricks(config: DatabricksConfig) -> FinancialTwin:
+    """The twin the Databricks job built, with our declared data.
+
+    The job rebuilt an uploaded copy of the twin on file, but anything fetched is
+    still fetched: identity, goals and constraints come from the fixture, as they
+    do for Nessie. Only the observed half and balances are taken from the file.
+    """
+    built = fetch_twin(config)
+    on_file = load_twin()
+    if built.user_id != on_file.user_id:
+        raise DatabricksError(
+            f"{config.twin_path} holds {built.user_id!r}'s twin, not {on_file.user_id!r}'s"
+        )
+    return built.model_copy(
+        update={
+            "display_name": on_file.display_name,
+            "goals": on_file.goals,
+            "constraints": on_file.constraints,
+            "source": "databricks",
+        }
+    )
+
+
 def from_fixture() -> FinancialTwin:
     """The fixture twin, labelled as fixture-derived.
 
@@ -70,22 +100,24 @@ def from_fixture() -> FinancialTwin:
 def load_source_twin() -> FinancialTwin:
     """The twin the rest of the app should work from.
 
-    Returns the fixture whenever Nessie is off, unconfigured or unreachable, so
-    the caller never has to handle a missing bank. Either way the twin carries
-    the source it came from, so the UI can say which one it is showing.
+    Returns the fixture whenever no source is configured or the configured one
+    is unreachable, so the caller never has to handle a missing bank. Either way
+    the twin carries the source it came from, so the UI can say which one it is
+    showing.
     """
     global _cached
 
+    databricks = load_databricks_config()
     config = load_config()
-    if config is None:
+    if databricks is None and config is None:
         return from_fixture()
 
     if _cached is not None and time.monotonic() - _cached[0] < CACHE_SECONDS:
         return _cached[1]
 
     try:
-        twin = build_from_nessie(config)
-    except NessieError as e:
+        twin = from_databricks(databricks) if databricks else build_from_nessie(config)
+    except (DatabricksError, NessieError) as e:
         # Loudly, and then carry on: a broken integration must not take the
         # demo down with it.
         logger.warning("Falling back to the fixture twin: %s", e)
@@ -93,7 +125,8 @@ def load_source_twin() -> FinancialTwin:
 
     _cached = (time.monotonic(), twin)
     # Once per build, not per request: a cache hit returned above.
-    log_twin_build(twin)
+    if databricks is None:
+        log_twin_build(twin)
     return twin
 
 
