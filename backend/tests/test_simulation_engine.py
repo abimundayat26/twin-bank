@@ -31,10 +31,10 @@ def twin():
 
 def test_baseline_ending_balance_matches_closed_form(twin):
     result = simulate_scenario(twin, [], HORIZON)
-    # 16 paychecks; rent x8, utilities x7, phone x8, subscriptions x7; 225 days of spending.
+    # 16 paychecks; rent x8, utilities x7, phone x8, subscriptions x7, mystery transfer x7; 224 days of spending.
     income = 16 * 720
-    bills = 8 * 650 + 7 * 60 + 8 * 40 + 7 * 25
-    spending = 260 / 14 * 225
+    bills = 8 * 650 + 7 * 60 + 8 * 40 + 7 * 25 + 7 * 75
+    spending = 260 / 14 * 224
     assert result.total_income == income
     assert result.ending_balance == pytest.approx(2840 + income - bills - spending, abs=0.01)
 
