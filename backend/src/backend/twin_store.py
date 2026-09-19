@@ -1,14 +1,17 @@
-"""In-memory user answers layered on top of the mock twin fixture.
+"""In-memory user answers layered on top of whichever twin is configured.
 
-Answers (declared obligation categories, the minimum checking balance, confirmed
-goals and emergency reserve) live in process memory and reset when the server restarts. Nothing here calculates money.
+Answers (declared obligation categories, the minimum checking balance,
+confirmed goals and emergency reserve) live in process memory and reset when
+the server restarts. Where the twin underneath them comes from -- the fixture
+or Nessie -- is `twin_source`'s decision, not this module's. Nothing here
+calculates money.
 """
 
 from datetime import timedelta
 
-from backend.fixtures import load_twin
 from backend.schemas import FinancialConstraint, FinancialTwin, Goal, ObligationCategory
 from backend.simulation.engine import MAX_HORIZON_DAYS
+from backend.twin_source import load_source_twin
 
 MINIMUM_BALANCE_ID = "con_minimum_checking"
 
@@ -28,8 +31,8 @@ class InvalidDeclaration(ValueError):
 
 
 def get_twin() -> FinancialTwin:
-    """The fixture twin with the user's answers applied."""
-    twin = load_twin()
+    """The twin from whichever source is configured, with the user's answers applied."""
+    twin = load_source_twin()
     obligations = [
         o.model_copy(update={"declared_category": declared_categories[o.id]})
         if o.id in declared_categories
@@ -55,7 +58,7 @@ def get_twin() -> FinancialTwin:
 
 
 def declare_category(obligation_id: str, category: ObligationCategory) -> FinancialTwin:
-    if obligation_id not in {o.id for o in load_twin().obligations}:
+    if obligation_id not in {o.id for o in get_twin().obligations}:
         raise UnknownObligation(obligation_id)
     declared_categories[obligation_id] = category
     return get_twin()
@@ -71,7 +74,7 @@ def set_goals(goals: list[Goal], constraints: list[FinancialConstraint]) -> Fina
     """Replace the goals and emergency reserve. A checking minimum in constraints is
     saved as the minimum checking balance; leaving it out keeps the current one."""
     global declared_goals, declared_reserves
-    as_of = load_twin().as_of
+    as_of = get_twin().as_of
     latest = as_of + timedelta(days=MAX_HORIZON_DAYS)
     if len({g.id for g in goals}) != len(goals):
         raise InvalidDeclaration("Goal ids must be unique")
