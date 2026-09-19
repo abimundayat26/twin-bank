@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -6,6 +6,7 @@ from backend.fixtures import load_twin
 from backend.schemas import Goal, SimulationEvent
 from backend.simulation.engine import (
     LOW_BALANCE_THRESHOLD,
+    MAX_HORIZON_DAYS,
     SimulationError,
     compare,
     monthly_due_dates,
@@ -179,3 +180,13 @@ def test_event_before_as_of_is_rejected(twin):
 def test_horizon_before_as_of_is_rejected(twin):
     with pytest.raises(SimulationError):
         compare(twin, [purchase(800)], date(2026, 9, 1))
+
+
+def test_horizon_at_the_cap_is_allowed(twin):
+    end = twin.as_of + timedelta(days=MAX_HORIZON_DAYS)
+    assert compare(twin, [purchase(800)], end).horizon_end == end
+
+
+def test_horizon_past_the_cap_is_rejected(twin):
+    with pytest.raises(SimulationError):
+        compare(twin, [purchase(800)], twin.as_of + timedelta(days=MAX_HORIZON_DAYS + 1))

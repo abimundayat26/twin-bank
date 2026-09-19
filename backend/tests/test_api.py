@@ -64,6 +64,12 @@ def test_simulate_unknown_account_422():
     assert client.post("/simulate", json={**LAPTOP_REQUEST, "events": [event]}).status_code == 422
 
 
+def test_simulate_horizon_too_long_422():
+    response = client.post("/simulate", json={**LAPTOP_REQUEST, "horizon_end": "2030-01-01"})
+    assert response.status_code == 422
+    assert "days after as_of" in response.json()["detail"]
+
+
 def test_simulate_unknown_user_404():
     assert client.post("/simulate", json={**LAPTOP_REQUEST, "user_id": "nobody"}).status_code == 404
 
