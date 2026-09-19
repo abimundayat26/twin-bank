@@ -22,7 +22,7 @@
     { "id": "obl_utilities", "name": "Utilities", "expected_amount": 60.0, "due_day": 15, "mandatory": true, "confidence": 0.9, "provenance": "observed" },
     { "id": "obl_phone", "name": "Phone plan", "expected_amount": 40.0, "due_day": 20, "mandatory": true, "confidence": 0.98, "provenance": "observed" },
     { "id": "obl_subscriptions", "name": "Streaming subscriptions", "expected_amount": 25.0, "due_day": 10, "mandatory": false, "confidence": 0.95, "provenance": "observed" },
-    { "id": "obl_mystery_transfer", "name": "Recurring $300 transfer (destination unclear — possibly savings or repayment)", "expected_amount": 300.0, "due_day": 5, "mandatory": false, "confidence": 0.55, "provenance": "observed" }
+    { "id": "obl_mystery_transfer", "name": "Recurring transfer of unclear purpose (destination unclear — possibly savings or repayment)", "expected_amount": 75.0, "due_day": 5, "mandatory": false, "confidence": 0.55, "provenance": "observed" }
   ],
   "variable_spending": [
     { "category": "groceries", "mean_14d": 150.0, "std_dev_14d": 40.0, "provenance": "observed" },

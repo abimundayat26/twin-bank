@@ -24,10 +24,10 @@ def test_twin_has_required_obligations():
 
 
 def test_twin_flags_ambiguous_recurring_transfer():
-    """The $300 transfer of unclear purpose should read as soft, not a hard bill."""
+    """The recurring transfer of unclear purpose should read as soft, not a hard bill."""
     obligations = {o.id: o for o in load_twin().obligations}
     transfer = obligations["obl_mystery_transfer"]
-    assert transfer.expected_amount == 300.0
+    assert transfer.expected_amount == 75.0
     assert transfer.mandatory is False
     assert transfer.confidence < 0.7
     assert transfer.provenance == "observed"
