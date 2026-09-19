@@ -32,14 +32,23 @@ export function PurchaseSimulator({
   const [amount, setAmount] = useState(DEFAULT_PURCHASE.amount);
   const [date, setDate] = useState(twin.as_of);
   const [accountId, setAccountId] = useState(
-    twin.accounts.find((a) => a.type === "checking")?.id ?? twin.accounts[0].id,
+    twin.accounts.find((a) => a.type === "checking")?.id ?? twin.accounts[0]?.id ?? "",
   );
 
   const parsedAmount = Number(amount);
   // ISO dates compare correctly as strings.
   const inHorizon = date >= twin.as_of && (!lastDate || date <= lastDate);
   const isValid =
-    description.trim().length > 0 && parsedAmount > 0 && date.length === 10 && inHorizon;
+    // A twin with no accounts has nothing to spend from, and the engine would
+    // reject the event anyway ("Unknown account_id ''").
+    twin.accounts.length > 0 &&
+    description.trim().length > 0 &&
+    // `Number("1e999")` is Infinity, which passes `> 0` and which JSON.stringify
+    // sends as `null`. The engine then rejects the whole request.
+    Number.isFinite(parsedAmount) &&
+    parsedAmount > 0 &&
+    date.length === 10 &&
+    inHorizon;
 
   function handleSubmit(formEvent: React.FormEvent) {
     formEvent.preventDefault();

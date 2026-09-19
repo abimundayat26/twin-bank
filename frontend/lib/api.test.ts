@@ -89,3 +89,26 @@ describe("when the backend is unreachable", () => {
     expect(minimums[0].amount).toBe(250);
   });
 });
+
+describe("when the backend accepts the connection but never answers", () => {
+  it("arms an abort signal on every request", async () => {
+    backendReplies(200, twin);
+    await getTwin("alex");
+    const init = vi.mocked(fetch).mock.calls[0][1];
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("falls back to a fixture instead of spinning forever", async () => {
+    // What `AbortSignal.timeout` makes `fetch` reject with once it fires.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new DOMException("signal timed out", "TimeoutError")),
+    );
+    await expect(getTwin("alex")).resolves.toEqual({ data: mockTwin, source: "fixture" });
+  });
+
+  it("still surfaces a real rejection, which a timeout must not mask", async () => {
+    backendReplies(404, { detail: "No twin for user 'nobody'" });
+    await expect(getTwin("nobody")).rejects.toBeInstanceOf(ApiError);
+  });
+});
