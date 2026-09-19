@@ -124,6 +124,21 @@ def test_a_nessie_twin_says_it_came_from_nessie(
     assert load_source_twin().source == "nessie"
 
 
+def test_a_fixture_twin_records_no_lineage() -> None:
+    """Nothing records where the pipeline ran yet, and absent must stay absent.
+
+    `frontend/SPEC.md` section 3.5 requires lineage to appear only when the
+    backend supplies it, so a twin that invented one would put a claim on the
+    Forecast & Data page that no run stands behind.
+    """
+    assert load_source_twin().lineage is None
+
+
+def test_a_nessie_twin_records_no_lineage(monkeypatch: pytest.MonkeyPatch, seeded) -> None:
+    use_nessie(monkeypatch)
+    assert load_source_twin().lineage is None
+
+
 # --- What Nessie is allowed to decide ----------------------------------------
 
 
