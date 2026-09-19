@@ -13,6 +13,8 @@ normalizer never upgrades a transfer into "savings" — what a transfer means is
 for the user to declare (SPEC section 2).
 """
 
+import re
+
 from backend.ingest.models import Category, RawTransaction, Transaction
 
 # Money in for these raw types, money out for everything else.
@@ -22,19 +24,34 @@ INFLOW_TYPES = frozenset({"deposit"})
 SETTLED_STATUSES = frozenset({"completed", "executed"})
 
 # Checked in description order: the first category with a matching keyword wins,
-# so put the specific ones first. Keywords are matched case-insensitively.
+# so put the specific ones first. Keywords match whole words, case-insensitively,
+# so "rent" does not match "current" or "parent"; list plural forms explicitly.
 CATEGORY_KEYWORDS: tuple[tuple[Category, tuple[str, ...]], ...] = (
-    ("income", ("payroll", "paycheck", "direct dep", "wages", "stipend")),
+    ("income", ("payroll", "paycheck", "direct dep", "direct deposit", "wages", "stipend")),
     ("rent", ("rent", "property mgmt", "leasing", "landlord")),
-    ("utilities", ("electric", "power", "water", "gas co", "utility", "internet")),
+    (
+        "utilities",
+        ("electric", "power", "water", "gas company", "natural gas", "utility", "utilities", "internet"),
+    ),
     ("phone", ("wireless", "mobile", "phone plan", "cellular")),
-    ("subscriptions", ("spotify", "netflix", "hulu", "subscription", "prime", "icloud")),
-    ("groceries", ("grocery", "market", "kroger", "aldi", "food lion", "trader", "supermarket")),
+    ("subscriptions", ("spotify", "netflix", "hulu", "subscription", "subscriptions", "prime", "icloud")),
+    (
+        "groceries",
+        ("grocery", "groceries", "market", "kroger", "aldi", "food lion", "trader", "supermarket"),
+    ),
     (
         "discretionary",
-        ("coffee", "cafe", "restaurant", "bar ", "doordash", "uber", "amazon", "steam", "cinema"),
+        (
+            "coffee", "cafe", "restaurant", "restaurants", "bar", "doordash", "uber", "amazon",
+            "steam", "cinema",
+        ),
     ),
     ("transfer", ("transfer", "xfer", "zelle", "venmo")),
+)
+
+KEYWORD_PATTERNS: tuple[tuple[Category, re.Pattern[str]], ...] = tuple(
+    (category, re.compile(r"\b(?:" + "|".join(map(re.escape, keywords)) + r")\b", re.IGNORECASE))
+    for category, keywords in CATEGORY_KEYWORDS
 )
 
 
@@ -44,9 +61,8 @@ def categorize(description: str, raw_type: str = "purchase") -> Category:
     Returns "other" rather than guessing when nothing matches: an unexplained
     line item is a fact about the data, and later stages are allowed to see it.
     """
-    haystack = description.lower()
-    for category, keywords in CATEGORY_KEYWORDS:
-        if any(keyword in haystack for keyword in keywords):
+    for category, pattern in KEYWORD_PATTERNS:
+        if pattern.search(description):
             return category
     if raw_type == "deposit":
         return "income"
