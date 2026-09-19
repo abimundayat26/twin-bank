@@ -106,6 +106,7 @@ class ScenarioAggregate:
     prob_low_balance: float
     prob_below_reserve: float
     prob_obligations_uncovered: float
+    prob_savings_sweep: float  # savings had to cover a mandatory bill checking could not
     prob_goal_met: float | None  # every evaluated goal met; None if no goal is evaluated
     goal_shortfall: float  # median total shortfall
     goals: list[GoalAggregate]
@@ -157,6 +158,7 @@ def aggregate(results: list[ScenarioResult]) -> ScenarioAggregate:
         prob_low_balance=sum(r.dropped_below_low for r in results) / n,
         prob_below_reserve=sum(r.reserve_violated for r in results) / n,
         prob_obligations_uncovered=sum(not r.obligations_covered for r in results) / n,
+        prob_savings_sweep=sum(bool(r.savings_sweeps) for r in results) / n,
         prob_goal_met=sum(r.goal_shortfall == 0 for r in results) / n if goals else None,
         goal_shortfall=round(statistics.median(r.goal_shortfall for r in results), 2),
         goals=goals,

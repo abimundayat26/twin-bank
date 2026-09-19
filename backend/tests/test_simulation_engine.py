@@ -97,14 +97,105 @@ def test_no_reserve_constraint_is_never_violated(twin):
 # --- Obligation coverage -------------------------------------------------------
 
 
-def test_purchase_that_empties_checking_leaves_rent_uncovered(twin):
-    # After the 9/25 paycheck, so only October rent is left uncovered.
+def test_purchase_that_empties_checking_makes_rent_come_out_of_savings(twin):
+    # After the 9/25 paycheck, so October rent is the first bill checking cannot cover.
     result = simulate_scenario(twin, [purchase(1300, on="2026-09-26")], HORIZON)
+    # Savings covers it, so the bill is paid -- but not silently.
+    assert result.obligations_covered
+    sweep = result.savings_sweeps[0]
+    assert sweep.obligation_id == "obl_rent"
+    assert sweep.due == date(2026, 10, 1)
+    assert sweep.amount > 0
+
+
+def test_rent_is_uncovered_only_when_savings_cannot_cover_it_either(twin):
+    drained = twin.model_copy(
+        update={"accounts": [a.model_copy(update={"balance": 0.0}) if a.type == "savings" else a
+                             for a in twin.accounts]}
+    )
+    result = simulate_scenario(drained, [purchase(1300, on="2026-09-26")], HORIZON)
     assert not result.obligations_covered
     first = result.uncovered_obligations[0]
     assert first.obligation_id == "obl_rent"
     assert first.due == date(2026, 10, 1)
     assert first.checking_after < 0
+
+
+def test_a_sweep_moves_money_without_creating_or_destroying_any(twin):
+    result = simulate_scenario(twin, [purchase(1300, on="2026-09-26")], HORIZON)
+    no_sweep_possible = twin.model_copy(
+        update={"accounts": [a for a in twin.accounts if a.type != "savings"]}
+    )
+    # Same total either way: a sweep relocates money, it does not conjure it. The
+    # savings account holds 1500 that the checking-only twin never had.
+    assert result.savings_sweeps
+    assert result.ending_balance == pytest.approx(
+        simulate_scenario(no_sweep_possible, [purchase(1300, on="2026-09-26")], HORIZON).ending_balance
+        + 1500,
+        abs=0.01,
+    )
+
+
+def test_a_twin_with_no_savings_account_still_reports_uncovered_bills(twin):
+    checking_only = twin.model_copy(
+        update={"accounts": [a for a in twin.accounts if a.type != "savings"]}
+    )
+    result = simulate_scenario(checking_only, [purchase(1300, on="2026-09-26")], HORIZON)
+    assert not result.obligations_covered
+    assert result.savings_sweeps == []
+
+
+def test_an_optional_charge_is_never_blamed_on_a_mandatory_bill(twin):
+    """Rent and an optional charge fall on the same day; only rent can be paid."""
+    rent = next(o for o in twin.obligations if o.id == "obl_rent")
+    optional = next(o for o in twin.obligations if o.id == "obl_subscriptions")
+    same_day = twin.model_copy(
+        update={
+            "obligations": [optional.model_copy(update={"due_day": 1}), rent],
+            "accounts": [a.model_copy(update={"balance": 655.0}) if a.type == "checking"
+                         else a.model_copy(update={"balance": 0.0}) for a in twin.accounts],
+            "income": [],
+            "variable_spending": [],
+        }
+    )
+    result = simulate_scenario(same_day, [], date(2026, 10, 2))
+    # The optional $25 is what pushes checking negative, and it is charged after rent.
+    assert result.min_checking < 0
+    assert result.obligations_covered
+    assert result.savings_sweeps == []
+
+
+def test_two_mandatory_bills_on_one_day_blame_only_the_one_that_fails(twin):
+    rent = next(o for o in twin.obligations if o.id == "obl_rent")
+    phone = next(o for o in twin.obligations if o.id == "obl_phone")
+    same_day = twin.model_copy(
+        update={
+            "obligations": [rent, phone.model_copy(update={"due_day": 1})],
+            "accounts": [a.model_copy(update={"balance": 660.0}) if a.type == "checking"
+                         else a.model_copy(update={"balance": 0.0}) for a in twin.accounts],
+            "income": [],
+            "variable_spending": [],
+        }
+    )
+    result = simulate_scenario(same_day, [], date(2026, 10, 2))
+    # $660 pays the $650 rent; the $40 phone bill is the one that cannot be paid.
+    assert [u.obligation_id for u in result.uncovered_obligations] == ["obl_phone"]
+    assert result.uncovered_obligations[0].checking_after == pytest.approx(-30.0)
+
+
+def test_a_declared_savings_transfer_never_sweeps_from_savings(twin):
+    declared = twin.model_copy(
+        update={
+            "obligations": [
+                o.model_copy(update={"declared_category": "savings_transfer"})
+                if o.id == "obl_mystery_transfer"
+                else o
+                for o in twin.obligations
+            ]
+        }
+    )
+    result = simulate_scenario(declared, [purchase(1300, on="2026-09-26")], HORIZON)
+    assert all(s.obligation_id != "obl_mystery_transfer" for s in result.savings_sweeps)
 
 
 def test_purchase_from_savings_does_not_affect_checking_coverage(twin):
