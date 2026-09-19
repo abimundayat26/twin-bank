@@ -64,3 +64,10 @@ def test_simulate_unknown_user_404():
 def test_simulate_rejects_invalid_request():
     bad = {**LAPTOP_REQUEST, "events": []}
     assert client.post("/simulate", json=bad).status_code == 422
+
+
+def test_simulate_returns_monte_carlo_probabilities():
+    result = SimulationResponse.model_validate(client.post("/simulate", json=LAPTOP_REQUEST).json())
+    assert result.counterfactual.prob_low_balance > result.baseline.prob_low_balance
+    assert 0 < result.counterfactual.prob_below_reserve < 1
+    assert "simulated futures" in result.summary
