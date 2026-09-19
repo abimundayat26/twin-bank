@@ -41,6 +41,24 @@ def test_simulate_conforms_to_schema():
     assert response.status_code == 200
     result = SimulationResponse.model_validate(response.json())
     assert result.counterfactual.ending_balance < result.baseline.ending_balance
+    assert result.is_mock is False
+
+
+def test_simulate_laptop_shows_goal_shortfall():
+    result = SimulationResponse.model_validate(client.post("/simulate", json=LAPTOP_REQUEST).json())
+    assert result.baseline.goal_shortfall == 0
+    assert result.counterfactual.goal_shortfall > 0
+    assert result.summary
+    assert result.drivers[0].impact_amount == -800
+
+
+def test_simulate_unknown_account_422():
+    event = {**LAPTOP_REQUEST["events"][0], "account_id": "acc_nope"}
+    assert client.post("/simulate", json={**LAPTOP_REQUEST, "events": [event]}).status_code == 422
+
+
+def test_simulate_unknown_user_404():
+    assert client.post("/simulate", json={**LAPTOP_REQUEST, "user_id": "nobody"}).status_code == 404
 
 
 def test_simulate_rejects_invalid_request():
