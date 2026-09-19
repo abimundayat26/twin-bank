@@ -36,6 +36,13 @@ export const signedMoney = (value: number) =>
 
 export const percent = (probability: number) => `${Math.round(probability * 100)}%`;
 
+/** Share of simulated futures; never rounds a rare outcome to 0% or a likely one to 100%. */
+export function chance(probability: number): string {
+  if (probability > 0 && probability < 0.01) return "<1%";
+  if (probability > 0.99 && probability < 1) return ">99%";
+  return percent(probability);
+}
+
 /** ISO dates are parsed as UTC so the rendered day never shifts by timezone. */
 export const longDate = (iso: string) => LONG_DATE.format(new Date(`${iso}T00:00:00Z`));
 

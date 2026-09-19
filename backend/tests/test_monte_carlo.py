@@ -173,3 +173,14 @@ def test_sampled_daily_spending_is_never_negative(twin):
     draws = sample_draws(volatile, HORIZON, random.Random(0))
     assert len(draws.daily_spending) == (HORIZON - twin.as_of).days
     assert all(x >= 0 for x in draws.daily_spending.values())
+
+
+def test_response_carries_monte_carlo_fields(twin):
+    request = SimulationRequest(user_id="alex", events=[purchase(800)])
+    response = run_simulation(twin, request, n_simulations=200, seed=4)
+    mc = run_monte_carlo(twin, [purchase(800)], n_simulations=200, seed=4)
+    assert response.num_simulations == 200
+    for metrics, agg in [(response.baseline, mc.baseline), (response.counterfactual, mc.counterfactual)]:
+        assert metrics.prob_goal_met == agg.prob_goal_met
+        assert metrics.prob_obligations_uncovered == agg.prob_obligations_uncovered
+        assert metrics.obligations_covered == (agg.prob_obligations_uncovered == 0)

@@ -7,7 +7,7 @@
  * no thresholds, no invented risk values.
  */
 
-import { money, moneyExact, percent, longDate, signedMoney } from "@/lib/format";
+import { chance, money, moneyExact, longDate, signedMoney } from "@/lib/format";
 import type {
   FinancialConstraint,
   Goal,
@@ -29,17 +29,30 @@ interface MetricRow {
   worse: (baseline: ScenarioMetrics, counterfactual: ScenarioMetrics) => boolean;
 }
 
-function buildRows(reserve?: FinancialConstraint, goal?: Goal): MetricRow[] {
+/** Percentage-point change, e.g. "+59 pts". */
+function pointsDelta(baseline: number, counterfactual: number): string {
+  const points = Math.round((counterfactual - baseline) * 100);
+  return `${points > 0 ? "+" : ""}${points} pts`;
+}
+
+function buildRows(
+  simulations: number | null | undefined,
+  reserve?: FinancialConstraint,
+  goal?: Goal,
+): MetricRow[] {
+  // Monte Carlo results report balances as medians; mock results omit the count.
   return [
     {
-      label: "Ending balance",
-      caption: "At the end of the horizon",
+      label: simulations ? "Median ending balance" : "Ending balance",
+      caption: simulations
+        ? `At the end of the horizon, across ${simulations.toLocaleString("en-US")} simulated futures`
+        : "At the end of the horizon",
       render: (m) => moneyExact(m.ending_balance),
       delta: (b, c) => signedMoney(c.ending_balance - b.ending_balance),
       worse: (b, c) => c.ending_balance < b.ending_balance,
     },
     {
-      label: "Lowest balance along the way",
+      label: simulations ? "Median lowest balance along the way" : "Lowest balance along the way",
       caption: reserve ? `Emergency reserve is ${money(reserve.amount)}` : undefined,
       render: (m) => moneyExact(m.min_balance),
       delta: (b, c) => signedMoney(c.min_balance - b.min_balance),
@@ -47,34 +60,47 @@ function buildRows(reserve?: FinancialConstraint, goal?: Goal): MetricRow[] {
     },
     {
       label: "Chance of a low balance",
-      render: (m) => percent(m.prob_low_balance),
-      delta: (b, c) =>
-        `${c.prob_low_balance > b.prob_low_balance ? "+" : ""}${Math.round(
-          (c.prob_low_balance - b.prob_low_balance) * 100,
-        )} pts`,
+      render: (m) => chance(m.prob_low_balance),
+      delta: (b, c) => pointsDelta(b.prob_low_balance, c.prob_low_balance),
       worse: (b, c) => c.prob_low_balance > b.prob_low_balance,
     },
     {
       label: "Chance of dipping into the emergency reserve",
       caption: reserve?.description,
-      render: (m) => percent(m.prob_below_reserve),
-      delta: (b, c) =>
-        `${c.prob_below_reserve > b.prob_below_reserve ? "+" : ""}${Math.round(
-          (c.prob_below_reserve - b.prob_below_reserve) * 100,
-        )} pts`,
+      render: (m) => chance(m.prob_below_reserve),
+      delta: (b, c) => pointsDelta(b.prob_below_reserve, c.prob_below_reserve),
       worse: (b, c) => c.prob_below_reserve > b.prob_below_reserve,
     },
     {
       label: goal ? `${goal.name} goal` : "Savings goal",
       caption: goal ? `${money(goal.target_amount)} by ${longDate(goal.deadline)}` : undefined,
-      render: (m) => (m.goal_shortfall === 0 ? "On track" : `${money(m.goal_shortfall)} short`),
-      worse: (b, c) => c.goal_shortfall > b.goal_shortfall,
+      render: (m) =>
+        m.prob_goal_met != null
+          ? `Met in ${chance(m.prob_goal_met)} of futures`
+          : m.goal_shortfall === 0
+            ? "On track"
+            : `${money(m.goal_shortfall)} short`,
+      delta: (b, c) =>
+        b.prob_goal_met != null && c.prob_goal_met != null
+          ? pointsDelta(b.prob_goal_met, c.prob_goal_met)
+          : null,
+      worse: (b, c) =>
+        b.prob_goal_met != null && c.prob_goal_met != null
+          ? c.prob_goal_met < b.prob_goal_met
+          : c.goal_shortfall > b.goal_shortfall,
     },
     {
       label: "Upcoming obligations covered",
       caption: "Every mandatory bill in the horizon",
-      render: (m) => (m.obligations_covered ? "Yes" : "No"),
-      worse: (b, c) => b.obligations_covered && !c.obligations_covered,
+      render: (m) => {
+        const missed = m.prob_obligations_uncovered;
+        if (missed == null) return m.obligations_covered ? "Yes" : "No";
+        return missed === 0 ? "In every future" : `Missed in ${chance(missed)} of futures`;
+      },
+      worse: (b, c) =>
+        b.prob_obligations_uncovered != null && c.prob_obligations_uncovered != null
+          ? c.prob_obligations_uncovered > b.prob_obligations_uncovered
+          : b.obligations_covered && !c.obligations_covered,
     },
   ];
 }
@@ -95,7 +121,7 @@ export function ScenarioComparison({
 }) {
   const { baseline, counterfactual } = simulation;
   const purchase = simulation.request.events[0];
-  const rows = buildRows(reserve, goal);
+  const rows = buildRows(simulation.num_simulations, reserve, goal);
 
   return (
     <Card
