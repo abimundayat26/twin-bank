@@ -14,7 +14,6 @@ from backend.schemas import (
 )
 from backend.simulation.engine import expected_daily_spending, low_balance_threshold
 from backend.simulation.monte_carlo import (
-    INCOME_CLAMP_SDS,
     SPENDING_BLOCK_DAYS,
     MonteCarloComparison,
 )
@@ -125,7 +124,7 @@ def seasonal_timing_driver(
 
     busy = expected > average
     shifted = [
-        f"{category.replace('_', ' ')} {e / a:.2f}×"
+        f"{category.replace('_', ' ')}: {e / a:.2f}× usual"
         for category, (e, a) in by_category.items()
         if a > 0 and abs(e / a - 1) >= MIN_SEASONAL_EFFECT and (e > a) == busy
     ]
@@ -137,7 +136,7 @@ def seasonal_timing_driver(
         detail=f"The {first.description.lower()} on {first.date} lands at the start of a "
         f"{'busy' if busy else 'quiet'} stretch: everyday spending through {end} is expected to be "
         f"{money(expected)}, versus {money(average)} in an average stretch of the year "
-        f"({', '.join(shifted)} their usual). This happens with or without the purchase.",
+        f"({'; '.join(shifted)}). This happens with or without the purchase.",
     )
 
 
@@ -254,8 +253,9 @@ def seasonal_assumption(category: str, profile: SeasonalProfile) -> str | None:
         return None
     high, low = max(levels), min(levels)
     return (
-        f"{category.replace('_', ' ').capitalize()} spending is highest in {join_months(levels[high])} "
-        f"({high:.2f}× an average fortnight) and lowest in {join_months(levels[low])} ({low:.2f}×)."
+        f"{category.replace('_', ' ').capitalize()} spending is usually highest in "
+        f"{join_months(levels[high])} ({high:.2f}× its typical two-week amount) and lowest in "
+        f"{join_months(levels[low])} ({low:.2f}×)."
     )
 
 
@@ -265,13 +265,14 @@ def forecast_assumptions(twin: FinancialTwin) -> list[str]:
     forecast = twin.forecast
     if forecast is not None:
         weighting = (
-            f"recent fortnights count more, and one {forecast.half_life_days:g} days older counts half as much."
+            f"Recent periods count more; a period {forecast.half_life_days:g} days older gets half "
+            "the weight."
             if forecast.half_life_days is not None
-            else "every fortnight counts equally."
+            else "All periods count equally."
         )
         assumptions.append(
-            f"Spending figures are fitted to {forecast.observed_fortnights} fortnights of observed "
-            f"spending, {forecast.window_start} to {forecast.as_of}; {weighting}"
+            f"Spending estimates use {forecast.observed_fortnights} two-week periods observed from "
+            f"{forecast.window_start} to {forecast.as_of}. {weighting}"
         )
     seasonal = [
         text
@@ -280,9 +281,9 @@ def forecast_assumptions(twin: FinancialTwin) -> list[str]:
     ]
     if seasonal:
         assumptions.append(
-            f"A category with a seasonal pattern has its average and spread scaled for each "
-            f"{SPENDING_BLOCK_DAYS}-day period by the months that period covers (a period spanning two "
-            "months blends them); over a full year it averages to the twin's figure."
+            "Seasonal categories adjust their typical spending and likely range for the time of year. "
+            "A two-week period that crosses months blends both months, while the yearly average stays "
+            "unchanged."
         )
         assumptions.extend(seasonal)
         if len(seasonal) < len(twin.variable_spending):
@@ -292,16 +293,15 @@ def forecast_assumptions(twin: FinancialTwin) -> list[str]:
 
 def build_assumptions(twin: FinancialTwin, mc: MonteCarloComparison) -> list[str]:
     assumptions = [
-        f"Monte Carlo over {mc.n_simulations:,} simulated futures. In each future, the baseline and the "
-        "purchase scenario share the same sampled income and spending.",
-        "Balances are medians across simulated futures. Probabilities are the share of futures "
-        "in which the event happens.",
-        "Each paycheck is drawn independently from a normal distribution around its expected amount, "
-        f"using the twin's per-payment uncertainty, kept within {INCOME_CLAMP_SDS:g} standard "
-        "deviations and never below $0.",
-        f"Spending in each category is drawn independently for every {SPENDING_BLOCK_DAYS}-day period "
-        "from a normal distribution using the twin's mean and standard deviation, spread evenly over "
-        "the period and never below $0 (which raises average spending slightly).",
+        f"We compared {mc.n_simulations:,} possible futures. Each future uses the same paycheck and "
+        "spending changes for the baseline and purchase, so the purchase is the only difference.",
+        "Balances show the middle result across those futures. Probabilities show how often an event "
+        "happened.",
+        "Paychecks vary around their expected amounts using the uncertainty recorded in the twin. "
+        "Extreme values are capped, and paychecks cannot be negative.",
+        "Each spending category varies independently every two weeks using its expected amount and "
+        "uncertainty. The two-week total is spread evenly across its days; values below $0 are treated "
+        "as $0, which nudges average spending upward.",
         *forecast_assumptions(twin),
         "Bill amounts, bill due dates, and paycheck dates are fixed; bill confidence is not used.",
         "A mandatory bill checking cannot cover is paid by moving money from savings, even if "
