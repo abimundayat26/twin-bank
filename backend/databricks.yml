@@ -1,0 +1,60 @@
+# Databricks Asset Bundle: runs the batch twin build (backend.build_job) as a
+# serverless Databricks job. Phase 6: the processing moves; the pipeline does not.
+#
+# Deploy and run with your own Databricks CLI profile. No host or token lives
+# here; the CLI reads them from your profile or environment.
+#
+#   cd backend
+#   databricks bundle deploy
+#   databricks bundle run twin_build
+#
+# Before the first run, upload the job's two inputs to the volume:
+#   fixtures/transactions.json  -> ${var.volume}/transactions.json
+#   fixtures/twin.json          -> ${var.volume}/twin_on_file.json
+# The built twin is written to ${var.volume}/twin.json.
+#
+# Tracking stays off in the job (TRACK_TWIN_BUILDS is unset), the same default
+# as everywhere else.
+
+bundle:
+  name: twinbank
+
+variables:
+  volume:
+    description: Unity Catalog volume path for the job's input and output files.
+    default: /Volumes/main/twinbank/data
+
+artifacts:
+  backend:
+    type: whl
+    build: uv build --wheel
+    path: .
+
+resources:
+  jobs:
+    twin_build:
+      name: twin-build
+      tasks:
+        - task_key: build_twin
+          environment_key: backend
+          python_wheel_task:
+            package_name: backend
+            entry_point: twin-build-job
+            parameters:
+              - --transactions
+              - ${var.volume}/transactions.json
+              - --twin
+              - ${var.volume}/twin_on_file.json
+              - --out
+              - ${var.volume}/twin.json
+      environments:
+        - environment_key: backend
+          spec:
+            environment_version: "2"
+            dependencies:
+              - ./dist/*.whl
+
+targets:
+  dev:
+    mode: development
+    default: true
