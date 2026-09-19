@@ -11,6 +11,35 @@ export type Provenance = "observed" | "declared";
 
 export type IsoDate = string;
 
+/**
+ * What the money was for. "transfer" means money moved to an unknown
+ * destination: nothing may guess that a transfer is savings or a repayment.
+ */
+export type Category =
+  | "income"
+  | "rent"
+  | "utilities"
+  | "phone"
+  | "subscriptions"
+  | "groceries"
+  | "discretionary"
+  | "transfer"
+  | "other";
+
+// --- Transactions -----------------------------------------------------------
+
+/** One normalized transaction: signed, categorized, ready to analyze. */
+export interface Transaction {
+  id: string;
+  account_id: string;
+  date: IsoDate;
+  /** Signed: positive is money in, negative is money out. */
+  amount: number;
+  description: string;
+  category: Category;
+  provenance: "observed";
+}
+
 // --- Financial Twin ---------------------------------------------------------
 
 export interface Account {
@@ -108,6 +137,18 @@ export interface ClarificationResponseRequest {
 
 export interface MinimumBalanceRequest {
   amount: number;
+}
+
+/**
+ * Rebuild a twin's observed structure from the user's transaction history.
+ * Goals and constraints are declared, so they are carried over, never derived.
+ */
+export interface TwinBuildRequest {
+  user_id: string;
+  /** Defaults to the date of the latest transaction. */
+  as_of?: IsoDate | null;
+  /** Current balances. Defaults to the accounts on file. */
+  accounts?: Account[] | null;
 }
 
 // --- Simulation -------------------------------------------------------------

@@ -1,8 +1,11 @@
-"""Transaction types for the ingest pipeline.
+"""The raw, per-provider end of the ingest pipeline.
 
-These are deliberately *not* in `schemas.py` yet. Nothing outside this package
-consumes them, and CLAUDE.md asks for shared-contract changes in their own small
-PR; promote `Transaction` when `POST /twin/build` puts it on the API surface.
+`Transaction` and `Category` now live in `schemas.py`: `POST /twin/build` takes
+transactions, so they are a shared contract. They are re-exported here so that
+`backend.ingest` still describes the whole pipeline in one import.
+
+`RawTransaction` stays here. It is the shape one source feed happens to use, not
+something other workstreams consume.
 
 Conventions match the rest of the project: money is USD dollars, dates are ISO
 8601. On a normalized `Transaction` the amount is *signed* — positive is money
@@ -14,20 +17,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-# What the money was for. "transfer" means money moved between accounts or to an
-# unknown destination: the normalizer must not guess that a transfer is savings,
-# a loan repayment or anything else (SPEC section 2).
-Category = Literal[
-    "income",
-    "rent",
-    "utilities",
-    "phone",
-    "subscriptions",
-    "groceries",
-    "discretionary",
-    "transfer",
-    "other",
-]
+from backend.schemas import Category, Transaction
+
+__all__ = ["Category", "RawTransaction", "RawType", "Transaction"]
 
 # Nessie's vocabulary for which way the money moved.
 RawType = Literal["deposit", "withdrawal", "purchase", "transfer"]
@@ -51,15 +43,3 @@ class RawTransaction(BaseModel):
     status: str = "completed"
 
     model_config = {"populate_by_name": True}
-
-
-class Transaction(BaseModel):
-    """One normalized transaction: signed, categorized, ready to analyze."""
-
-    id: str
-    account_id: str
-    date: date
-    amount: float = Field(description="Signed: positive is money in, negative is money out.")
-    description: str
-    category: Category
-    provenance: Literal["observed"] = "observed"
