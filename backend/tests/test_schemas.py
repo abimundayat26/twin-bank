@@ -7,14 +7,18 @@ from backend.schemas import (
     DeclaredGoalsRequest,
     FinancialConstraint,
     FinancialObligation,
+    FinancialTwin,
+    ForecastMetadata,
     GoalCompileRequest,
     GoalCompileResponse,
     MinimumBalanceRequest,
     OptimizationRequest,
     OptimizationResponse,
     ScenarioMetrics,
+    SeasonalProfile,
     SimulationResponse,
     SpendingAdjustment,
+    VariableSpendingDistribution,
 )
 from backend.simulation.engine import reserve_amount
 
@@ -255,3 +259,92 @@ def test_declared_goals_request_defaults_to_no_constraints():
     twin = load_twin()
     request = DeclaredGoalsRequest(goals=twin.goals, constraints=twin.constraints)
     assert request.goals == twin.goals
+
+
+# --- Forecast ----------------------------------------------------------------
+
+# A term-time shape: quiet over the summer, busiest in August and December.
+TERM_FACTORS = {
+    1: 1.0, 2: 0.95, 3: 1.0, 4: 0.95, 5: 0.9, 6: 0.8,
+    7: 0.8, 8: 1.3, 9: 1.05, 10: 1.05, 11: 1.0, 12: 1.2,
+}
+
+FORECAST = {
+    "method": "seasonal_ewma",
+    "as_of": "2026-09-19",
+    "window_start": "2025-09-20",
+    "observed_fortnights": 26,
+    "half_life_days": 90.0,
+}
+
+
+def test_seasonal_profile_accepts_twelve_mean_preserving_factors():
+    profile = SeasonalProfile(factors=TERM_FACTORS)
+    assert sum(profile.factors.values()) / 12 == pytest.approx(1.0)
+    assert profile.factors[8] == pytest.approx(1.3)
+
+
+def test_seasonal_profile_rejects_a_missing_month():
+    with pytest.raises(ValidationError):
+        SeasonalProfile(factors={m: f for m, f in TERM_FACTORS.items() if m != 7})
+
+
+def test_seasonal_profile_rejects_a_negative_factor():
+    with pytest.raises(ValidationError):
+        SeasonalProfile(factors={**TERM_FACTORS, 6: -0.8})
+
+
+def test_seasonal_profile_rejects_factors_that_do_not_average_one():
+    # Every month 30% busier than the average month is a contradiction: it would
+    # mean mean_14d no longer describes the average fortnight.
+    with pytest.raises(ValidationError):
+        SeasonalProfile(factors={m: f * 1.3 for m, f in TERM_FACTORS.items()})
+
+
+def test_spending_distribution_without_a_seasonal_profile_is_valid():
+    spending = VariableSpendingDistribution(category="groceries", mean_14d=150, std_dev_14d=40)
+    assert spending.seasonal is None
+    assert all(s.seasonal is None for s in load_twin().variable_spending)
+
+
+def test_seasonal_profile_round_trips_through_json_string_keys():
+    spending = VariableSpendingDistribution(
+        category="groceries", mean_14d=150, std_dev_14d=40,
+        seasonal=SeasonalProfile(factors=TERM_FACTORS),
+    )
+    assert spending.model_dump(mode="json")["seasonal"]["factors"]["8"] == pytest.approx(1.3)
+    restored = VariableSpendingDistribution.model_validate_json(spending.model_dump_json())
+    assert restored == spending
+
+
+def test_forecast_metadata_round_trips():
+    forecast = ForecastMetadata.model_validate(FORECAST)
+    assert forecast.observed_fortnights == 26
+    assert ForecastMetadata.model_validate_json(forecast.model_dump_json()) == forecast
+
+
+def test_forecast_metadata_rejects_an_unknown_method():
+    with pytest.raises(ValidationError):
+        ForecastMetadata.model_validate({**FORECAST, "method": "crystal_ball"})
+
+
+@pytest.mark.parametrize(
+    "bad", [{"observed_fortnights": -1}, {"half_life_days": 0}, {"half_life_days": -30.0}]
+)
+def test_forecast_metadata_rejects_impossible_windows(bad):
+    with pytest.raises(ValidationError):
+        ForecastMetadata.model_validate({**FORECAST, **bad})
+
+
+def test_flat_mean_forecast_needs_no_half_life():
+    forecast = ForecastMetadata.model_validate(
+        {**FORECAST, "method": "flat_mean", "half_life_days": None}
+    )
+    assert forecast.half_life_days is None
+
+
+def test_twin_forecast_is_optional_and_unset_on_the_fixture():
+    twin = load_twin()
+    assert twin.forecast is None
+    carried = twin.model_copy(update={"forecast": ForecastMetadata.model_validate(FORECAST)})
+    assert FinancialTwin.model_validate_json(carried.model_dump_json()) == carried

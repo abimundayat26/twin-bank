@@ -114,11 +114,47 @@ class FinancialObligation(BaseModel):
         return candidates
 
 
+class SeasonalProfile(BaseModel):
+    """How a category's spending moves around the year.
+
+    `factors` maps calendar month (1-12) to a multiplier on both `mean_14d` and
+    `std_dev_14d`: a busy month is proportionally more variable, not just larger.
+
+    The factors are mean-preserving — the twelve average to 1.0 — so `mean_14d`
+    still means the annual-average fortnight. Attaching a profile therefore moves
+    nothing that reads `mean_14d` today; it only says how that average is spread
+    across the year.
+
+    JSON serializes the int keys as strings ("1".."12"); parsing coerces them back.
+    """
+
+    factors: dict[int, float] = Field(
+        description="Calendar month (1-12) to a multiplier on mean_14d and std_dev_14d."
+    )
+
+    @field_validator("factors")
+    @classmethod
+    def check_factors(cls, factors: dict[int, float]) -> dict[int, float]:
+        if set(factors) != set(range(1, 13)):
+            raise ValueError("seasonal factors must cover every calendar month 1-12 exactly once")
+        if any(factor < 0 for factor in factors.values()):
+            raise ValueError("seasonal factors must not be negative")
+        mean = sum(factors.values()) / 12
+        if abs(mean - 1) > 0.01:
+            raise ValueError("seasonal factors must average 1.0, so that mean_14d is preserved")
+        return factors
+
+
 class VariableSpendingDistribution(BaseModel):
     category: str
     mean_14d: float = Field(ge=0)
     std_dev_14d: float = Field(ge=0)
     provenance: Provenance = "observed"
+    seasonal: SeasonalProfile | None = Field(
+        default=None,
+        description="Per-month shape of this category's spending. None means the mean and "
+        "spread are treated as flat across the year.",
+    )
 
 
 class Goal(BaseModel):
@@ -140,6 +176,28 @@ class FinancialConstraint(BaseModel):
     provenance: Literal["declared"] = "declared"
 
 
+class ForecastMetadata(BaseModel):
+    """Where the twin's spending and income figures came from.
+
+    Describes the estimate, not the future: which method produced the numbers on
+    this twin, over what window, and how heavily it weighted recent fortnights.
+    """
+
+    method: Literal["flat_mean", "seasonal_ewma"] = Field(
+        description="flat_mean: every observed fortnight weighted equally, no seasonality. "
+        "seasonal_ewma: recency-weighted, with a per-month seasonal profile."
+    )
+    as_of: date = Field(description="Last day of observed data behind the estimate.")
+    window_start: date = Field(description="First day of observed data behind the estimate.")
+    observed_fortnights: int = Field(ge=0, description="14-day blocks the estimate is fitted to.")
+    half_life_days: float | None = Field(
+        default=None,
+        gt=0,
+        description="Days after which an observation carries half the weight. "
+        "None when the method weights every observation equally.",
+    )
+
+
 class FinancialTwin(BaseModel):
     user_id: str
     display_name: str
@@ -150,6 +208,11 @@ class FinancialTwin(BaseModel):
     variable_spending: list[VariableSpendingDistribution]
     goals: list[Goal]
     constraints: list[FinancialConstraint]
+    forecast: ForecastMetadata | None = Field(
+        default=None,
+        description="How the observed figures above were estimated. None when they were "
+        "written by hand or taken as flat averages without recording the method.",
+    )
 
     @computed_field
     @property
