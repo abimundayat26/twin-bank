@@ -15,6 +15,7 @@ from backend.schemas import (
 )
 from backend.simulation import SimulationError
 from backend.simulation.engine import income_dates, resolve_horizon_end
+from backend.simulation.explain import build_optimization_summary
 from backend.simulation.optimize import (
     MAX_DELAY_PAYDAYS,
     adjusted_twin,
@@ -195,6 +196,46 @@ def test_purchase_is_not_blamed_for_a_limit_already_broken_without_it(twin):
     assert result.recommended_id is not None
     assert "Even without the purchase" in result.summary
     assert "None of the" not in result.summary
+
+
+def test_paying_from_savings_breaks_a_limit_when_savings_already_covered_rent(twin):
+    # No income and empty checking: October rent comes out of savings, so by 10-02
+    # savings can no longer cover the $800 laptop even though it could on the start date.
+    accounts = [a.model_copy(update={"balance": 0.0 if a.type == "checking" else 900.0})
+                for a in twin.accounts]
+    broke = twin.model_copy(update={"accounts": accounts, "income": []})
+    result = optimize(broke, laptop(day=date(2026, 10, 2)))
+    from_savings = next(c for c in result.candidates if c.kind == "from_savings")
+    assert not from_savings.meets_constraints
+    assert "Savings would have to go below $0" in from_savings.violations[0]
+
+
+def buy_now_summary(twin, other_reserve_risk: float) -> str:
+    result = optimize(twin)
+    by_kind = {c.kind: c for c in result.candidates}
+    buy_now = by_kind["buy_now"].model_copy(update={
+        "meets_constraints": True, "violations": [],
+        "metrics": by_kind["buy_now"].metrics.model_copy(
+            update={"prob_goal_met": 0.9, "prob_below_reserve": 0.04}),
+    })
+    wait = by_kind["delay"].model_copy(update={
+        "meets_constraints": True, "violations": [],
+        "metrics": by_kind["delay"].metrics.model_copy(
+            update={"prob_goal_met": 0.85, "prob_below_reserve": other_reserve_risk}),
+    })
+    return build_optimization_summary(twin, result.baseline, buy_now, buy_now, [buy_now, wait], [])
+
+
+def test_buy_now_summary_names_a_safer_option_with_a_lower_goal_chance(twin):
+    summary = buy_now_summary(twin, other_reserve_risk=0.01)
+    assert "scores better" not in summary
+    assert "no other option that does has a better chance of meeting the goal" in summary
+    assert "lowers the chance of dipping below the reserve to 1% (buying now: 4%)" in summary
+    assert "85%" in summary
+
+
+def test_buy_now_summary_has_no_tradeoff_when_nothing_is_safer(twin):
+    assert "lowers the chance" not in buy_now_summary(twin, other_reserve_risk=0.04)
 
 
 def test_fixed_seed_is_repeatable(twin):

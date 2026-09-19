@@ -281,3 +281,9 @@ def test_horizon_at_the_cap_is_allowed(twin):
 def test_horizon_past_the_cap_is_rejected(twin):
     with pytest.raises(SimulationError):
         compare(twin, [purchase(800)], twin.as_of + timedelta(days=MAX_HORIZON_DAYS + 1))
+
+
+def test_a_purchase_savings_cannot_cover_is_flagged_as_overdrawing_it(twin):
+    result = simulate_scenario(twin, [purchase(2000, account_id="acc_savings")], HORIZON)
+    assert result.savings_overdrawn
+    assert not simulate_scenario(twin, [purchase(2000)], HORIZON).savings_overdrawn
