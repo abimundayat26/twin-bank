@@ -1,4 +1,4 @@
-"""TwinBank API. /twin returns the mock fixture; /simulate runs the deterministic engine."""
+"""TwinBank API. /twin returns the mock fixture; /simulate runs the Monte Carlo simulation."""
 
 import os
 
@@ -8,6 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.fixtures import load_twin
 from backend.schemas import FinancialTwin, SimulationRequest, SimulationResponse
 from backend.simulation import SimulationError, run_simulation
+
+# Optional: fix the Monte Carlo seed so demo numbers repeat. Unset means fresh randomness.
+SIMULATION_SEED = int(seed) if (seed := os.getenv("SIMULATION_SEED")) else None
 
 app = FastAPI(title="TwinBank API")
 
@@ -38,6 +41,6 @@ def simulate(request: SimulationRequest) -> SimulationResponse:
     if request.user_id != twin.user_id:
         raise HTTPException(status_code=404, detail=f"No twin for user '{request.user_id}'")
     try:
-        return run_simulation(twin, request)
+        return run_simulation(twin, request, seed=SIMULATION_SEED)
     except SimulationError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e

@@ -1,7 +1,7 @@
 """Deterministic day-by-day cash-flow simulation over a FinancialTwin.
 
 Pure functions only: no FastAPI, no I/O, no randomness. Every flow uses its
-expected value; uncertainty fields are ignored until Monte Carlo (Phase 4).
+expected value unless a sampled Draws is passed in (see simulation/monte_carlo.py).
 """
 
 import calendar
@@ -58,6 +58,14 @@ class ScenarioResult:
     @property
     def goal_shortfall(self) -> float:
         return round(sum(g.shortfall for g in self.goals), 2)
+
+
+@dataclass(frozen=True)
+class Draws:
+    """Sampled amounts for one simulated future. Missing keys use expected values."""
+
+    income: dict[tuple[str, date], float]  # (income stream id, pay date) -> amount
+    daily_spending: dict[date, float]  # day -> total variable spending that day
 
 
 @dataclass(frozen=True)
@@ -130,13 +138,17 @@ def validate_events(twin: FinancialTwin, events: list[SimulationEvent], horizon_
 
 
 def simulate_scenario(
-    twin: FinancialTwin, events: list[SimulationEvent], horizon_end: date
+    twin: FinancialTwin,
+    events: list[SimulationEvent],
+    horizon_end: date,
+    draws: Draws | None = None,
 ) -> ScenarioResult:
     """Project balances from twin.as_of through horizon_end (inclusive).
 
     Starting balances are end-of-day as_of; events dated as_of apply before day 1.
     Within each day, outflows are applied before inflows (conservative), and the
-    minimum balances are measured after outflows.
+    minimum balances are measured after outflows. Without draws, every flow uses
+    its expected value.
     """
     validate_events(twin, events, horizon_end)
     start = twin.as_of
@@ -148,8 +160,9 @@ def simulate_scenario(
     total_income = 0.0
     for stream in twin.income:
         for d in income_dates(stream.next_date, stream.interval_days, start, horizon_end):
-            inflows[d] = inflows.get(d, 0.0) + stream.expected_amount
-            total_income += stream.expected_amount
+            amount = draws.income.get((stream.id, d), stream.expected_amount) if draws else stream.expected_amount
+            inflows[d] = inflows.get(d, 0.0) + amount
+            total_income += amount
 
     obligations_by_day: dict[date, list] = {}
     for obligation in twin.obligations:
@@ -160,7 +173,7 @@ def simulate_scenario(
     for event in events:
         events_by_day.setdefault(event.date, []).append(event)
 
-    daily_spending = sum(v.mean_14d for v in twin.variable_spending) / 14
+    expected_daily_spending = sum(v.mean_14d for v in twin.variable_spending) / 14
 
     for event in events_by_day.get(start, []):
         balances[event.account_id] -= event.amount
@@ -186,7 +199,9 @@ def simulate_scenario(
                 uncovered.append(
                     UncoveredObligation(obligation.id, obligation.name, day, round(balances[primary], 2))
                 )
-        balances[primary] -= daily_spending
+        balances[primary] -= (
+            draws.daily_spending.get(day, expected_daily_spending) if draws else expected_daily_spending
+        )
 
         low_total = sum(balances.values())
         min_total = min(min_total, low_total)

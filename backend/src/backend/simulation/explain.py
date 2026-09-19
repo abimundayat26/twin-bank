@@ -1,12 +1,26 @@
 """Template-based explanations built only from computed simulation results."""
 
 from backend.schemas import ExplanationDriver, FinancialTwin, SimulationEvent
-from backend.simulation.engine import LOW_BALANCE_THRESHOLD, Comparison
+from backend.simulation.engine import LOW_BALANCE_THRESHOLD
+from backend.simulation.monte_carlo import (
+    INCOME_CLAMP_SDS,
+    SPENDING_BLOCK_DAYS,
+    MonteCarloComparison,
+)
 
 
 def money(amount: float) -> str:
     sign = "-" if amount < 0 else ""
     return f"{sign}${abs(amount):,.0f}"
+
+
+def pct(p: float) -> str:
+    """Share of simulated futures, without rounding a rare event to 0% or 100%."""
+    if 0 < p < 0.01:
+        return "under 1%"
+    if 0.99 < p < 1:
+        return "over 99%"
+    return f"{p:.0%}"
 
 
 def describe_events(events: list[SimulationEvent]) -> str:
@@ -15,56 +29,52 @@ def describe_events(events: list[SimulationEvent]) -> str:
     return f"these purchases ({money(sum(e.amount for e in events))} total)"
 
 
-def build_summary(twin: FinancialTwin, events: list[SimulationEvent], comparison: Comparison) -> str:
-    base, cf = comparison.baseline, comparison.counterfactual
+def build_summary(twin: FinancialTwin, events: list[SimulationEvent], mc: MonteCarloComparison) -> str:
+    base, cf = mc.baseline, mc.counterfactual
     name = twin.display_name
     sentences = [
-        f"Buying {describe_events(events)} changes {name}'s projected balance on "
-        f"{comparison.horizon_end} from {money(base.ending_balance)} to {money(cf.ending_balance)}."
+        f"Across {mc.n_simulations:,} simulated futures, buying {describe_events(events)} changes "
+        f"{name}'s median projected balance on {mc.horizon_end} from {money(base.ending_balance)} "
+        f"to {money(cf.ending_balance)} (middle 80% of futures: {money(cf.ending_balance_p10)} "
+        f"to {money(cf.ending_balance_p90)})."
     ]
 
     for base_goal, cf_goal in zip(base.goals, cf.goals):
-        goal = f"the {money(cf_goal.target_amount)} {cf_goal.name.lower()} goal"
-        if cf_goal.shortfall > 0 and base_goal.shortfall == 0:
-            sentences.append(
-                f"After keeping the {money(comparison.reserve)} emergency reserve, {name} would be "
-                f"{money(cf_goal.shortfall)} short of {goal}, which the baseline meets with "
-                f"{money(base_goal.surplus)} to spare."
-            )
-        elif cf_goal.shortfall > 0:
-            sentences.append(
-                f"The shortfall on {goal} grows from {money(base_goal.shortfall)} "
-                f"to {money(cf_goal.shortfall)}."
-            )
-        else:
-            sentences.append(
-                f"{name} still meets {goal} on top of the reserve, but the cushion shrinks from "
-                f"{money(base_goal.surplus)} to {money(cf_goal.surplus)}."
-            )
+        sentences.append(
+            f"{name} meets the {money(cf_goal.target_amount)} {cf_goal.name.lower()} goal on top of "
+            f"the {money(mc.reserve)} emergency reserve in {pct(cf_goal.prob_met)} of futures with "
+            f"the purchase, versus {pct(base_goal.prob_met)} without it."
+        )
 
-    if cf.dropped_below_low and not base.dropped_below_low:
+    if base.prob_low_balance or cf.prob_low_balance:
         sentences.append(
-            f"Checking dips to {money(cf.min_checking)} on {cf.min_checking_date}, below the "
-            f"{money(LOW_BALANCE_THRESHOLD)} low-balance line (baseline low: {money(base.min_checking)})."
+            f"Checking falls below the {money(LOW_BALANCE_THRESHOLD)} low-balance line in "
+            f"{pct(cf.prob_low_balance)} of futures, versus {pct(base.prob_low_balance)} without it."
         )
-    if cf.reserve_violated and not base.reserve_violated:
+    if base.prob_below_reserve or cf.prob_below_reserve:
         sentences.append(
-            f"Total savings fall below the {money(comparison.reserve)} emergency reserve, "
-            f"reaching {money(cf.min_balance)}."
+            f"Total savings dip below the {money(mc.reserve)} emergency reserve in "
+            f"{pct(cf.prob_below_reserve)} of futures, versus {pct(base.prob_below_reserve)}."
         )
-    if not cf.obligations_covered:
-        first = cf.uncovered_obligations[0]
+    if base.prob_obligations_uncovered or cf.prob_obligations_uncovered:
         sentences.append(
-            f"Checking would not cover {first.name.lower()} due {first.due} "
-            f"without moving money from savings."
+            f"In {pct(cf.prob_obligations_uncovered)} of futures checking would not cover a mandatory "
+            f"bill without moving money from savings, versus {pct(base.prob_obligations_uncovered)}."
+        )
+
+    expected_base, expected_cf = mc.expected.baseline, mc.expected.counterfactual
+    if expected_cf.min_checking < expected_base.min_checking:
+        sentences.append(
+            f"On the expected-value path, checking bottoms out at {money(expected_cf.min_checking)} "
+            f"on {expected_cf.min_checking_date} (baseline: {money(expected_base.min_checking)})."
         )
     return " ".join(sentences)
 
 
 def build_drivers(
-    twin: FinancialTwin, events: list[SimulationEvent], comparison: Comparison
+    twin: FinancialTwin, events: list[SimulationEvent], mc: MonteCarloComparison
 ) -> list[ExplanationDriver]:
-    base, cf = comparison.baseline, comparison.counterfactual
+    base, cf = mc.baseline, mc.counterfactual
     account_names = {a.id: a.name for a in twin.accounts}
     drivers = [
         ExplanationDriver(
@@ -83,48 +93,60 @@ def build_drivers(
                 label="Lowest checking balance",
                 impact_amount=checking_change,
                 direction="negative" if checking_change < 0 else "positive",
-                detail=f"Checking bottoms out at {money(cf.min_checking)} on {cf.min_checking_date}, "
+                detail=f"In the median future, checking bottoms out at {money(cf.min_checking)}, "
                 f"versus {money(base.min_checking)} in the baseline.",
             )
         )
 
     for base_goal, cf_goal in zip(base.goals, cf.goals):
-        change = round(cf_goal.available - base_goal.available, 2)
+        change = round(cf_goal.median_available - base_goal.median_available, 2)
         if change != 0:
             drivers.append(
                 ExplanationDriver(
                     label=f"{cf_goal.name} goal",
                     impact_amount=change,
                     direction="negative" if change < 0 else "positive",
-                    detail=f"{money(cf_goal.available)} available for the {money(cf_goal.target_amount)} "
-                    f"goal on {cf_goal.deadline} after the reserve, versus {money(base_goal.available)}.",
+                    detail=f"In the median future, {money(cf_goal.median_available)} is available for the "
+                    f"{money(cf_goal.target_amount)} goal on {cf_goal.deadline} after the reserve, "
+                    f"versus {money(base_goal.median_available)}.",
                 )
             )
 
-    if cf.total_income > 0:
+    expected_income = mc.expected.counterfactual.total_income
+    if expected_income > 0:
         drivers.append(
             ExplanationDriver(
                 label="Expected income",
-                impact_amount=cf.total_income,
+                impact_amount=expected_income,
                 direction="positive",
-                detail=f"{money(cf.total_income)} of expected income through {comparison.horizon_end} "
+                detail=f"{money(expected_income)} of expected income through {mc.horizon_end} "
                 "rebuilds the balance in both scenarios.",
             )
         )
     return drivers
 
 
-def build_assumptions(twin: FinancialTwin, comparison: Comparison) -> list[str]:
+def build_assumptions(twin: FinancialTwin, mc: MonteCarloComparison) -> list[str]:
     assumptions = [
-        "Deterministic projection using expected values; income and spending variability are not yet modeled.",
-        "Probabilities are 0 or 1 because the projection is deterministic.",
+        f"Monte Carlo over {mc.n_simulations:,} simulated futures. In each future, the baseline and the "
+        "purchase scenario share the same sampled income and spending.",
+        "Balances are medians across simulated futures. Probabilities are the share of futures "
+        "in which the event happens.",
+        "Each paycheck is drawn independently from a normal distribution around its expected amount, "
+        f"using the twin's per-payment uncertainty, kept within {INCOME_CLAMP_SDS:g} standard "
+        "deviations and never below $0.",
+        f"Spending in each category is drawn independently for every {SPENDING_BLOCK_DAYS}-day period "
+        "from a normal distribution using the twin's mean and standard deviation, spread evenly over "
+        "the period and never below $0 (which raises average spending slightly).",
+        "Bill amounts, bill due dates, and paycheck dates are fixed; bill confidence is not used.",
+        "Bills count as covered only if checking covers every mandatory bill in every simulated future.",
         f"Low balance means checking below {money(LOW_BALANCE_THRESHOLD)}.",
         "The emergency reserve counts checking plus savings.",
         "Goals must be met on top of the emergency reserve.",
         "Income, bills, and everyday spending all flow through checking.",
         "Every recurring bill, including optional ones, is charged in full.",
-        f"The horizon runs from {twin.as_of} to {comparison.horizon_end}.",
+        f"The horizon runs from {twin.as_of} to {mc.horizon_end}.",
     ]
-    if any(g.deadline > comparison.horizon_end for g in twin.goals):
+    if any(g.deadline > mc.horizon_end for g in twin.goals):
         assumptions.append("Goals with deadlines after the horizon are not evaluated.")
     return assumptions
