@@ -216,7 +216,8 @@ class FinancialTwin(BaseModel):
     # Where the observed half came from, for the UI to label honestly: a live
     # backend with no Nessie key still serves fixture-derived data. Only
     # `twin_source` knows, so a twin assembled anywhere else leaves this None.
-    source: Literal["fixture", "nessie"] | None = None
+    # "databricks": built by the Databricks twin build job and read back from it.
+    source: Literal["fixture", "nessie", "databricks"] | None = None
 
     @computed_field
     @property

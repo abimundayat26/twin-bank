@@ -347,3 +347,15 @@ def test_twin_forecast_is_optional_and_unset_on_the_fixture():
     assert twin.forecast is None
     carried = twin.model_copy(update={"forecast": ForecastMetadata.model_validate(FORECAST)})
     assert FinancialTwin.model_validate_json(carried.model_dump_json()) == carried
+
+
+@pytest.mark.parametrize("source", ["fixture", "nessie", "databricks", None])
+def test_twin_source_accepts_every_known_source(source):
+    twin = load_twin().model_copy(update={"source": source})
+    assert FinancialTwin.model_validate_json(twin.model_dump_json()).source == source
+
+
+def test_twin_source_rejects_an_unknown_source():
+    data = load_twin().model_dump(mode="json") | {"source": "spreadsheet"}
+    with pytest.raises(ValidationError):
+        FinancialTwin.model_validate(data)
