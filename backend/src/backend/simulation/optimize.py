@@ -28,9 +28,12 @@ from backend.schemas import (
     ScenarioMetrics,
     SimulationEvent,
     SpendingAdjustment,
+    VariableSpendingDistribution,
 )
 from backend.simulation import to_metrics
 from backend.simulation.engine import (
+    SPENDING_BLOCK_DAYS,
+    expected_daily_spending,
     income_dates,
     low_balance_threshold,
     reserve_amount,
@@ -132,20 +135,36 @@ def delay_candidates(
     return candidates
 
 
+def horizon_mean_14d(
+    twin: FinancialTwin, category: VariableSpendingDistribution, horizon_end: date
+) -> float:
+    """What the simulation expects this category to spend per 14 days through horizon_end.
+
+    A seasonal category's mean_14d is its annual average; over a short horizon the
+    months it actually covers can be busier or quieter than that.
+    """
+    if category.seasonal is None:
+        return category.mean_14d
+    only_category = twin.model_copy(update={"variable_spending": [category]})
+    daily = expected_daily_spending(only_category, horizon_end)
+    return sum(daily.values()) / len(daily) * SPENDING_BLOCK_DAYS
+
+
 def reduce_spending_candidates(
     twin: FinancialTwin, events: list[SimulationEvent], horizon_end: date
 ) -> list[Candidate]:
     category = next((v for v in twin.variable_spending if v.category == SPENDING_CUT_CATEGORY), None)
     if category is None or category.mean_14d == 0:
         return []
+    mean_14d = horizon_mean_14d(twin, category, horizon_end)
     return [
         Candidate(
             id=f"cand_cut_{category.category}_{round((1 - m) * 100)}",
             kind="reduce_spending",
             label=f"Buy now and spend {pct(1 - m)} less on {category.category}",
             detail=f"{category.category.capitalize()} spending averages "
-            f"{money(category.mean_14d * m)} per 14 days instead of "
-            f"{money(category.mean_14d)}, through {horizon_end}.",
+            f"{money(mean_14d * m)} per 14 days instead of "
+            f"{money(mean_14d)}, through {horizon_end}.",
             events=events,
             spending_adjustments=[SpendingAdjustment(category=category.category, multiplier=m)],
             disruption=1 - m,

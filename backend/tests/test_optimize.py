@@ -6,16 +6,18 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.fixtures import load_twin
+from backend.forecast import block_factor
 from backend.main import app
 from backend.schemas import (
     FinancialConstraint,
     OptimizationRequest,
     OptimizationResponse,
+    SeasonalProfile,
     SimulationEvent,
 )
 from backend.simulation import SimulationError
-from backend.simulation.engine import income_dates, resolve_horizon_end
-from backend.simulation.explain import build_optimization_summary
+from backend.simulation.engine import income_dates, resolve_horizon_end, spending_blocks
+from backend.simulation.explain import build_optimization_summary, money
 from backend.simulation.optimize import (
     MAX_DELAY_PAYDAYS,
     adjusted_twin,
@@ -116,6 +118,69 @@ def test_spending_cut_scales_only_that_category(twin):
     assert adjusted["discretionary"].mean_14d == pytest.approx(original["discretionary"].mean_14d * m)
     assert adjusted["discretionary"].std_dev_14d == pytest.approx(original["discretionary"].std_dev_14d * m)
     assert adjusted["groceries"] == original["groceries"]
+
+
+def with_discretionary_profile(twin, factors: dict[int, float] | None):
+    """Pin discretionary to $110 per 14 days with this profile, whatever the fixture holds."""
+    assert twin.as_of == date(2026, 9, 19)  # the horizons below are written against this date
+    profile = SeasonalProfile(factors=factors) if factors is not None else None
+    spending = [
+        v.model_copy(update={"mean_14d": 110.0, "seasonal": profile})
+        if v.category == "discretionary"
+        else v
+        for v in twin.variable_spending
+    ]
+    return twin.model_copy(update={"variable_spending": spending})
+
+
+def cut_details(twin, horizon_end: date) -> list[str]:
+    return [
+        c.detail
+        for c in generate_candidates(twin, [laptop()], horizon_end)
+        if c.kind == "reduce_spending"
+    ]
+
+
+AUTUMN_HEAVY = {m: 1.5 if m >= 9 else 0.5 if m <= 4 else 1.0 for m in range(1, 13)}
+AUTUMN_LIGHT = {m: 0.5 if m >= 9 else 1.5 if m <= 4 else 1.0 for m in range(1, 13)}
+AUTUMN_HEAVY_PROFILE = SeasonalProfile(factors=AUTUMN_HEAVY)
+
+
+def test_spending_cut_quotes_the_annual_average_without_a_seasonal_profile(twin):
+    flat = with_discretionary_profile(twin, None)
+    end = resolve_horizon_end(flat, None)
+    assert cut_details(flat, end) == [
+        f"Discretionary spending averages $82 per 14 days instead of $110, through {end}.",
+        f"Discretionary spending averages $55 per 14 days instead of $110, through {end}.",
+    ]
+
+
+def test_spending_cut_quotes_a_busy_season_average_over_a_busy_horizon(twin):
+    end = twin.as_of + timedelta(days=28)  # all September and October
+    details = cut_details(with_discretionary_profile(twin, AUTUMN_HEAVY), end)
+    assert details == [
+        f"Discretionary spending averages $124 per 14 days instead of $165, through {end}.",
+        f"Discretionary spending averages $82 per 14 days instead of $165, through {end}.",
+    ]
+
+
+def test_spending_cut_quotes_a_quiet_season_average_over_a_quiet_horizon(twin):
+    end = twin.as_of + timedelta(days=28)
+    details = cut_details(with_discretionary_profile(twin, AUTUMN_LIGHT), end)
+    assert details[0].endswith(f"instead of $55, through {end}.")
+
+
+def test_spending_cut_quote_matches_the_simulated_average_across_seasons(twin):
+    # The default horizon runs into 2027-05-01: busy autumn, quiet winter, a flat spring day.
+    end = resolve_horizon_end(twin, None)
+    seasonal = with_discretionary_profile(twin, AUTUMN_HEAVY)
+    days = (end - twin.as_of).days
+    expected = sum(
+        110 * block_factor(AUTUMN_HEAVY_PROFILE, block[0], len(block)) * len(block) / 14
+        for block in spending_blocks(twin.as_of, end)
+    ) / days * 14
+    assert expected != pytest.approx(110)
+    assert cut_details(seasonal, end)[0].endswith(f"instead of {money(expected)}, through {end}.")
 
 
 def test_unknown_account_is_rejected(twin):
