@@ -1,8 +1,16 @@
 import pytest
 from pydantic import ValidationError
 
-from backend.fixtures import load_simulation
-from backend.schemas import ScenarioMetrics, SimulationResponse
+from backend.fixtures import load_simulation, load_twin
+from backend.schemas import (
+    ClarificationResponseRequest,
+    FinancialConstraint,
+    FinancialObligation,
+    MinimumBalanceRequest,
+    ScenarioMetrics,
+    SimulationResponse,
+)
+from backend.simulation.engine import reserve_amount
 
 METRICS = {
     "ending_balance": 3000.0,
@@ -39,3 +47,78 @@ def test_num_simulations_must_be_positive():
     with pytest.raises(ValidationError):
         SimulationResponse.model_validate({**data, "num_simulations": 0})
     assert SimulationResponse.model_validate({**data, "num_simulations": 1000}).num_simulations == 1000
+
+
+# --- Obligation categories and twin updates -----------------------------------
+
+OBLIGATION = {
+    "id": "obl_x",
+    "name": "Transfer",
+    "expected_amount": 75.0,
+    "due_day": 5,
+    "confidence": 0.55,
+}
+
+
+def candidates(*pairs):
+    return [{"category": c, "probability": p} for c, p in pairs]
+
+
+def test_category_fields_default_to_unasked():
+    obligation = FinancialObligation(**OBLIGATION)
+    assert obligation.category_candidates == []
+    assert obligation.declared_category is None
+    assert all(o.category_candidates == [] for o in load_twin().obligations)
+
+
+def test_category_candidates_accept_ordered_probabilities():
+    obligation = FinancialObligation(
+        **OBLIGATION,
+        category_candidates=candidates(
+            ("savings_transfer", 0.55), ("debt_repayment", 0.3), ("optional_spending", 0.15)
+        ),
+        declared_category="savings_transfer",
+    )
+    assert obligation.category_candidates[0].category == "savings_transfer"
+    assert obligation.declared_category == "savings_transfer"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        candidates(("bill", 0.5), ("bill", 0.2)),  # duplicate
+        candidates(("bill", 0.2), ("savings_transfer", 0.5)),  # not most likely first
+        candidates(("bill", 0.7), ("savings_transfer", 0.4)),  # sums above 1
+        candidates(("groceries", 0.5)),  # unknown category
+        candidates(("bill", 1.5)),  # not a probability
+    ],
+)
+def test_category_candidates_reject_invalid(bad):
+    with pytest.raises(ValidationError):
+        FinancialObligation(**OBLIGATION, category_candidates=bad)
+
+
+def test_declared_category_must_be_known():
+    with pytest.raises(ValidationError):
+        FinancialObligation(**OBLIGATION, declared_category="groceries")
+
+
+def test_minimum_checking_balance_is_not_the_reserve():
+    twin = load_twin()
+    checking_floor = FinancialConstraint(
+        id="con_min_checking", type="minimum_checking_balance", amount=9999, description="Floor"
+    )
+    updated = twin.model_copy(update={"constraints": [*twin.constraints, checking_floor]})
+    assert reserve_amount(updated) == reserve_amount(twin)
+
+
+def test_twin_update_requests_validate():
+    request = ClarificationResponseRequest(
+        user_id="alex", obligation_id="obl_x", category="debt_repayment"
+    )
+    assert request.category == "debt_repayment"
+    with pytest.raises(ValidationError):
+        ClarificationResponseRequest(user_id="alex", obligation_id="obl_x", category="rent")
+    assert MinimumBalanceRequest(amount=0).amount == 0
+    with pytest.raises(ValidationError):
+        MinimumBalanceRequest(amount=-1)
