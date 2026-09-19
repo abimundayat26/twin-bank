@@ -8,7 +8,9 @@ nothing is saved until the user confirms it with PUT /twin/{user_id}/goals.
 
 Rules, per clause:
 - "keep at least $1,500 for emergencies" -> minimum_reserve (checking plus savings).
-- "keep at least $300 in checking" -> minimum_checking_balance.
+- "keep at least $300 in checking" -> minimum_checking_balance. So does "keep $1,500
+  for emergencies and $300 in checking": a part that starts with its amount
+  carries on the "keep" before it.
 - "$2,000 for summer housing by May" -> a goal. Deadlines: "by May" (the 1st of
   the next May after as_of), "by May 15", "by end of May", "by May 2027",
   "by 2027-05-01", "in 6 months" / "in 3 weeks" / "in 1 year". A deadline more
@@ -198,6 +200,7 @@ def compile_goals(user_id: str, text: str, as_of: date) -> GoalCompileResponse:
     constraints: list[FinancialConstraint] = []
     clarifications: list[GoalClarification] = []
     unparsed: list[str] = []
+    previous_is_floor = False
 
     def ask(field, question: str, fragment: str) -> None:
         clarifications.append(GoalClarification(field=field, question=question, fragment=fragment))
@@ -208,7 +211,16 @@ def compile_goals(user_id: str, text: str, as_of: date) -> GoalCompileResponse:
     for clause in split_clauses(text):
         amounts = [parse_amount(m) for m in AMOUNT.finditer(clause)]
         is_reserve = bool(RESERVE_WORDS.search(clause))
-        is_checking = bool(CHECKING_WORDS.search(clause)) and bool(FLOOR_WORDS.search(clause))
+        # "keep $1,500 for emergencies and $300 in checking": a part that is just an
+        # amount carries on the "keep" before it. "I have $300 in checking" does not.
+        continues_floor = (
+            previous_is_floor
+            and bool(AMOUNT.match(clause))
+            and not GOAL_WORDS.search(clause)
+        )
+        has_floor = bool(FLOOR_WORDS.search(clause)) or continues_floor
+        previous_is_floor = has_floor
+        is_checking = bool(CHECKING_WORDS.search(clause)) and has_floor
 
         if any(a <= 0 for a in amounts):
             ask("amount", "An amount here is zero. How much do you mean?", clause)

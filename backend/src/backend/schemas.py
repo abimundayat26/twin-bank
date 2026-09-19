@@ -23,6 +23,41 @@ ObligationCategory = Literal[
 ]
 
 
+# What the money was for. "transfer" means money moved between accounts or to an
+# unknown destination: nothing may guess that a transfer is savings, a loan
+# repayment or anything else (SPEC section 2).
+Category = Literal[
+    "income",
+    "rent",
+    "utilities",
+    "phone",
+    "subscriptions",
+    "groceries",
+    "discretionary",
+    "transfer",
+    "other",
+]
+
+
+# --- Transactions -------------------------------------------------------------
+
+
+class Transaction(BaseModel):
+    """One normalized transaction: signed, categorized, ready to analyze.
+
+    The input to twin building, so it is a shared contract. The raw, per-provider
+    shape it comes from stays in `backend.ingest.models`.
+    """
+
+    id: str
+    account_id: str
+    date: date
+    amount: float = Field(description="Signed: positive is money in, negative is money out.")
+    description: str
+    category: Category
+    provenance: Literal["observed"] = "observed"
+
+
 # --- Financial Twin -----------------------------------------------------------
 
 
@@ -133,6 +168,24 @@ class ClarificationResponseRequest(BaseModel):
 
 class MinimumBalanceRequest(BaseModel):
     amount: float = Field(ge=0)
+
+
+class TwinBuildRequest(BaseModel):
+    """Build a twin's observed structure from the user's transaction history.
+
+    Only the observed half can be built. Goals and constraints are declared by
+    the user and are carried over from the twin already on file, never derived
+    (SPEC section 2). Balances cannot come from a transaction feed either, so
+    `accounts` is an input: omitted, the accounts on file are kept.
+    """
+
+    user_id: str
+    as_of: date | None = Field(
+        default=None, description="Defaults to the date of the latest transaction."
+    )
+    accounts: list[Account] | None = Field(
+        default=None, description="Current balances. Defaults to the accounts on file."
+    )
 
 
 # --- Simulation ---------------------------------------------------------------

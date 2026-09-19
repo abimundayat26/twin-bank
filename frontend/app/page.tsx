@@ -14,6 +14,7 @@ import { ExplanationPanel } from "@/components/ExplanationPanel";
 import { FinancialSummary } from "@/components/FinancialSummary";
 import { GoalCard } from "@/components/GoalCard";
 import { Header } from "@/components/Header";
+import { IntentGraph } from "@/components/IntentGraph";
 import { PurchaseSimulator } from "@/components/PurchaseSimulator";
 import { ScenarioComparison } from "@/components/ScenarioComparison";
 import { Card } from "@/components/ui";
@@ -160,6 +161,12 @@ export default function Home() {
       <Header userName={twin.display_name} source={source} isMock={simulation?.is_mock} />
 
       <main className="mx-auto w-full max-w-6xl px-6 py-8">
+        {/* Full width and first: the structure of the money is what makes this
+            more than a budgeting dashboard (SPEC §1). */}
+        <div className="mb-6">
+          <IntentGraph twin={twin} simulation={simulation} />
+        </div>
+
         <div className="grid gap-6 lg:grid-cols-[360px_1fr] lg:items-start">
           <div className="grid gap-4">
             <div>
