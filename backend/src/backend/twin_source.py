@@ -28,6 +28,7 @@ from backend.ingest.normalize import normalize_all
 from backend.nessie.client import NessieError, fetch_accounts, fetch_transactions
 from backend.nessie.config import NessieConfig, load_config
 from backend.schemas import FinancialTwin
+from backend.tracking import log_twin_build
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,8 @@ def load_source_twin() -> FinancialTwin:
         return from_fixture()
 
     _cached = (time.monotonic(), twin)
+    # Once per build, not per request: a cache hit returned above.
+    log_twin_build(twin)
     return twin
 
 

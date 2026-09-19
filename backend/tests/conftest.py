@@ -23,6 +23,12 @@ def no_real_llm(monkeypatch):
         monkeypatch.delenv(name, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def no_real_tracking(monkeypatch):
+    """A developer's shell may turn tracking on; tests must never write MLflow runs."""
+    monkeypatch.delenv("TRACK_TWIN_BUILDS", raising=False)
+
+
 @pytest.fixture
 def flat_twin():
     """Alex's fixture twin with its seasonal profiles removed.

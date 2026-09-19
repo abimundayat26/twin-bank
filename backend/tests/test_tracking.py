@@ -1,8 +1,11 @@
 import pytest
+from fastapi.testclient import TestClient
 
+from backend import main, twin_source
 from backend.fixtures import load_raw_transactions, load_twin
 from backend.ingest.build import latest_transaction_date, rebuild
 from backend.ingest.normalize import normalize_all
+from backend.nessie.client import NessieError
 from backend.tracking import log_twin_build, twin_build_summary
 
 PARAM_KEYS = {
@@ -107,3 +110,64 @@ def test_tracking_failure_does_not_raise(monkeypatch, flat_twin):
         raise ConnectionError("tracking server unreachable")
 
     assert log_twin_build(flat_twin, log_run=broken) is False
+
+
+# --- Where builds are logged --------------------------------------------------
+
+
+@pytest.fixture
+def logged(monkeypatch):
+    """Replace log_twin_build at every call site with a recorder."""
+    twins = []
+    for module in (main, twin_source):
+        monkeypatch.setattr(module, "log_twin_build", twins.append)
+    return twins
+
+
+def use_nessie(monkeypatch):
+    monkeypatch.setenv("USE_MOCKS", "false")
+    monkeypatch.setenv("NESSIE_API_KEY", "secret-key")
+
+
+def test_the_build_endpoint_logs_the_twin_it_returns(logged):
+    response = TestClient(main.app).post("/twin/build", json={"user_id": "alex"})
+    assert response.status_code == 200, response.text
+    assert [twin.model_dump(mode="json") for twin in logged] == [response.json()]
+
+
+def test_serving_the_fixture_twin_logs_nothing(logged):
+    assert TestClient(main.app).get("/twin/alex").status_code == 200
+    assert logged == []
+
+
+def test_a_nessie_build_is_logged_once_per_build(monkeypatch, logged):
+    use_nessie(monkeypatch)
+    built = load_twin().model_copy(update={"source": "nessie"})
+    monkeypatch.setattr(twin_source, "build_from_nessie", lambda config: built)
+    twin_source.load_source_twin()
+    twin_source.load_source_twin()  # served from the cache
+    assert logged == [built]
+
+
+def test_a_nessie_outage_logs_nothing(monkeypatch, logged):
+    use_nessie(monkeypatch)
+
+    def outage(config):
+        raise NessieError("sandbox unreachable")
+
+    monkeypatch.setattr(twin_source, "build_from_nessie", outage)
+    assert twin_source.load_source_twin().source == "fixture"
+    assert logged == []
+
+
+def test_a_tracking_failure_does_not_break_the_build_endpoint(monkeypatch):
+    """The real log_twin_build, switched on, with MLflow failing underneath it."""
+    monkeypatch.setenv("TRACK_TWIN_BUILDS", "true")
+
+    def broken(params, metrics):
+        raise ConnectionError("tracking server unreachable")
+
+    real = main.log_twin_build
+    monkeypatch.setattr(main, "log_twin_build", lambda twin: real(twin, log_run=broken))
+    response = TestClient(main.app).post("/twin/build", json={"user_id": "alex"})
+    assert response.status_code == 200, response.text
