@@ -24,7 +24,7 @@ from backend.simulation.engine import MAX_HORIZON_DAYS
 
 client = TestClient(app)
 AS_OF = date(2026, 9, 19)
-ALEX = "I need $2,000 for summer housing by May and want to keep at least $1,500 for emergencies"
+ALEX = "I need $1,600 for summer housing by May and want to keep at least $1,500 for emergencies"
 
 
 def compile_text(text: str, as_of: date = AS_OF) -> GoalCompileResponse:

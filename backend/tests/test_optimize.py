@@ -96,9 +96,9 @@ def test_no_savings_account_means_no_savings_option(twin):
 
 def test_no_savings_option_when_savings_cannot_pay(twin):
     end = resolve_horizon_end(twin, None)
-    kinds = {c.kind for c in generate_candidates(twin, [laptop(amount=1500.01)], end)}
+    kinds = {c.kind for c in generate_candidates(twin, [laptop(amount=1800.01)], end)}
     assert "from_savings" not in kinds
-    kinds = {c.kind for c in generate_candidates(twin, [laptop(amount=1500)], end)}
+    kinds = {c.kind for c in generate_candidates(twin, [laptop(amount=1800)], end)}
     assert "from_savings" in kinds
 
 

@@ -4,7 +4,7 @@ from backend.fixtures import load_simulation, load_twin
 def test_twin_fixture_validates():
     twin = load_twin()
     assert twin.user_id == "alex"
-    assert twin.total_balance == 2840.0
+    assert twin.total_balance == 3140.0
 
 
 def test_twin_has_income_with_uncertainty():
