@@ -193,6 +193,27 @@ class ExplanationDriver(BaseModel):
     detail: str
 
 
+class BalanceBandPoint(BaseModel):
+    """One day's spread of a balance across simulated futures."""
+
+    date: date
+    p10: float
+    median: float
+    p90: float
+
+
+class ScenarioBands(BaseModel):
+    """End-of-day balances per day, from as_of through horizon_end."""
+
+    total: list[BalanceBandPoint] = Field(description="Checking plus savings.")
+    checking: list[BalanceBandPoint]
+
+
+class BalanceBands(BaseModel):
+    baseline: ScenarioBands
+    counterfactual: ScenarioBands
+
+
 class SimulationResponse(BaseModel):
     simulation_id: str
     user_id: str
@@ -206,6 +227,10 @@ class SimulationResponse(BaseModel):
     is_mock: bool
     num_simulations: int | None = Field(
         default=None, ge=1, description="Monte Carlo runs behind the metrics. None for mock results."
+    )
+    balance_bands: BalanceBands | None = Field(
+        default=None,
+        description="Daily p10/median/p90 balances for charts. None when not computed.",
     )
 
 

@@ -81,5 +81,6 @@
     "The horizon runs from 2026-09-19 to 2027-05-01."
   ],
   "is_mock": true,
-  "num_simulations": 1000
+  "num_simulations": 1000,
+  "balance_bands": null
 }

@@ -154,6 +154,26 @@ export interface ExplanationDriver {
   detail: string;
 }
 
+/** One day's spread of a balance across simulated futures. */
+export interface BalanceBandPoint {
+  date: IsoDate;
+  p10: number;
+  median: number;
+  p90: number;
+}
+
+/** End-of-day balances per day, from as_of through horizon_end. */
+export interface ScenarioBands {
+  /** Checking plus savings. */
+  total: BalanceBandPoint[];
+  checking: BalanceBandPoint[];
+}
+
+export interface BalanceBands {
+  baseline: ScenarioBands;
+  counterfactual: ScenarioBands;
+}
+
 export interface SimulationResponse {
   simulation_id: string;
   user_id: string;
@@ -167,6 +187,8 @@ export interface SimulationResponse {
   is_mock: boolean;
   /** Monte Carlo runs behind the metrics. Absent/null on mock results. */
   num_simulations?: number | null;
+  /** Daily p10/median/p90 balances for charts. Absent/null when not computed. */
+  balance_bands?: BalanceBands | null;
 }
 
 // --- Optimization -----------------------------------------------------------
