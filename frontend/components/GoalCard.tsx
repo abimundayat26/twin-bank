@@ -13,10 +13,15 @@ import { Card, ProvenanceTag } from "./ui";
 
 export function GoalCard({
   goal,
+  title = "Active savings goal",
+  subtitle,
   isSaving = false,
   onRemove,
 }: {
   goal: Goal;
+  /** Every declared goal gets a card, so the caller says which one this is. */
+  title?: string;
+  subtitle?: string;
   isSaving?: boolean;
   onRemove?: (goalId: string) => void;
 }) {
@@ -25,7 +30,7 @@ export function GoalCard({
   const filled = Math.min(100, Math.max(0, (goal.current_amount / goal.target_amount) * 100));
 
   return (
-    <Card title="Active savings goal">
+    <Card title={title} subtitle={subtitle}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-lg font-medium text-ink">{goal.name}</p>

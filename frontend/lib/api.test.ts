@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiError,
+  compileGoal,
   getTwin,
   runOptimization,
   runSimulation,
@@ -10,7 +11,14 @@ import {
 } from "./api";
 import mockSimulation from "./mock/simulation.json";
 import mockTwin from "./mock/twin.json";
-import type { FinancialTwin, OptimizationResponse, SimulationRequest } from "./types";
+import type {
+  FinancialConstraint,
+  FinancialTwin,
+  Goal,
+  GoalCompileResponse,
+  OptimizationResponse,
+  SimulationRequest,
+} from "./types";
 
 const twin = mockTwin as FinancialTwin;
 const request = {
@@ -142,33 +150,98 @@ describe("runOptimization", () => {
   });
 });
 
-describe("saveGoals", () => {
-  const reserve = twin.constraints.find((c) => c.type === "minimum_reserve")!;
+describe("compileGoal", () => {
+  const draft = {
+    user_id: "alex",
+    text: "$2,000 for summer housing by May",
+    goals: [],
+    constraints: [],
+    clarifications: [],
+    unparsed: [],
+    compiler: "rules",
+  } as GoalCompileResponse;
 
-  it("PUTs the complete set to /twin/{user_id}/goals", async () => {
-    backendReplies(200, { ...twin, goals: [] });
-    const result = await saveGoals(twin, { goals: [], constraints: [reserve] });
+  it("posts the text to /goals/compile and returns the draft", async () => {
+    backendReplies(200, draft);
+    await expect(compileGoal({ user_id: "alex", text: draft.text })).resolves.toEqual({
+      data: draft,
+      source: "api",
+    });
     const [url, init] = vi.mocked(fetch).mock.calls[0];
-    expect(String(url)).toMatch(/\/twin\/alex\/goals$/);
-    expect(init?.method).toBe("PUT");
-    expect(JSON.parse(String(init?.body))).toEqual({ goals: [], constraints: [reserve] });
-    expect(result).toEqual({ data: { ...twin, goals: [] }, source: "api" });
+    expect(url).toMatch(/\/goals\/compile$/);
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(init?.body as string)).toEqual({ user_id: "alex", text: draft.text });
   });
 
-  it("throws the backend's error", async () => {
-    backendReplies(422, { detail: "Goal ids must be unique" });
-    await expect(saveGoals(twin, { goals: [] })).rejects.toThrow("Goal ids must be unique");
-  });
-
-  it("offline, applies the set locally and keeps a checking minimum it was not sent", async () => {
+  it("has no fixture to fall back to, so an unreachable backend throws", async () => {
     backendDown();
-    const withMinimum = (await setMinimumBalance(twin, { amount: 300 })).data;
-    const saved = await saveGoals(withMinimum, { goals: [], constraints: [reserve] });
-    expect(saved.source).toBe("fixture");
-    expect(saved.data.goals).toEqual([]);
-    expect(saved.data.constraints.map((c) => c.type)).toEqual([
-      "minimum_reserve",
-      "minimum_checking_balance",
-    ]);
+    // Nothing here may invent a goal from the text: the compiler is the only
+    // thing allowed to parse it, and it is not reachable.
+    await expect(compileGoal({ user_id: "alex", text: draft.text })).rejects.toThrow(
+      "fetch failed",
+    );
+  });
+});
+
+describe("saveGoals", () => {
+  const housing: Goal = {
+    id: "goal_summer_housing",
+    name: "Summer housing",
+    target_amount: 2000,
+    deadline: "2027-05-01",
+    current_amount: 450,
+    provenance: "declared",
+  };
+  const reserve: FinancialConstraint = {
+    id: "con_emergency_reserve",
+    type: "minimum_reserve",
+    amount: 1500,
+    description: "Keep at least $1,500 across checking and savings for emergencies.",
+    provenance: "declared",
+  };
+
+  it("puts the whole declared set to the twin's goals endpoint", async () => {
+    const saved = { ...twin, goals: [housing], constraints: [reserve] };
+    backendReplies(200, saved);
+    const request = { goals: [housing], constraints: [reserve] };
+    await expect(saveGoals(twin, request)).resolves.toEqual({ data: saved, source: "api" });
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toMatch(/\/twin\/alex\/goals$/);
+    expect(init?.method).toBe("PUT");
+    expect(JSON.parse(init?.body as string)).toEqual(request);
+  });
+
+  it("throws a rejected declaration instead of pretending it saved", async () => {
+    backendReplies(422, { detail: "Goal 'goal_car' deadline 2030-01-01 must be after 2026-09-19" });
+    const result = saveGoals(twin, { goals: [housing] });
+    await expect(result).rejects.toBeInstanceOf(ApiError);
+    await expect(result).rejects.toMatchObject({ status: 422 });
+  });
+
+  describe("when the backend is unreachable", () => {
+    beforeEach(backendDown);
+
+    it("applies the set locally, reserve and all", async () => {
+      const loaded = await saveGoals(twin, { goals: [housing], constraints: [reserve] });
+      expect(loaded.source).toBe("fixture");
+      expect(loaded.data.goals).toEqual([housing]);
+      expect(loaded.data.constraints).toEqual([reserve]);
+    });
+
+    it("drops a reserve the request leaves out, as the backend would", async () => {
+      const withReserve = { ...twin, constraints: [reserve] };
+      const loaded = await saveGoals(withReserve, { goals: [housing], constraints: [] });
+      expect(loaded.data.constraints).toEqual([]);
+    });
+
+    it("keeps the saved checking minimum when the request carries none", async () => {
+      const floor = await setMinimumBalance(twin, { amount: 300 });
+      const loaded = await saveGoals(floor.data, { goals: [housing], constraints: [reserve] });
+      const floors = loaded.data.constraints.filter(
+        (c) => c.type === "minimum_checking_balance",
+      );
+      expect(floors).toHaveLength(1);
+      expect(floors[0].amount).toBe(300);
+    });
   });
 });

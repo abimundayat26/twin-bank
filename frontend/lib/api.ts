@@ -23,7 +23,10 @@ import mockTwin from "./mock/twin.json";
 import type {
   ClarificationResponseRequest,
   DeclaredGoalsRequest,
+  FinancialConstraint,
   FinancialTwin,
+  GoalCompileRequest,
+  GoalCompileResponse,
   MinimumBalanceRequest,
   OptimizationRequest,
   OptimizationResponse,
@@ -180,37 +183,6 @@ export async function respondToClarification(
   }
 }
 
-/**
- * Replaces Alex's declared goals and emergency reserve (`PUT /twin/{user_id}/goals`).
- * The body is the complete set, not a change: build it with `lib/goals`.
- * Offline, the set is applied to the local twin the way the backend would apply it:
- * the reserve is replaced, and a checking minimum is only replaced when one is sent.
- */
-export async function saveGoals(
-  twin: FinancialTwin,
-  request: DeclaredGoalsRequest,
-): Promise<Loaded<FinancialTwin>> {
-  try {
-    const data = await getJson<FinancialTwin>(`/twin/${twin.user_id}/goals`, {
-      method: "PUT",
-      body: JSON.stringify(request),
-    });
-    return { data, source: "api" };
-  } catch (error) {
-    unlessApiError(error);
-    console.warn("Backend unavailable; keeping the goals locally.", error);
-    const sent = request.constraints ?? [];
-    const floor =
-      sent.find((c) => c.type === "minimum_checking_balance") ??
-      twin.constraints.find((c) => c.type === "minimum_checking_balance");
-    const constraints = [
-      ...sent.filter((c) => c.type === "minimum_reserve"),
-      ...(floor ? [floor] : []),
-    ];
-    return { data: { ...twin, goals: request.goals, constraints }, source: "fixture" };
-  }
-}
-
 /** Sets the checking balance Alex doesn't want to fall below (their low-balance line). */
 export async function setMinimumBalance(
   twin: FinancialTwin,
@@ -237,4 +209,64 @@ export async function setMinimumBalance(
     ];
     return { data: { ...twin, constraints }, source: "fixture" };
   }
+}
+
+/**
+ * Compiles what the user typed into draft goals and constraints
+ * (`POST /goals/compile`). Drafts only: `saveGoals` is what saves them.
+ *
+ * There is no bundled fixture and no local parsing. The compiler only exists
+ * server-side, so an unreachable backend throws instead of producing a draft:
+ * a guessed amount or deadline is precisely what the compiler refuses to make
+ * up (SPEC §2), and inventing one here would be worse than saying it is down.
+ */
+export async function compileGoal(
+  request: GoalCompileRequest,
+): Promise<Loaded<GoalCompileResponse>> {
+  const data = await getJson<GoalCompileResponse>("/goals/compile", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+  return { data, source: "api" };
+}
+
+/**
+ * Replaces the user's declared goals and reserve (`PUT /twin/{user_id}/goals`).
+ *
+ * `request` must be the complete declared set: the endpoint replaces, it never
+ * appends, so sending one freshly typed goal drops every other goal and the
+ * emergency reserve with it. Build the set with `mergeGoals` / `mergeConstraints`
+ * from `lib/goals`. Offline, the same set is applied to the local twin.
+ */
+export async function saveGoals(
+  twin: FinancialTwin,
+  request: DeclaredGoalsRequest,
+): Promise<Loaded<FinancialTwin>> {
+  try {
+    const data = await getJson<FinancialTwin>(`/twin/${twin.user_id}/goals`, {
+      method: "PUT",
+      body: JSON.stringify(request),
+    });
+    return { data, source: "api" };
+  } catch (error) {
+    unlessApiError(error);
+    console.warn("Backend unavailable; keeping the goals locally.", error);
+    const goals = request.goals;
+    return { data: { ...twin, goals, constraints: declared(twin, request) }, source: "fixture" };
+  }
+}
+
+/**
+ * The constraints the backend would be left holding. It takes the reserve only
+ * from the request, but a request carrying no minimum_checking_balance leaves
+ * the saved one alone (`twin_store.set_goals`). Mirrored here so the offline
+ * twin and the real one never disagree about the low-balance line.
+ */
+function declared(twin: FinancialTwin, request: DeclaredGoalsRequest): FinancialConstraint[] {
+  const requested = request.constraints ?? [];
+  const reserve = requested.filter((c) => c.type === "minimum_reserve");
+  const floor =
+    requested.find((c) => c.type === "minimum_checking_balance") ??
+    twin.constraints.find((c) => c.type === "minimum_checking_balance");
+  return floor ? [...reserve, floor] : reserve;
 }
