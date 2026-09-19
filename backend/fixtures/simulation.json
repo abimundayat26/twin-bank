@@ -16,26 +16,26 @@
   },
   "horizon_end": "2027-05-01",
   "baseline": {
-    "ending_balance": 4048.52,
-    "min_balance": 2474.41,
-    "prob_low_balance": 0.0,
+    "ending_balance": 3544.18,
+    "min_balance": 2399.69,
+    "prob_low_balance": 0.003,
     "prob_below_reserve": 0.0,
     "goal_shortfall": 0.0,
     "obligations_covered": true,
     "prob_obligations_uncovered": 0.0,
-    "prob_goal_met": 0.934
+    "prob_goal_met": 0.535
   },
   "counterfactual": {
-    "ending_balance": 3248.52,
-    "min_balance": 1674.41,
+    "ending_balance": 2744.18,
+    "min_balance": 1599.7,
     "prob_low_balance": 1.0,
-    "prob_below_reserve": 0.059,
-    "goal_shortfall": 251.48,
+    "prob_below_reserve": 0.199,
+    "goal_shortfall": 755.82,
     "obligations_covered": false,
-    "prob_obligations_uncovered": 0.01,
-    "prob_goal_met": 0.266
+    "prob_obligations_uncovered": 0.059,
+    "prob_goal_met": 0.027
   },
-  "summary": "Across 1,000 simulated futures, buying the $800 laptop changes Alex's median projected balance on 2027-05-01 from $4,049 to $3,249 (middle 80% of futures: $2,758 to $3,741). Alex meets the $2,000 summer housing goal on top of the $1,500 emergency reserve in 27% of futures with the purchase, versus 93% without it. Checking falls below the $500 low-balance line in 100% of futures, versus 0% without it. Total savings dip below the $1,500 emergency reserve in 6% of futures, versus 0%. In 1% of futures checking would not cover a mandatory bill without moving money from savings, versus 0%. On the expected-value path, checking bottoms out at $180 on 2026-10-09 (baseline: $980).",
+  "summary": "Across 1,000 simulated futures, buying the $800 laptop changes Alex's median projected balance on 2027-05-01 from $3,544 to $2,744 (middle 80% of futures: $2,244 to $3,226). Alex meets the $2,000 summer housing goal on top of the $1,500 emergency reserve in 3% of futures with the purchase, versus 54% without it. Checking falls below the $500 low-balance line in 100% of futures, versus under 1% without it. Total savings dip below the $1,500 emergency reserve in 20% of futures, versus 0%. In 6% of futures checking would not cover a mandatory bill without moving money from savings, versus 0%. On the expected-value path, checking bottoms out at $124 on 2026-10-09 (baseline: $924).",
   "drivers": [
     {
       "label": "Laptop",
@@ -47,13 +47,13 @@
       "label": "Lowest checking balance",
       "impact_amount": -800.0,
       "direction": "negative",
-      "detail": "In the median future, checking bottoms out at $174, versus $974 in the baseline."
+      "detail": "In the median future, checking bottoms out at $100, versus $900 in the baseline."
     },
     {
       "label": "Summer housing goal",
       "impact_amount": -800.0,
       "direction": "negative",
-      "detail": "In the median future, $1,749 is available for the $2,000 goal on 2027-05-01 after the reserve, versus $2,549."
+      "detail": "In the median future, $1,244 is available for the $2,000 goal on 2027-05-01 after the reserve, versus $2,044."
     },
     {
       "label": "Expected income",
@@ -75,7 +75,7 @@
     "Goals must be met on top of the emergency reserve.",
     "Income, bills, and everyday spending all flow through checking.",
     "Every recurring bill, including optional ones, is charged in full.",
-    "The horizon runs from 2026-09-18 to 2027-05-01."
+    "The horizon runs from 2026-09-19 to 2027-05-01."
   ],
   "is_mock": true,
   "num_simulations": 1000
