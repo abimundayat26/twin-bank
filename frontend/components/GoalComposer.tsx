@@ -264,7 +264,7 @@ function Review({
               const rowErrors = errors.get(goal.id) ?? {};
               const edit = edits[goal.id];
               return (
-                <li key={goal.id} className="border-b border-line/60 py-2 last:border-0">
+                <li key={goal.id} className="border-b border-line py-2 last:border-0">
                   <div className="flex items-baseline justify-between gap-4">
                     <p className="min-w-0 truncate text-sm text-ink">{goal.name}</p>
                     <div className="flex shrink-0 items-center gap-2">
@@ -334,7 +334,7 @@ function Review({
             {mergedConstraints.map((constraint) => (
               <li
                 key={constraint.id}
-                className="flex items-baseline justify-between gap-4 border-b border-line/60 py-2 last:border-0"
+                className="flex items-baseline justify-between gap-4 border-b border-line py-2 last:border-0"
               >
                 <div className="min-w-0">
                   <p className="text-sm text-ink">{constraint.description}</p>
@@ -352,7 +352,7 @@ function Review({
       )}
 
       {draft.clarifications.length > 0 ? (
-        <div className="mb-4 rounded-lg border border-caution/40 bg-raised p-3">
+        <div className="mb-4 rounded-lg border border-caution/70 bg-raised p-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-caution">
             TwinBank will not guess these
           </p>

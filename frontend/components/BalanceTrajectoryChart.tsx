@@ -157,7 +157,14 @@ export function BalanceTrajectoryChart({
             Baseline <span className="tnum text-ink">{money(endBaseline)}</span>
           </span>
           <span className="flex items-center gap-1.5 text-muted">
-            <span className="h-0.5 w-4 rounded bg-counter" aria-hidden="true" />
+            <span
+              className="h-0.5 w-4"
+              style={{
+                backgroundImage:
+                  "repeating-linear-gradient(to right, var(--color-counter) 0 4px, transparent 4px 7px)",
+              }}
+              aria-hidden="true"
+            />
             {counterfactualLabel} <span className="tnum text-ink">{money(endCounterfactual)}</span>
           </span>
         </div>
@@ -170,7 +177,7 @@ export function BalanceTrajectoryChart({
               onClick={() => setMetric(option)}
               className={`rounded-full border px-2.5 py-0.5 text-[11px] transition ${
                 metric === option
-                  ? "border-counter/40 bg-raised text-counter"
+                  ? "border-baseline bg-raised text-baseline"
                   : "border-line text-muted hover:text-ink"
               }`}
             >
@@ -229,13 +236,13 @@ export function BalanceTrajectoryChart({
           {!identical ? (
             <path
               d={buildBandPath(baseHi, baseLo, scaleX, scaleY)}
-              className="fill-baseline/10"
+              className="fill-baseline/15"
               aria-hidden="true"
             />
           ) : null}
           <path
             d={buildBandPath(counterHi, counterLo, scaleX, scaleY)}
-            className="fill-counter/15"
+            className="fill-counter/20"
             aria-hidden="true"
           />
 
@@ -273,7 +280,7 @@ export function BalanceTrajectoryChart({
                   x2={x}
                   y1={PAD.top}
                   y2={PAD.top + PLOT_H}
-                  className={marker.tone === "counter" ? "stroke-counter/50" : "stroke-faint/60"}
+                  className={marker.tone === "counter" ? "stroke-counter/70" : "stroke-faint/70"}
                   strokeWidth={1}
                   strokeDasharray="3 3"
                 />
@@ -307,8 +314,11 @@ export function BalanceTrajectoryChart({
             d={buildPath(counterMedian, scaleX, scaleY)}
             className="stroke-counter"
             fill="none"
-            strokeWidth={1.75}
+            strokeWidth={2}
             strokeLinejoin="round"
+            /* Dashed, not merely red: blue and red share a luminance, so the line
+               style is what separates the two projections (SPEC §6, §11). */
+            strokeDasharray="7 4"
             vectorEffect="non-scaling-stroke"
           />
 
@@ -365,7 +375,7 @@ export function BalanceTrajectoryChart({
                 {signedMoney(counterMedian[hover] - baseMedian[hover])}
               </p>
             ) : null}
-            <p className="tnum mt-1 border-t border-line/60 pt-1 text-faint">
+            <p className="tnum mt-1 border-t border-line pt-1 text-faint">
               {money(counterLo[hover])} to {money(counterHi[hover])}
             </p>
           </div>

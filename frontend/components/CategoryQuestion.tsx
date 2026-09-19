@@ -47,7 +47,7 @@ export function CategoryQuestion({
   }
 
   return (
-    <li className="border-b border-line/60 py-2 last:border-0">
+    <li className="border-b border-line py-2 last:border-0">
       <div className="flex items-baseline justify-between gap-4">
         <div className="min-w-0">
           <p className="text-sm text-ink">{obligation.name}</p>
@@ -57,7 +57,7 @@ export function CategoryQuestion({
       </div>
 
       {asking ? (
-        <div className="mt-2 rounded-lg border border-counter/40 p-3">
+        <div className="mt-2 rounded-lg border border-counter/70 p-3">
           <p className="text-xs font-medium text-ink">What is this?</p>
           <p className="mt-0.5 text-xs text-faint">
             TwinBank can&rsquo;t tell from the transactions alone. Your answer changes the simulation.

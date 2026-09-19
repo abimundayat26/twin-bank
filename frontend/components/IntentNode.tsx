@@ -13,16 +13,22 @@ import type { IntentNode as IntentNodeType } from "@/lib/graph";
 import { Badge, ProvenanceTag } from "./ui";
 import { NODE_WIDTH } from "@/lib/graph";
 
-/** Declared intent is tinted; observed facts stay neutral (SPEC §2). */
+/**
+ * Declared intent is tinted; observed facts stay neutral (SPEC §2).
+ *
+ * Blue and red sit at almost the same luminance, so hue alone would not separate
+ * observed from declared. Declared kinds also carry a heavier border, and every
+ * node with a provenance states it in words via `ProvenanceTag` (SPEC §6, §11).
+ */
 const KIND_ACCENT: Record<IntentNodeType["data"]["kind"], string> = {
   income: "border-line",
-  account: "border-baseline/50",
+  account: "border-baseline/70",
   obligation: "border-line",
   spending: "border-line",
-  goal: "border-counter/50",
-  reserve: "border-counter/50",
-  checking_floor: "border-counter/50",
-  purchase: "border-counter",
+  goal: "border-2 border-counter/70",
+  reserve: "border-2 border-counter/70",
+  checking_floor: "border-2 border-counter/70",
+  purchase: "border-2 border-counter",
 };
 
 export function IntentNode({ data }: NodeProps<IntentNodeType>) {

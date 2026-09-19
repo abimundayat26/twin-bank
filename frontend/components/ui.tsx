@@ -40,10 +40,10 @@ export function Badge({
 }) {
   const tones = {
     neutral: "border-line text-muted",
-    good: "border-good/40 text-good",
-    caution: "border-caution/40 text-caution",
-    bad: "border-bad/40 text-bad",
-    info: "border-counter/40 text-counter",
+    good: "border-good/70 text-good",
+    caution: "border-caution/70 text-caution",
+    bad: "border-bad/70 bg-bad/10 text-bad",
+    info: "border-counter/70 text-counter",
   } as const;
   return (
     <span
@@ -78,7 +78,7 @@ export function Row({
   meta?: ReactNode;
 }) {
   return (
-    <li className="flex items-baseline justify-between gap-4 border-b border-line/60 py-2 last:border-0">
+    <li className="flex items-baseline justify-between gap-4 border-b border-line py-2 last:border-0">
       <div className="min-w-0">
         <p className="truncate text-sm text-ink">{label}</p>
         {hint ? <p className="text-xs text-faint">{hint}</p> : null}

@@ -1,25 +1,46 @@
 @import "tailwindcss";
 
-/* Fixed dark theme: the demo should look identical on every laptop. */
+/*
+ * Fixed light theme: the demo should look identical on every laptop.
+ *
+ * SPEC §6 allows exactly three colour families — blue, red, white. White is the
+ * content surface, blue is the structural colour, red is a sparing accent. The
+ * grey-looking borders and secondary text below are blue at controlled opacity,
+ * not a fourth (grey) family.
+ *
+ * Because blue and red sit at almost the same luminance (1.11:1), they are never
+ * the only thing separating two meanings: baseline/counterfactual and
+ * observed/declared also differ by line style, border treatment and a visible
+ * label (SPEC §6, §11).
+ */
 @theme {
-  --color-canvas: #0b0f14;
-  --color-surface: #131a22;
-  --color-raised: #1a232e;
-  --color-line: #24303d;
-  --color-ink: #e6edf3;
-  --color-muted: #8b9aab;
-  --color-faint: #5d6b7a;
+  /* Surfaces: white content sitting on a pale blue page. */
+  --color-canvas: #eef3fa;
+  --color-surface: #ffffff;
+  --color-raised: #e3ecf7;
 
-  --color-baseline: #38e8b0;
-  --color-counter: #a78bfa;
+  /* Borders and secondary text: the ink blue at controlled opacity. */
+  --color-line: rgb(11 39 64 / 0.24);
+  --color-muted: rgb(11 39 64 / 0.72);
+  --color-faint: rgb(11 39 64 / 0.7);
 
-  --color-good: #38e8b0;
-  --color-caution: #ffb84d;
-  --color-bad: #ff6b6b;
+  --color-ink: #0b2740;
+
+  /* Projections: solid blue baseline, dashed red counterfactual (SPEC §6). */
+  --color-baseline: #0a5ba8;
+  --color-counter: #c8102e;
+
+  /*
+   * Status. There is no green or amber to spend, so severity climbs by getting
+   * darker within red while the label carries the actual meaning.
+   */
+  --color-good: #0a5ba8;
+  --color-caution: #9e1b2f;
+  --color-bad: #8a0f22;
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
