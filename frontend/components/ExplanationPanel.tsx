@@ -17,11 +17,11 @@ export function ExplanationPanel({ simulation }: { simulation: SimulationRespons
         Biggest drivers
       </h3>
       <ul className="grid gap-2">
-        {simulation.drivers.map((driver) => {
+        {simulation.drivers.map((driver, i) => {
           const negative = driver.direction === "negative";
           return (
             <li
-              key={driver.label}
+              key={`${i}-${driver.label}`}
               className="rounded-lg border border-line bg-raised p-3"
             >
               <div className="flex items-baseline justify-between gap-3">

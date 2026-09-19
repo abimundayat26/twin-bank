@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { money, moneyExact, longDate, ordinalDay, percent } from "@/lib/format";
 import type { FinancialObligation, FinancialTwin, ObligationCategory } from "@/lib/types";
-import { CategoryQuestion } from "./CategoryQuestion";
+import { CATEGORY_LABELS, CategoryQuestion } from "./CategoryQuestion";
 import { MinimumBalanceCard } from "./MinimumBalanceCard";
 import { Badge, Card, ProvenanceTag, Row } from "./ui";
 
@@ -28,7 +28,12 @@ export function FinancialSummary({
 }) {
   const reserve = twin.constraints.find((c) => c.type === "minimum_reserve");
   const minimum = twin.constraints.find((c) => c.type === "minimum_checking_balance");
-  const recurring = twin.obligations.filter((o) => !isMandatory(o));
+  // Declared "not recurring" obligations are left out of the simulation, so they are
+  // listed separately rather than as recurring expenses.
+  const excluded = twin.obligations.filter((o) => o.declared_category === "not_recurring");
+  const recurring = twin.obligations.filter(
+    (o) => !isMandatory(o) && o.declared_category !== "not_recurring",
+  );
   const upcoming = twin.obligations.filter(isMandatory);
 
   function obligationRow(obligation: FinancialObligation, meta: ReactNode) {
@@ -96,10 +101,27 @@ export function FinancialSummary({
       <Card title="Recurring expenses" subtitle="Recurring but not mandatory">
         <ul>
           {recurring.map((obligation) =>
-            obligationRow(obligation, <Badge tone="caution">Optional</Badge>),
+            obligationRow(
+              obligation,
+              <Badge tone="caution">
+                {obligation.declared_category
+                  ? CATEGORY_LABELS[obligation.declared_category]
+                  : "Optional"}
+              </Badge>,
+            ),
           )}
         </ul>
       </Card>
+
+      {excluded.length > 0 ? (
+        <Card title="Left out of the projection" subtitle="You said these do not recur">
+          <ul>
+            {excluded.map((obligation) =>
+              obligationRow(obligation, <Badge>Not recurring</Badge>),
+            )}
+          </ul>
+        </Card>
+      ) : null}
 
       <Card title="Variable spending" subtitle="Observed 14-day averages">
         <ul>
