@@ -48,23 +48,23 @@ def test_forecast_window_and_recency_weighting_are_stated(flat_twin):
     twin = flat_twin.model_copy(update={"forecast": forecast()})
 
     assert forecast_assumptions(twin) == [
-        "Spending figures are fitted to 26 fortnights of observed spending, 2025-09-19 to 2026-09-18; "
-        "recent fortnights count more, and one 180 days older counts half as much."
+        "Spending estimates use 26 two-week periods observed from 2025-09-19 to 2026-09-18. "
+        "Recent periods count more; a period 180 days older gets half the weight."
     ]
 
 
 def test_equal_weighting_is_stated_when_there_is_no_half_life():
     twin = load_twin().model_copy(update={"forecast": forecast(half_life_days=None)})
 
-    assert forecast_assumptions(twin)[0].endswith("every fortnight counts equally.")
+    assert forecast_assumptions(twin)[0].endswith("All periods count equally.")
 
 
 def test_seasonal_category_names_its_busiest_and_quietest_months():
     text = seasonal_assumption("groceries", SeasonalProfile(factors=TERM_START))
 
     assert text == (
-        "Groceries spending is highest in August and September (1.30× an average fortnight) "
-        "and lowest in December (0.80×)."
+        "Groceries spending is usually highest in August and September "
+        "(1.30× its typical two-week amount) and lowest in December (0.80×)."
     )
 
 
@@ -78,8 +78,8 @@ def test_seasonal_twin_explains_the_pattern_and_the_flat_categories():
 
     lines = forecast_assumptions(twin)
 
-    assert lines[1].startswith("A category with a seasonal pattern has its average and spread scaled")
-    assert lines[2].startswith("Groceries spending is highest in August and September")
+    assert lines[1].startswith("Seasonal categories adjust their typical spending")
+    assert lines[2].startswith("Groceries spending is usually highest in August and September")
     assert lines[3] == "Every other spending category is flat across the year."
 
 
@@ -92,8 +92,8 @@ def test_simulation_assumptions_include_the_forecast():
 
     assumptions = run_simulation(twin, request, n_simulations=20, seed=1).assumptions
 
-    assert any(a.startswith("Groceries spending is highest in") for a in assumptions)
-    assert any(a.startswith("Spending figures are fitted to 26 fortnights") for a in assumptions)
+    assert any(a.startswith("Groceries spending is usually highest in") for a in assumptions)
+    assert any(a.startswith("Spending estimates use 26 two-week periods") for a in assumptions)
 
 
 # --- Seasonal timing of the purchase --------------------------------------------
@@ -134,7 +134,7 @@ def test_a_purchase_before_a_busy_stretch_is_pointed_out():
     assert driver.detail == (
         "The laptop on 2026-09-20 lands at the start of a busy stretch: everyday spending through "
         f"2026-10-03 is expected to be {money(260 + extra)}, versus $260 in an average stretch of the "
-        "year (groceries 1.24× their usual). This happens with or without the purchase."
+        "year (groceries: 1.24× usual). This happens with or without the purchase."
     )
 
 
@@ -144,7 +144,7 @@ def test_a_purchase_before_a_quiet_stretch_is_pointed_out():
     assert driver.label == "Quiet spending stretch"
     assert driver.direction == "positive"
     assert driver.impact_amount > 0
-    assert "(groceries 0.76× their usual)" in driver.detail
+    assert "(groceries: 0.76× usual)" in driver.detail
 
 
 def test_a_small_seasonal_effect_says_nothing():
@@ -180,4 +180,4 @@ def test_the_demo_twin_explains_its_seasonal_spending():
     result = run_simulation(twin, SimulationRequest(user_id="alex", events=[LAPTOP]), n_simulations=20, seed=1)
 
     assert "Busy spending stretch" in [d.label for d in result.drivers]
-    assert any(a.startswith("Discretionary spending is highest in December") for a in result.assumptions)
+    assert any(a.startswith("Discretionary spending is usually highest in December") for a in result.assumptions)
