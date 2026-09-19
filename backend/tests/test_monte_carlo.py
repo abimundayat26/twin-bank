@@ -4,7 +4,7 @@ from datetime import date
 import pytest
 
 from backend.fixtures import load_twin
-from backend.schemas import SimulationEvent, SimulationRequest, VariableSpendingDistribution
+from backend.schemas import SeasonalProfile, SimulationEvent, SimulationRequest, VariableSpendingDistribution
 from backend.simulation import run_simulation
 from backend.simulation.engine import SimulationError, compare, simulate_scenario
 from backend.simulation.monte_carlo import (
@@ -197,3 +197,36 @@ def test_response_carries_monte_carlo_fields(twin):
         assert metrics.prob_goal_met == agg.prob_goal_met
         assert metrics.prob_obligations_uncovered == agg.prob_obligations_uncovered
         assert metrics.obligations_covered == (agg.prob_obligations_uncovered == 0)
+
+
+# --- Seasonal spending ----------------------------------------------------------------
+
+TERM_SHAPE = {m: 1.5 if m >= 9 else 0.5 if m <= 4 else 1.0 for m in range(1, 13)}
+
+
+def with_profile(twin, factors: dict[int, float]):
+    profile = SeasonalProfile(factors=factors)
+    return twin.model_copy(
+        update={"variable_spending": [v.model_copy(update={"seasonal": profile}) for v in twin.variable_spending]}
+    )
+
+
+def test_a_flat_profile_draws_exactly_what_no_profile_draws(twin):
+    flat = with_profile(twin, dict.fromkeys(range(1, 13), 1.0))
+    assert sample_draws(flat, HORIZON, random.Random(3)) == sample_draws(twin, HORIZON, random.Random(3))
+
+
+def test_zero_uncertainty_seasonal_matches_deterministic_engine(twin):
+    certain = with_profile(without_uncertainty(twin), TERM_SHAPE)
+    mc = run_monte_carlo(certain, [purchase(800)], n_simulations=5, seed=1)
+    expected = compare(certain, [purchase(800)])
+    assert mc.baseline.ending_balance == pytest.approx(expected.baseline.ending_balance, abs=0.01)
+    assert mc.counterfactual.ending_balance == pytest.approx(expected.counterfactual.ending_balance, abs=0.01)
+    assert mc.baseline.min_checking == pytest.approx(expected.baseline.min_checking, abs=0.01)
+
+
+def test_seasonal_factor_scales_the_spread_too(twin):
+    # Nothing is spent July-December, however volatile the category is.
+    idle_autumn = with_profile(twin, {m: 2.0 if m <= 6 else 0.0 for m in range(1, 13)})
+    draws = sample_draws(idle_autumn, date(2026, 12, 31), random.Random(0))
+    assert set(draws.daily_spending.values()) == {0.0}
