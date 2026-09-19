@@ -55,6 +55,24 @@ def test_num_simulations_must_be_positive():
     assert SimulationResponse.model_validate({**data, "num_simulations": 1000}).num_simulations == 1000
 
 
+BAND = [{"date": "2026-09-19", "p10": 2840.0, "median": 2840.0, "p90": 2840.0}]
+
+
+def test_balance_bands_are_optional():
+    response = load_simulation().model_dump(exclude={"balance_bands"})
+    assert SimulationResponse.model_validate(response).balance_bands is None
+
+
+def test_balance_bands_round_trip():
+    scenario = {"total": BAND, "checking": BAND}
+    data = {**load_simulation().model_dump(mode="json"), "balance_bands": {
+        "baseline": scenario, "counterfactual": scenario,
+    }}
+    response = SimulationResponse.model_validate(data)
+    assert response.balance_bands.counterfactual.total[0].median == 2840.0
+    assert SimulationResponse.model_validate_json(response.model_dump_json()) == response
+
+
 # --- Obligation categories and twin updates -----------------------------------
 
 OBLIGATION = {
