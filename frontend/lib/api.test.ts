@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, getTwin, runSimulation, setMinimumBalance } from "./api";
+import { ApiError, getTwin, runOptimization, runSimulation, setMinimumBalance } from "./api";
 import mockSimulation from "./mock/simulation.json";
 import mockTwin from "./mock/twin.json";
-import type { FinancialTwin, SimulationRequest } from "./types";
+import type { FinancialTwin, OptimizationResponse, SimulationRequest } from "./types";
 
 const twin = mockTwin as FinancialTwin;
 const request = {
@@ -110,5 +110,27 @@ describe("when the backend accepts the connection but never answers", () => {
   it("still surfaces a real rejection, which a timeout must not mask", async () => {
     backendReplies(404, { detail: "No twin for user 'nobody'" });
     await expect(getTwin("nobody")).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("runOptimization", () => {
+  it("posts the purchase to /optimize and returns the ranked options", async () => {
+    const payload = { optimization_id: "opt_1", candidates: [] } as unknown as OptimizationResponse;
+    backendReplies(200, payload);
+    await expect(runOptimization(request)).resolves.toEqual({ data: payload, source: "api" });
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toMatch(/\/optimize$/);
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(init?.body as string)).toEqual(request);
+  });
+
+  it("throws the backend's error", async () => {
+    backendReplies(422, { detail: "Event date 2030-01-01 is outside the horizon" });
+    await expect(runOptimization(request)).rejects.toMatchObject({ status: 422 });
+  });
+
+  it("has no fixture to fall back to, so an unreachable backend throws", async () => {
+    backendDown();
+    await expect(runOptimization(request)).rejects.toThrow("fetch failed");
   });
 });

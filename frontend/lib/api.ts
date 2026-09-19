@@ -24,6 +24,8 @@ import type {
   ClarificationResponseRequest,
   FinancialTwin,
   MinimumBalanceRequest,
+  OptimizationRequest,
+  OptimizationResponse,
   SimulationRequest,
   SimulationResponse,
 } from "./types";
@@ -116,6 +118,21 @@ export async function runSimulation(
     // user's answers. `is_mock` says so, and the page shows an offline notice.
     return { data: mockSimulation as SimulationResponse, source: "fixture" };
   }
+}
+
+/**
+ * Ranked alternatives to a purchase (`POST /optimize`). There is no bundled
+ * fixture: the options only mean something for the purchase actually entered,
+ * so an unreachable backend throws and the page says alternatives need it.
+ */
+export async function runOptimization(
+  request: OptimizationRequest,
+): Promise<Loaded<OptimizationResponse>> {
+  const data = await getJson<OptimizationResponse>("/optimize", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+  return { data, source: "api" };
 }
 
 /**
