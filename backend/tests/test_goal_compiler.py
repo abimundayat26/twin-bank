@@ -1,14 +1,26 @@
 """Goal compiler: text to draft goals and constraints, and the /goals/compile + PUT /twin/{user_id}/goals API."""
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.fixtures import load_twin
-from backend.goal_compiler import compile_goals, split_clauses
+from backend.goal_compiler import (
+    check_deadline,
+    compile_goals,
+    dedupe_constraints,
+    split_clauses,
+    unique_goal_id,
+)
 from backend.main import app
-from backend.schemas import FinancialTwin, GoalCompileResponse, SimulationResponse
+from backend.schemas import (
+    FinancialConstraint,
+    FinancialTwin,
+    GoalCompileResponse,
+    SimulationResponse,
+)
+from backend.simulation.engine import MAX_HORIZON_DAYS
 
 client = TestClient(app)
 AS_OF = date(2026, 9, 19)
@@ -309,3 +321,38 @@ def test_goals_put_rejects_two_reserves_and_unknown_user():
     body = {"goals": [], "constraints": [reserve, {**reserve, "id": "r2"}]}
     assert client.put("/twin/alex/goals", json=body).status_code == 422
     assert client.put("/twin/bob/goals", json={"goals": []}).status_code == 404
+
+
+# --- helpers shared with the LLM compiler -------------------------------------
+
+
+def test_check_deadline_accepts_a_date_inside_the_horizon():
+    assert check_deadline(date(2027, 5, 1), "by May", "for a car", AS_OF) is None
+
+
+def test_check_deadline_asks_about_missing_vague_passed_and_too_far_dates():
+    what = "for a car"
+    assert check_deadline(None, None, what, AS_OF) == "When do you need the money for a car?"
+    assert check_deadline(None, "by summer", what, AS_OF) == 'When exactly is "by summer"? Give a date.'
+    assert "already passed" in check_deadline(AS_OF, "by 2026-09-19", what, AS_OF)
+    latest = AS_OF + timedelta(days=MAX_HORIZON_DAYS)
+    assert check_deadline(latest, None, what, AS_OF) is None
+    assert "too far ahead" in check_deadline(latest + timedelta(days=1), None, what, AS_OF)
+
+
+def test_unique_goal_id_adds_a_suffix_only_when_taken():
+    assert unique_goal_id("Summer housing", set()) == "goal_summer_housing"
+    assert unique_goal_id("Car", {"goal_car"}) == "goal_car_2"
+    assert unique_goal_id("Car", {"goal_car", "goal_car_2"}) == "goal_car_3"
+
+
+def test_dedupe_constraints_drops_a_repeated_type_and_asks_which_amount():
+    reserve = FinancialConstraint(id="a", type="minimum_reserve", amount=1500, description="")
+    other_reserve = reserve.model_copy(update={"amount": 1000})
+    floor = FinancialConstraint(id="b", type="minimum_checking_balance", amount=300, description="")
+    asked = []
+
+    kept = dedupe_constraints([reserve, floor, other_reserve], "text", lambda *a: asked.append(a))
+
+    assert kept == [floor]
+    assert asked == [("amount", "You gave two amounts to keep ($1,500 and $1,000). Which one?", "text")]
