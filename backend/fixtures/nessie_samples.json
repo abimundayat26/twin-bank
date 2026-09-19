@@ -1,0 +1,65 @@
+{
+  "_comment": "Real payloads recorded from https://api.nessieisreal.com on 2026-09-19. Tests are pinned to these so the client is checked against what the API actually returns, not against what we assume. Ids and names are Nessie's own sandbox data, not ours.",
+  "account": {
+    "_id": "d316d73e-5eb7-41b4-8185-3b4c1f9dea3b",
+    "type": "Checking",
+    "nickname": "Cuenta Rosa",
+    "rewards": 100,
+    "balance": 4500,
+    "account_number": "5122921495102528",
+    "customer_id": "cus_rosa"
+  },
+  "savings_account": {
+    "_id": "ee57daa0-ff9b-45f0-b5a6-f33c238eb816",
+    "type": "Savings",
+    "nickname": "Ahorros",
+    "rewards": 0,
+    "balance": 1500,
+    "account_number": "5122921495102529",
+    "customer_id": "cus_rosa"
+  },
+  "purchases": [
+    {
+      "_id": "fe214382-8988-471d-8f18-b9dae266e655",
+      "type": "merchant",
+      "merchant_id": "8a4a9661-6e3a-4c94-b19d-d4e6511dbeec",
+      "payer_id": "ee57daa0-ff9b-45f0-b5a6-f33c238eb816",
+      "purchase_date": "2026-09-12",
+      "amount": 125,
+      "status": "completed",
+      "medium": "balance",
+      "description": null
+    }
+  ],
+  "deposits": [
+    {
+      "_id": "02e8d99d-a7c0-46fb-a621-953ad8ddaad8",
+      "medium": "balance",
+      "transaction_date": "2026-09-09",
+      "status": "completed",
+      "amount": 320,
+      "description": "Sample campus paycheck"
+    }
+  ],
+  "withdrawals": [
+    {
+      "_id": "021d0c79-86bb-4ae2-b44a-8dcd6e3d4be0",
+      "type": "withdrawal",
+      "transaction_date": "2026-09-13",
+      "status": "completed",
+      "payer_id": "98698915-42ab-45a8-a89d-31330909e9e5",
+      "medium": "balance",
+      "amount": 2000,
+      "description": "Beca"
+    }
+  ],
+  "transfers": [
+    {
+      "_id": "2da95260-83c6-4fbe-8544-09077cb97069",
+      "transaction_date": "2026-09-11",
+      "status": "completed",
+      "amount": 1,
+      "description": "PartyFund sandbox compatibility test"
+    }
+  ]
+}
