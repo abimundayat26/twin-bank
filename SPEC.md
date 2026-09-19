@@ -119,6 +119,8 @@ The MVP must contain:
 10. Basic optimization for alternative actions.
 11. Coherent frontend demo.
 
+This list names components, not build order. Build order is defined by the phases in Section 5.
+
 ---
 
 ## 5. Implementation Strategy
@@ -171,6 +173,8 @@ Polish the demo.
 Only if the core product is stable, attempt stretch features such as ANS.
 
 At every phase, preserve a functioning end-to-end demo.
+
+Phases describe what the demo on `main` does. Workstreams (Section 10) may build later-phase components in parallel, as long as each component stays behind a mock until it is ready.
 
 ---
 
@@ -306,7 +310,15 @@ Example concepts:
 }
 ```
 
-This is conceptual and may evolve.
+This is conceptual and may evolve. It lists `accounts` but the example does not show them yet.
+
+Once `backend/src/backend/schemas.py` exists, it is the authoritative definition of the Financial Twin and other shared contracts. This example is illustrative only.
+
+Conventions for all shared data:
+
+* money is in USD dollars, as numbers,
+* dates are ISO 8601 (`YYYY-MM-DD`),
+* probabilities are between 0 and 1.
 
 ---
 
@@ -328,6 +340,8 @@ POST /clarifications/respond
 Do not build all endpoints immediately.
 
 Build only what the current phase requires.
+
+Phase 1 needs only `GET /health`, `GET /twin/{user_id}`, and `POST /simulate`. In Phase 1, `POST /simulate` returns the explanation inline, so `GET /explain/{simulation_id}` (which requires storing simulations) is deferred.
 
 ---
 
@@ -399,3 +413,17 @@ The single most important milestone is:
 Initially, the values behind this experience may be mocked.
 
 Then mocks should be progressively replaced by real implementations without breaking the demo.
+
+---
+
+## 13. Open Questions
+
+These must be decided by the team, not by an individual Claude Code session. Until they are decided, use the proposed default and label it as an assumption.
+
+| Question | Proposed default |
+| --- | --- |
+| What balance counts as "low balance"? | Checking balance below $200 |
+| Does the emergency reserve count checking only, or checking plus savings? | Checking plus savings |
+| What is the simulation horizon? | From today through the housing goal deadline (2027-05-01) |
+| Which LLM provider do we use? | Undecided; explanations are template-based until Phase 5 |
+| Does the housing goal draw from the same money as the emergency reserve? | No; the goal must be met on top of the reserve |

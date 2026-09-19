@@ -4,7 +4,7 @@
 
 Before making architectural or implementation decisions:
 
-1. Read `spec.md`.
+1. Read `SPEC.md`.
 2. Inspect the existing repository.
 3. Understand the current implementation phase.
 4. Do not assume planned features are already implemented.
@@ -12,6 +12,34 @@ Before making architectural or implementation decisions:
 TwinBank is currently following a demo-first vertical-slice strategy.
 
 The highest priority is keeping a functioning end-to-end demo.
+
+Three developers work on this repo at the same time, each usually running their own Claude Code session. Assume other people are changing other parts of the codebase while you work.
+
+---
+
+## Repository Layout
+
+Target layout (some parts may not exist yet, so check before assuming):
+
+```text
+backend/            Python, FastAPI, uv
+  src/backend/
+    main.py         FastAPI app and routes
+    schemas.py      shared Pydantic contracts (source of truth)
+    fixtures.py     mock data (Alex)
+  tests/
+frontend/           Next.js, TypeScript
+.env.example        configuration names, no values
+```
+
+Commands:
+
+* Backend install: `cd backend && uv sync`
+* Backend run: `cd backend && uv run uvicorn backend.main:app --reload --port 8000`
+* Backend tests: `cd backend && uv run pytest`
+* Frontend runs on port 3000 and calls the backend at `NEXT_PUBLIC_API_URL`.
+
+Update this section when the layout or commands change.
 
 ---
 
@@ -46,6 +74,8 @@ Implement only the requested phase or feature.
 
 Do not automatically continue into the next planned phase.
 
+Phases describe what `main` demos, not what each person may work on. A workstream may build a later-phase component (for example, the Nessie client) in parallel, but it must stay behind the existing interface and mocks until it is ready. It must not break the current demo.
+
 Do not add stretch features unless explicitly requested.
 
 Do not redesign the product without discussing the change first.
@@ -60,12 +90,16 @@ Financial Twin, goal, simulation, and optimization schemas are shared interfaces
 
 Do not casually change shared schemas.
 
+Once `backend/src/backend/schemas.py` exists, it is the single source of truth for these contracts. The JSON in `SPEC.md` is only illustrative. Frontend TypeScript types must mirror `schemas.py`.
+
 Before changing a shared contract:
 
 1. identify why the change is necessary,
 2. identify existing consumers,
-3. prefer backwards-compatible changes,
+3. prefer backwards-compatible changes (add optional fields; do not rename or remove),
 4. explain the impact before implementation.
+
+Put schema changes in their own small PR, separate from feature work, so other workstreams can review and pull them quickly.
 
 ---
 
@@ -96,6 +130,8 @@ Financial calculations belong in deterministic or statistical code.
 Nessie, Databricks, and LLM providers must be replaceable with mocks or fixtures when practical.
 
 The demo should not fail completely because an external API is unavailable.
+
+Mocks are the default. Real integrations must be enabled by an environment variable listed in `.env.example`, so a fresh clone runs the demo with no credentials.
 
 Never commit API keys, tokens, credentials, or `.env` files.
 
@@ -145,7 +181,7 @@ When finished:
 
 `main` should remain demoable.
 
-Prefer small feature branches such as:
+Do not commit directly to `main`. Work on small feature branches and merge through pull requests, for example:
 
 * `feat/twin-schema`
 * `feat/deterministic-simulator`
@@ -154,7 +190,17 @@ Prefer small feature branches such as:
 
 Avoid long-lived branches containing many unrelated features.
 
-Do not commit secrets or generated environment files.
+Because three people push concurrently:
+
+* pull `main` before starting a task and before opening a PR,
+* stage specific files, not `git add -A` or `git add .`,
+* never force-push, rebase, or reset a branch someone else may be using,
+* do not commit, push, or open PRs unless the developer asks,
+* only change `uv.lock` or `package-lock.json` when adding or removing a dependency,
+* do not reformat or reorganize files outside your task (this causes merge conflicts),
+* do not edit `CLAUDE.md` or `SPEC.md` unless the developer explicitly asks (they are shared team agreements).
+
+Do not commit secrets, `.env` files, `.venv`, `node_modules`, or build output.
 
 ---
 
