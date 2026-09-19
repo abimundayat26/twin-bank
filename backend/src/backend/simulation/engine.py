@@ -87,6 +87,23 @@ class ScenarioResult:
 
 
 @dataclass(frozen=True)
+class Charge:
+    """One withdrawal on one day: an instance of a recurring obligation, or a one-time one.
+
+    Both kinds are settled in the same loop so that mandatory-first ordering holds
+    *across* them, not merely within each. A recurring obligation is always paid from
+    checking; a one-time one names its own funding account.
+    """
+
+    id: str
+    name: str
+    amount: float
+    account_id: str
+    mandatory: bool
+    to_savings: bool = False
+
+
+@dataclass(frozen=True)
 class Draws:
     """Sampled amounts for one simulated future. Missing keys use expected values."""
 
@@ -244,12 +261,37 @@ def simulate_scenario(
             inflows[d] = inflows.get(d, 0.0) + amount
             total_income += amount
 
-    obligations_by_day: dict[date, list] = {}
+    charges_by_day: dict[date, list[Charge]] = {}
     for obligation in twin.obligations:
         if obligation.declared_category == "not_recurring":
             continue
         for d in monthly_due_dates(obligation.due_day, start, horizon_end):
-            obligations_by_day.setdefault(d, []).append(obligation)
+            charges_by_day.setdefault(d, []).append(
+                Charge(
+                    id=obligation.id,
+                    name=obligation.name,
+                    amount=obligation.expected_amount,
+                    account_id=primary,
+                    mandatory=is_mandatory(obligation),
+                    to_savings=obligation.declared_category == "savings_transfer",
+                )
+            )
+    # A confirmed one-time obligation is a commitment already made, so it belongs to
+    # the baseline as much as to any counterfactual (frontend/SPEC.md 3.2). Same
+    # (start, horizon_end] window as everything else; one outside it simply never
+    # happens in this run. A funding account that no longer exists falls back to
+    # checking rather than silently dropping the charge.
+    for one_time in twin.one_time_obligations:
+        if start < one_time.due_date <= horizon_end:
+            charges_by_day.setdefault(one_time.due_date, []).append(
+                Charge(
+                    id=one_time.id,
+                    name=one_time.name,
+                    amount=one_time.amount,
+                    account_id=one_time.account_id if one_time.account_id in balances else primary,
+                    mandatory=one_time.mandatory,
+                )
+            )
 
     events_by_day: dict[date, list[SimulationEvent]] = {}
     for event in events:
@@ -282,22 +324,31 @@ def simulate_scenario(
         # Mandatory bills are paid first (stable sort keeps twin order within each group),
         # and each is settled before the next is charged, so a later optional charge can
         # never be the reason an earlier mandatory bill looks unpayable.
-        for obligation in sorted(obligations_by_day.get(day, []), key=lambda o: not is_mandatory(o)):
-            balances[primary] -= obligation.expected_amount
+        for charge in sorted(charges_by_day.get(day, []), key=lambda c: not c.mandatory):
+            balances[charge.account_id] -= charge.amount
             # A declared savings transfer moves money within the twin instead of spending it.
-            if obligation.declared_category == "savings_transfer" and savings is not None:
-                balances[savings] += obligation.expected_amount
-            if not is_mandatory(obligation) or balances[primary] >= 0:
+            if charge.to_savings and savings is not None:
+                balances[savings] += charge.amount
+            if balances[charge.account_id] < 0 and charge.account_id != primary:
+                savings_overdrawn = True
+            if not charge.mandatory or balances[charge.account_id] >= 0:
+                continue
+            if charge.account_id != primary:
+                # Paid from savings and savings could not cover it. There is nowhere
+                # left to sweep from, so it is simply not covered.
+                uncovered.append(
+                    UncoveredObligation(charge.id, charge.name, day, round(balances[charge.account_id], 2))
+                )
                 continue
             # Checking alone fell short. A real person moves savings across rather than
             # missing rent, so the bill is only uncovered if both accounts together fail.
             swept = sweep_from_savings(balances, primary, savings)
             if balances[primary] < 0:
                 uncovered.append(
-                    UncoveredObligation(obligation.id, obligation.name, day, round(balances[primary], 2))
+                    UncoveredObligation(charge.id, charge.name, day, round(balances[primary], 2))
                 )
             elif swept > 0:
-                sweeps.append(SavingsSweep(obligation.id, obligation.name, day, round(swept, 2)))
+                sweeps.append(SavingsSweep(charge.id, charge.name, day, round(swept, 2)))
         balances[primary] -= spending[day]
 
         low_total = sum(balances.values())
