@@ -24,10 +24,12 @@ import {
   respondToClarification,
   runOptimization,
   runSimulation,
+  saveGoals,
   setMinimumBalance,
   type DataSource,
   type Loaded,
 } from "@/lib/api";
+import { withoutGoal } from "@/lib/goals";
 import type {
   FinancialTwin,
   Goal,
@@ -43,9 +45,14 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** Soonest deadline first, the order the backend's horizon cares about. */
+function byDeadline(goals: Goal[]): Goal[] {
+  return [...goals].sort((a, b) => a.deadline.localeCompare(b.deadline));
+}
+
 /** The backend's default horizon ends at the earliest goal deadline; match it. */
 function earliestGoal(goals: Goal[]): Goal | undefined {
-  return [...goals].sort((a, b) => a.deadline.localeCompare(b.deadline))[0];
+  return byDeadline(goals)[0];
 }
 
 export default function Home() {
@@ -121,6 +128,11 @@ export default function Home() {
   function handleSetMinimum(amount: number) {
     if (!twin) return;
     void updateTwin(setMinimumBalance(twin, { amount }));
+  }
+
+  function handleRemoveGoal(goalId: string) {
+    if (!twin) return;
+    void updateTwin(saveGoals(twin, withoutGoal(twin, goalId)));
   }
 
   async function handleSimulate(event: SimulationEvent) {
@@ -228,7 +240,22 @@ export default function Home() {
           </div>
 
           <div className="grid gap-6">
-            {goal ? <GoalCard goal={goal} /> : null}
+            {twin.goals.length > 0 ? (
+              byDeadline(twin.goals).map((g) => (
+                <GoalCard
+                  key={g.id}
+                  goal={g}
+                  isSaving={isSavingTwin}
+                  onRemove={handleRemoveGoal}
+                />
+              ))
+            ) : (
+              <Card title="Savings goals">
+                <p className="text-sm text-muted">
+                  No goals declared. The simulation looks 180 days ahead.
+                </p>
+              </Card>
+            )}
 
             <PurchaseSimulator
               twin={twin}
