@@ -15,6 +15,8 @@ from backend.schemas import FinancialObligation, FinancialTwin, SimulationEvent
 LOW_BALANCE_THRESHOLD = 500.0
 # Used when the request has no horizon_end and the twin has no goals.
 DEFAULT_HORIZON_DAYS = 180
+# Longest horizon a request may ask for; run time grows with every simulated day.
+MAX_HORIZON_DAYS = 730
 
 
 class SimulationError(ValueError):
@@ -86,6 +88,10 @@ def resolve_horizon_end(twin: FinancialTwin, horizon_end: date | None) -> date:
         end = twin.as_of + timedelta(days=DEFAULT_HORIZON_DAYS)
     if end <= twin.as_of:
         raise SimulationError(f"horizon_end {end} must be after as_of {twin.as_of}")
+    if (end - twin.as_of).days > MAX_HORIZON_DAYS:
+        raise SimulationError(
+            f"horizon_end {end} is more than {MAX_HORIZON_DAYS} days after as_of {twin.as_of}"
+        )
     return end
 
 
