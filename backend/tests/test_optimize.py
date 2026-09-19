@@ -238,6 +238,21 @@ def test_buy_now_summary_has_no_tradeoff_when_nothing_is_safer(twin):
     assert "lowers the chance" not in buy_now_summary(twin, other_reserve_risk=0.04)
 
 
+def test_summary_names_the_first_ranked_option_without_picking_it(twin):
+    result = optimize(twin)
+    first = next(c for c in result.candidates if c.id == result.recommended_id)
+    assert first.kind != "buy_now"
+    assert f'none has a better chance of meeting the goal than "{first.label}"' in result.summary
+
+
+@pytest.mark.parametrize("amount", [800.0, 5000.0])
+def test_summary_does_not_tell_the_user_what_to_do(twin, amount):
+    summaries = [optimize(twin, laptop(amount=amount)).summary, buy_now_summary(twin, 0.01)]
+    for summary in summaries:
+        lowered = summary.lower()
+        assert not any(word in lowered for word in ("best", "recommend", "should", "choose", "pick"))
+
+
 def test_fixed_seed_is_repeatable(twin):
     a = optimize(twin).model_dump(exclude={"optimization_id"})
     b = optimize(twin).model_dump(exclude={"optimization_id"})
