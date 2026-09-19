@@ -110,6 +110,26 @@ function buildRows(
           ? c.prob_obligations_uncovered > b.prob_obligations_uncovered
           : b.obligations_covered && !c.obligations_covered,
     },
+    {
+      // A bill the simulator paid, but only by reaching into savings. Covered above
+      // says the bill was paid; this says what it cost to pay it.
+      label: "Chance of paying a bill out of savings",
+      caption: "Checking alone would not cover a mandatory bill",
+      render: (m) =>
+        m.prob_savings_sweep != null
+          ? m.prob_savings_sweep === 0
+            ? "Never"
+            : `In ${chance(m.prob_savings_sweep)} of futures`
+          : "Not calculated",
+      delta: (b, c) =>
+        b.prob_savings_sweep != null && c.prob_savings_sweep != null
+          ? pointsDelta(b.prob_savings_sweep, c.prob_savings_sweep)
+          : null,
+      worse: (b, c) =>
+        b.prob_savings_sweep != null &&
+        c.prob_savings_sweep != null &&
+        c.prob_savings_sweep > b.prob_savings_sweep,
+    },
   ];
 }
 

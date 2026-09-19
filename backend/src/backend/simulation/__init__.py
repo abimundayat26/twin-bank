@@ -20,6 +20,7 @@ def to_metrics(aggregate: ScenarioAggregate) -> ScenarioMetrics:
         # Conservative: covered only if no simulated future leaves a mandatory bill uncovered.
         obligations_covered=aggregate.prob_obligations_uncovered == 0,
         prob_obligations_uncovered=aggregate.prob_obligations_uncovered,
+        prob_savings_sweep=aggregate.prob_savings_sweep,
         prob_goal_met=aggregate.prob_goal_met,
     )
 

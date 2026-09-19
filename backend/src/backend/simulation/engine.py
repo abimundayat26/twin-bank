@@ -43,6 +43,20 @@ class UncoveredObligation:
 
 
 @dataclass(frozen=True)
+class SavingsSweep:
+    """A mandatory bill checking could not cover alone, paid by moving savings across.
+
+    The bill was paid: this is the warning that it took the savings account to do it,
+    which is a different outcome from UncoveredObligation (not paid at all).
+    """
+
+    obligation_id: str
+    name: str
+    due: date
+    amount: float
+
+
+@dataclass(frozen=True)
 class ScenarioResult:
     dates: list[date]  # as_of, then each simulated day
     checking: list[float]  # end-of-day checking balance
@@ -55,6 +69,7 @@ class ScenarioResult:
     reserve_violated: bool
     obligations_covered: bool
     uncovered_obligations: list[UncoveredObligation]
+    savings_sweeps: list[SavingsSweep]
     goals: list[GoalOutcome]
     total_income: float
 
@@ -115,6 +130,20 @@ def is_mandatory(obligation: FinancialObligation) -> bool:
 
 def savings_account_id(twin: FinancialTwin) -> str | None:
     return next((a.id for a in twin.accounts if a.type == "savings"), None)
+
+
+def sweep_from_savings(balances: dict[str, float], primary: str, savings: str | None) -> float:
+    """Move as much of the checking shortfall out of savings as savings can cover.
+
+    Returns the amount moved. Total balance is unchanged; only its location moves,
+    so the reserve check still sees the real shortfall.
+    """
+    if savings is None or savings == primary or balances[primary] >= 0:
+        return 0.0
+    moved = min(-balances[primary], max(0.0, balances[savings]))
+    balances[primary] += moved
+    balances[savings] -= moved
+    return moved
 
 
 def primary_account_id(twin: FinancialTwin) -> str:
@@ -212,6 +241,7 @@ def simulate_scenario(
     min_total = total[0]
     min_checking, min_checking_date = checking[0], start
     uncovered: list[UncoveredObligation] = []
+    sweeps: list[SavingsSweep] = []
 
     day = start
     while day < horizon_end:
@@ -219,17 +249,25 @@ def simulate_scenario(
 
         for event in events_by_day.get(day, []):
             balances[event.account_id] -= event.amount
-        due_today = obligations_by_day.get(day, [])
-        for obligation in due_today:
+        # Mandatory bills are paid first (stable sort keeps twin order within each group),
+        # and each is settled before the next is charged, so a later optional charge can
+        # never be the reason an earlier mandatory bill looks unpayable.
+        for obligation in sorted(obligations_by_day.get(day, []), key=lambda o: not is_mandatory(o)):
             balances[primary] -= obligation.expected_amount
             # A declared savings transfer moves money within the twin instead of spending it.
             if obligation.declared_category == "savings_transfer" and savings is not None:
                 balances[savings] += obligation.expected_amount
-        for obligation in due_today:
-            if is_mandatory(obligation) and balances[primary] < 0:
+            if not is_mandatory(obligation) or balances[primary] >= 0:
+                continue
+            # Checking alone fell short. A real person moves savings across rather than
+            # missing rent, so the bill is only uncovered if both accounts together fail.
+            swept = sweep_from_savings(balances, primary, savings)
+            if balances[primary] < 0:
                 uncovered.append(
                     UncoveredObligation(obligation.id, obligation.name, day, round(balances[primary], 2))
                 )
+            elif swept > 0:
+                sweeps.append(SavingsSweep(obligation.id, obligation.name, day, round(swept, 2)))
         balances[primary] -= (
             draws.daily_spending.get(day, expected_daily_spending) if draws else expected_daily_spending
         )
@@ -257,6 +295,7 @@ def simulate_scenario(
         reserve_violated=min_total < reserve,
         obligations_covered=not uncovered,
         uncovered_obligations=uncovered,
+        savings_sweeps=sweeps,
         goals=evaluate_goals(twin, dates, total, reserve),
         total_income=round(total_income, 2),
     )

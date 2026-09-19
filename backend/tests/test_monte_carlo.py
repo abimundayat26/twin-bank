@@ -82,10 +82,23 @@ def test_zero_uncertainty_matches_deterministic_engine(twin):
 def test_probabilities_are_between_0_and_1(twin, amount):
     mc = run_monte_carlo(twin, [purchase(amount)], n_simulations=100, seed=3)
     for agg in (mc.baseline, mc.counterfactual):
-        probs = [agg.prob_low_balance, agg.prob_below_reserve, agg.prob_obligations_uncovered, agg.prob_goal_met]
+        probs = [agg.prob_low_balance, agg.prob_below_reserve, agg.prob_obligations_uncovered,
+                 agg.prob_savings_sweep, agg.prob_goal_met]
         probs += [g.prob_met for g in agg.goals]
         assert all(0 <= p <= 1 for p in probs)
         assert agg.ending_balance_p10 <= agg.ending_balance <= agg.ending_balance_p90
+
+
+@pytest.mark.parametrize("amount", [800, 1500, 3000])
+def test_a_bill_savings_can_cover_is_a_sweep_and_not_an_uncovered_bill(twin, amount):
+    """Emptying savings can only ever turn sweeps into uncovered bills, never the reverse."""
+    drained = twin.model_copy(
+        update={"accounts": [a.model_copy(update={"balance": 0.0}) if a.type == "savings" else a
+                             for a in twin.accounts]}
+    )
+    with_savings = run_monte_carlo(twin, [purchase(amount)], n_simulations=100, seed=7).counterfactual
+    without = run_monte_carlo(drained, [purchase(amount)], n_simulations=100, seed=7).counterfactual
+    assert with_savings.prob_obligations_uncovered <= without.prob_obligations_uncovered
 
 
 def test_simulation_count_is_configurable(twin):
