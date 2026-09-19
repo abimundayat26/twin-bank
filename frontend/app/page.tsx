@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { AlternativesPanel } from "@/components/AlternativesPanel";
 import { BalanceTrajectoryChart } from "@/components/BalanceTrajectoryChart";
 import { ExplanationPanel } from "@/components/ExplanationPanel";
 import { FinancialSummary } from "@/components/FinancialSummary";
@@ -21,6 +22,7 @@ import { Card } from "@/components/ui";
 import {
   getTwin,
   respondToClarification,
+  runOptimization,
   runSimulation,
   setMinimumBalance,
   type DataSource,
@@ -30,6 +32,7 @@ import type {
   FinancialTwin,
   Goal,
   ObligationCategory,
+  OptimizationResponse,
   SimulationEvent,
   SimulationResponse,
 } from "@/lib/types";
@@ -59,6 +62,16 @@ export default function Home() {
   // Bumped by every simulation and twin update; only the latest simulation may render.
   const latestRequest = useRef(0);
 
+  // Alternatives belong to the simulation on screen and are cleared with it.
+  const [optimization, setOptimization] = useState<OptimizationResponse | null>(null);
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [optimizationError, setOptimizationError] = useState<string>();
+
+  function clearOptimization() {
+    setOptimization(null);
+    setOptimizationError(undefined);
+  }
+
   useEffect(() => {
     let cancelled = false;
     getTwin(DEMO_USER_ID)
@@ -86,6 +99,7 @@ export default function Home() {
       setSource(loaded.source);
       setSimulation(null);
       setSimulationError(undefined);
+      clearOptimization();
     } catch (error: unknown) {
       setTwinUpdateError(errorText(error));
     } finally {
@@ -114,6 +128,7 @@ export default function Home() {
     const request = ++latestRequest.current;
     setIsSimulating(true);
     setSimulationError(undefined);
+    clearOptimization();
     try {
       // No horizon_end: the backend defaults to the earliest goal deadline.
       const loaded = await runSimulation({ user_id: twin.user_id, events: [event] });
@@ -126,6 +141,28 @@ export default function Home() {
       setSimulationError(errorText(error));
     } finally {
       setIsSimulating(false);
+    }
+  }
+
+  /** On demand: /optimize runs a Monte Carlo per option, so Simulate stays fast. */
+  async function handleOptimize() {
+    if (!simulation) return;
+    const request = latestRequest.current;
+    setIsOptimizing(true);
+    setOptimizationError(undefined);
+    try {
+      const loaded = await runOptimization({
+        user_id: simulation.user_id,
+        events: simulation.request.events,
+        horizon_end: simulation.request.horizon_end,
+      });
+      if (request !== latestRequest.current) return;
+      setOptimization(loaded.data);
+    } catch (error: unknown) {
+      if (request !== latestRequest.current) return;
+      setOptimizationError(errorText(error));
+    } finally {
+      setIsOptimizing(false);
     }
   }
 
@@ -240,6 +277,28 @@ export default function Home() {
                   goal={goal}
                 />
                 <ExplanationPanel simulation={simulation} />
+                {/* The saved example is not Alex's purchase, so there is nothing to optimize offline. */}
+                {simulationSource === "api" ? (
+                  optimization ? (
+                    <AlternativesPanel optimization={optimization} reserve={reserve} goal={goal} />
+                  ) : (
+                    <Card>
+                      <button
+                        type="button"
+                        onClick={handleOptimize}
+                        disabled={isOptimizing}
+                        className="w-full rounded-lg border border-counter px-4 py-2.5 text-sm font-semibold text-counter transition hover:bg-counter/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isOptimizing ? "Comparing options…" : "Compare other ways to do this"}
+                      </button>
+                      {optimizationError ? (
+                        <p className="mt-3 text-sm text-bad">
+                          Could not compare options: {optimizationError}
+                        </p>
+                      ) : null}
+                    </Card>
+                  )
+                ) : null}
               </>
             ) : (
               <Card>
