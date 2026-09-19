@@ -29,6 +29,13 @@ def no_real_tracking(monkeypatch):
     monkeypatch.delenv("TRACK_TWIN_BUILDS", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def no_real_databricks(monkeypatch):
+    """A developer's shell may point at a workspace; tests must never call Databricks."""
+    for name in ("DATABRICKS_TWIN_PATH", "DATABRICKS_HOST", "DATABRICKS_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def flat_twin():
     """Alex's fixture twin with its seasonal profiles removed.
