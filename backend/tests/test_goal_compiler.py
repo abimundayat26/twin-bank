@@ -117,6 +117,28 @@ def test_and_inside_a_goal_name_does_not_split_it():
     ]
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "keep $1,500 for emergencies and $300 in checking",
+        "Keep at least $1,500 for emergencies. $300 in checking.",
+    ],
+)
+def test_amount_after_a_keep_carries_the_keep(text):
+    result = compile_text(text)
+    assert [(c.type, c.amount) for c in result.constraints] == [
+        ("minimum_reserve", 1500),
+        ("minimum_checking_balance", 300),
+    ]
+    assert result.clarifications == [] and result.unparsed == []
+
+
+def test_checking_balance_statement_is_not_a_minimum():
+    result = compile_text("Keep at least $1,500 for emergencies. I have $300 in checking.")
+    assert [c.type for c in result.constraints] == ["minimum_reserve"]
+    assert result.unparsed == ["I have $300 in checking"]
+
+
 def test_ambiguous_minimum_asks_which_kind():
     result = compile_text("keep at least $1,500")
     assert result.constraints == []
