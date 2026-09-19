@@ -105,6 +105,10 @@ export interface ScenarioMetrics {
   /** USD short of the goal at its deadline. */
   goal_shortfall: number;
   obligations_covered: boolean;
+  /** Share of simulated futures where checking misses a mandatory bill. Absent/null on mock results. */
+  prob_obligations_uncovered?: number | null;
+  /** Share of simulated futures meeting every goal due within the horizon. Absent/null if not computed. */
+  prob_goal_met?: number | null;
 }
 
 export interface ExplanationDriver {
@@ -125,4 +129,6 @@ export interface SimulationResponse {
   drivers: ExplanationDriver[];
   assumptions: string[];
   is_mock: boolean;
+  /** Monte Carlo runs behind the metrics. Absent/null on mock results. */
+  num_simulations?: number | null;
 }
