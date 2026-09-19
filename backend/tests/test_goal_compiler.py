@@ -89,6 +89,41 @@ def test_impossible_date_is_asked_about():
     assert fields(result) == ["deadline"]
 
 
+@pytest.mark.parametrize("phrase", ["in 99999 years", "in 999999999 weeks", "by May 0000"])
+def test_out_of_range_date_is_asked_about_not_a_crash(phrase):
+    result = compile_text(f"Save $500 for a trip {phrase}")
+    assert result.goals == []
+    assert fields(result) == ["deadline"]
+
+
+def test_deadline_past_the_longest_horizon_is_asked_about():
+    result = compile_text("Save $5,000 for a car in 3 years")
+    assert result.goals == []
+    assert fields(result) == ["deadline"]
+    assert "2028-09-18" in result.clarifications[0].question
+
+
+def test_month_abbreviation_with_a_period_keeps_its_day():
+    result = compile_text("I need $500 for books by Jan. 15. Keep at least $1,000 for emergencies.")
+    assert [(g.name, g.deadline) for g in result.goals] == [("Books", date(2027, 1, 15))]
+    assert [c.type for c in result.constraints] == ["minimum_reserve"]
+    assert result.unparsed == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Save $3,000 for an emergency fund by December",
+        "I want to reserve $200 for concert tickets by October 30",
+        "Save $3,000 for an emergency fund",
+    ],
+)
+def test_reserve_words_with_a_deadline_or_no_keep_ask_which_kind(text):
+    result = compile_text(text)
+    assert result.goals == [] and result.constraints == []
+    assert fields(result) == ["type"]
+
+
 @pytest.mark.parametrize(
     ("text", "amount"),
     [("$2,000.50 for rent", 2000.5), ("3k for rent", 3000), ("$1.5k for rent", 1500), ("400 dollars for rent", 400)],
@@ -169,6 +204,12 @@ def test_compile_endpoint_returns_drafts_and_saves_nothing():
     result = GoalCompileResponse.model_validate(response.json())
     assert [g.name for g in result.goals] == ["Car"]
     assert get_twin().goals == load_twin().goals
+
+
+def test_compile_endpoint_survives_an_out_of_range_date():
+    response = compile_api("Save $500 for a trip in 99999 years")
+    assert response.status_code == 200
+    assert response.json()["clarifications"][0]["field"] == "deadline"
 
 
 def test_compile_endpoint_rejects_unknown_user_and_empty_text():
