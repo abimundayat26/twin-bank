@@ -19,9 +19,11 @@ from backend.simulation import SimulationError
 from backend.simulation.engine import income_dates, resolve_horizon_end, spending_blocks
 from backend.simulation.explain import build_optimization_summary, money
 from backend.simulation.optimize import (
+    COMBINED_ASSUMPTION,
     MAX_DELAY_PAYDAYS,
     adjusted_twin,
     check_constraints,
+    combined_candidates,
     generate_candidates,
     run_optimization,
 )
@@ -181,6 +183,69 @@ def test_spending_cut_quote_matches_the_simulated_average_across_seasons(twin):
     ) / days * 14
     assert expected != pytest.approx(110)
     assert cut_details(seasonal, end)[0].endswith(f"instead of {money(expected)}, through {end}.")
+
+
+def test_combined_options_pair_every_delay_with_every_spending_cut(twin):
+    singles = generate_candidates(twin, [laptop()], resolve_horizon_end(twin, None))
+    delays = [c for c in singles if c.kind == "delay"]
+    cuts = [c for c in singles if c.kind == "reduce_spending"]
+    combined = combined_candidates(singles)
+    assert len(combined) == len(delays) * len(cuts) > 0
+    assert len({c.id for c in combined}) == len(combined)
+    for delay in delays:
+        for cut in cuts:
+            match = [
+                c
+                for c in combined
+                if c.events == delay.events
+                and c.spending_adjustments == cut.spending_adjustments
+            ]
+            assert len(match) == 1
+            assert match[0].kind == "delay"
+            assert match[0].label.startswith(delay.label + " and spend ")
+            assert match[0].label.endswith(" less on discretionary")
+            assert match[0].detail == f"{delay.detail} {cut.detail}"
+
+
+def test_combined_options_are_ranked_by_delay_then_cut(twin):
+    combined = combined_candidates(
+        generate_candidates(twin, [laptop()], resolve_horizon_end(twin, None))
+    )
+    by_disruption = sorted(combined, key=lambda c: c.disruption)
+    assert [c.events[0].date for c in by_disruption] == sorted(
+        c.events[0].date for c in combined
+    )
+    first_delay = [c for c in by_disruption if c.events == by_disruption[0].events]
+    assert [c.spending_adjustments[0].multiplier for c in first_delay] == [0.75, 0.5]
+
+
+def test_no_combined_options_when_a_single_option_keeps_every_limit(twin):
+    result = optimize(twin)
+    assert any(c.meets_constraints for c in result.candidates)
+    assert all(
+        not (c.kind == "delay" and c.spending_adjustments) for c in result.candidates
+    )
+    assert COMBINED_ASSUMPTION not in result.assumptions
+
+
+def test_combined_options_are_tried_when_no_single_option_keeps_every_limit(twin):
+    result = optimize(twin, laptop(amount=5000))
+    combined = [c for c in result.candidates if c.kind == "delay" and c.spending_adjustments]
+    singles = generate_candidates(twin, [laptop(amount=5000)], result.horizon_end)
+    assert len(combined) == len(combined_candidates(singles))
+    assert len(result.candidates) == len(singles) + len(combined)
+    assert COMBINED_ASSUMPTION in result.assumptions
+
+
+def test_a_combined_option_can_keep_limits_no_single_option_keeps(twin):
+    # On Alex's fixture, $900 is more than any single option absorbs within the
+    # reserve limit, but waiting a few paydays and cutting discretionary spending is.
+    result = optimize(twin, laptop(amount=900))
+    single = [c for c in result.candidates if not (c.kind == "delay" and c.spending_adjustments)]
+    assert not any(c.meets_constraints for c in single)
+    recommended = next(c for c in result.candidates if c.id == result.recommended_id)
+    assert recommended.kind == "delay" and recommended.spending_adjustments
+    assert recommended.label in result.summary
 
 
 def test_unknown_account_is_rejected(twin):

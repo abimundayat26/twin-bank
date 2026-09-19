@@ -12,6 +12,8 @@ Candidate actions:
 - delay: the same purchase the day after one of the next few paydays.
 - reduce_spending: buy now, and scale a spending category down for the whole horizon.
 - from_savings: buy now, paying from savings instead of checking.
+- delay and reduce_spending together: only tried when no single action above keeps
+  every declared limit.
 """
 
 import random
@@ -58,6 +60,10 @@ SPENDING_CUT_MULTIPLIERS = (0.75, 0.5)
 # Assumption (team default, not declared by the user): a declared limit counts as
 # kept if it is broken in at most this share of simulated futures.
 MAX_CONSTRAINT_RISK = 0.05
+COMBINED_ASSUMPTION = (
+    "No single option kept every limit, so each delay was also tried together with each "
+    "spending cut."
+)
 
 # Least to most disruptive, for breaking ties between equally good outcomes.
 KIND_ORDER: dict[CandidateKind, int] = {"buy_now": 0, "from_savings": 1, "delay": 2, "reduce_spending": 3}
@@ -200,6 +206,30 @@ def from_savings_candidate(twin: FinancialTwin, events: list[SimulationEvent]) -
     ]
 
 
+def combined_candidates(candidates: list[Candidate]) -> list[Candidate]:
+    """Every delay paired with every spending cut, as kind "delay" with a spending adjustment."""
+    delays = [c for c in candidates if c.kind == "delay"]
+    cuts = [c for c in candidates if c.kind == "reduce_spending"]
+    combined = []
+    for delay in delays:
+        for cut in cuts:
+            adjustment = cut.spending_adjustments[0]
+            combined.append(
+                Candidate(
+                    id=f"{delay.id}_{cut.id.removeprefix('cand_')}",
+                    kind="delay",
+                    label=f"{delay.label} and spend {pct(1 - adjustment.multiplier)} less on "
+                    f"{adjustment.category}",
+                    detail=f"{delay.detail} {cut.detail}",
+                    events=delay.events,
+                    spending_adjustments=cut.spending_adjustments,
+                    # Days delayed, then the share cut (under 1) breaks ties at the same delay.
+                    disruption=delay.disruption + cut.disruption,
+                )
+            )
+    return combined
+
+
 def generate_candidates(
     twin: FinancialTwin, events: list[SimulationEvent], horizon_end: date
 ) -> list[Candidate]:
@@ -303,6 +333,42 @@ def rank_key(candidate: Candidate, scored: OptimizationCandidate) -> tuple:
     )
 
 
+def score_candidate(
+    twin: FinancialTwin,
+    candidate: Candidate,
+    horizon_end: date,
+    n_simulations: int,
+    seed: int,
+    baseline: ScenarioMetrics | None,
+) -> tuple[ScenarioMetrics, OptimizationCandidate]:
+    """Run one candidate's Monte Carlo and check it against the declared limits.
+
+    With no baseline given, this run's future without the purchase becomes the baseline.
+    """
+    mc = run_monte_carlo(
+        adjusted_twin(twin, candidate.spending_adjustments),
+        candidate.events,
+        horizon_end,
+        n_simulations,
+        seed,
+    )
+    if baseline is None:
+        baseline = to_metrics(mc.baseline)
+    metrics = to_metrics(mc.counterfactual)
+    violations = check_constraints(twin, metrics, baseline, mc.counterfactual.prob_savings_overdrawn)
+    return baseline, OptimizationCandidate(
+        id=candidate.id,
+        kind=candidate.kind,
+        label=candidate.label,
+        detail=candidate.detail,
+        events=candidate.events,
+        spending_adjustments=candidate.spending_adjustments,
+        metrics=metrics,
+        meets_constraints=not violations,
+        violations=violations,
+    )
+
+
 def run_optimization(
     twin: FinancialTwin,
     request: OptimizationRequest,
@@ -317,41 +383,23 @@ def run_optimization(
     candidates = generate_candidates(twin, request.events, horizon_end)
     shared_seed = seed if seed is not None else random.randrange(2**32)
 
-    baseline: ScenarioMetrics | None = None
-    ranked = []
-    for candidate in candidates:
-        mc = run_monte_carlo(
-            adjusted_twin(twin, candidate.spending_adjustments),
-            candidate.events,
-            horizon_end,
-            n_simulations,
-            shared_seed,
-        )
-        if baseline is None:
-            # buy_now comes first and runs on the unadjusted twin, so its baseline is the real one.
-            baseline = to_metrics(mc.baseline)
-        metrics = to_metrics(mc.counterfactual)
-        violations = check_constraints(
-            twin, metrics, baseline, mc.counterfactual.prob_savings_overdrawn
-        )
-        scored = OptimizationCandidate(
-            id=candidate.id,
-            kind=candidate.kind,
-            label=candidate.label,
-            detail=candidate.detail,
-            events=candidate.events,
-            spending_adjustments=candidate.spending_adjustments,
-            metrics=metrics,
-            meets_constraints=not violations,
-            violations=violations,
-        )
-        ranked.append((rank_key(candidate, scored), scored))
+    # buy_now comes first and runs on the unadjusted twin, so its baseline is the real one.
+    first, *others = candidates
+    baseline, buy_now = score_candidate(twin, first, horizon_end, n_simulations, shared_seed, None)
 
-    ranked.sort(key=lambda pair: pair[0])
-    ordered = [scored for _, scored in ranked]
+    def score_all(options: list[Candidate]) -> list[tuple[Candidate, OptimizationCandidate]]:
+        return [
+            (c, score_candidate(twin, c, horizon_end, n_simulations, shared_seed, baseline)[1])
+            for c in options
+        ]
+
+    scored = [(first, buy_now), *score_all(others)]
+    tried_combined = not any(s.meets_constraints for _, s in scored)
+    if tried_combined:
+        scored += score_all(combined_candidates(candidates))
+
+    ordered = [s for _, s in sorted(scored, key=lambda pair: rank_key(*pair))]
     recommended = next((c for c in ordered if c.meets_constraints), None)
-    buy_now = next(c for c in ordered if c.kind == "buy_now")
-    assert baseline is not None
 
     return OptimizationResponse(
         optimization_id=f"opt_{uuid4().hex[:12]}",
@@ -364,8 +412,11 @@ def run_optimization(
         summary=build_optimization_summary(
             twin, baseline, buy_now, recommended, ordered, check_constraints(twin, baseline)
         ),
-        assumptions=build_optimization_assumptions(
-            twin, horizon_end, n_simulations, MAX_CONSTRAINT_RISK, MAX_DELAY_PAYDAYS
-        ),
+        assumptions=[
+            *build_optimization_assumptions(
+                twin, horizon_end, n_simulations, MAX_CONSTRAINT_RISK, MAX_DELAY_PAYDAYS
+            ),
+            *([COMBINED_ASSUMPTION] if tried_combined else []),
+        ],
         num_simulations=n_simulations,
     )
