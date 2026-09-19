@@ -6,9 +6,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend import twin_store
+from backend.goal_compiler import compile_goals
 from backend.schemas import (
     ClarificationResponseRequest,
+    DeclaredGoalsRequest,
     FinancialTwin,
+    GoalCompileRequest,
+    GoalCompileResponse,
     MinimumBalanceRequest,
     OptimizationRequest,
     OptimizationResponse,
@@ -80,4 +84,20 @@ def optimize(request: OptimizationRequest) -> OptimizationResponse:
     try:
         return run_optimization(twin, request, seed=SIMULATION_SEED)
     except SimulationError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@app.post("/goals/compile", response_model=GoalCompileResponse)
+def compile_goal_text(request: GoalCompileRequest) -> GoalCompileResponse:
+    """Drafts only. Saving them is a separate PUT /twin/{user_id}/goals, after the user confirms."""
+    twin = twin_for(request.user_id)
+    return compile_goals(twin.user_id, request.text, twin.as_of)
+
+
+@app.put("/twin/{user_id}/goals", response_model=FinancialTwin)
+def set_goals(user_id: str, request: DeclaredGoalsRequest) -> FinancialTwin:
+    twin_for(user_id)
+    try:
+        return twin_store.set_goals(request.goals, request.constraints)
+    except twin_store.InvalidDeclaration as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
