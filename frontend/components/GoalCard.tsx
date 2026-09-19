@@ -15,17 +15,23 @@ export function GoalCard({
   goal,
   title = "Active savings goal",
   subtitle,
-  isSaving = false,
+  isBusy = false,
+  savingScope,
   onRemove,
 }: {
   goal: Goal;
   /** Every declared goal gets a card, so the caller says which one this is. */
   title?: string;
   subtitle?: string;
-  isSaving?: boolean;
+  /** A twin update is in flight somewhere on the page; no second one may start. */
+  isBusy?: boolean;
+  /** Which control started it. This card's scope is the goal's own id. */
+  savingScope?: string;
   onRemove?: (goalId: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  // Several goals can be on screen at once: only the one being removed says so.
+  const isSaving = savingScope === goal.id;
   // Display-only bar width, clamped. The dollar figures below are the contract's.
   const filled = Math.min(100, Math.max(0, (goal.current_amount / goal.target_amount) * 100));
 
@@ -56,7 +62,7 @@ export function GoalCard({
               <button
                 type="button"
                 onClick={() => setConfirming(false)}
-                disabled={isSaving}
+                disabled={isBusy}
                 className="rounded-lg border border-line px-3 py-1.5 text-muted transition hover:text-ink disabled:opacity-50"
               >
                 Keep it
@@ -64,7 +70,7 @@ export function GoalCard({
               <button
                 type="button"
                 onClick={() => onRemove(goal.id)}
-                disabled={isSaving}
+                disabled={isBusy}
                 className="rounded-lg border border-bad/40 px-3 py-1.5 font-semibold text-bad transition hover:bg-bad/10 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSaving ? "Removing…" : "Remove"}
@@ -74,7 +80,7 @@ export function GoalCard({
             <button
               type="button"
               onClick={() => setConfirming(true)}
-              disabled={isSaving}
+              disabled={isBusy}
               className="rounded-lg px-3 py-1.5 text-muted transition hover:text-bad disabled:opacity-50"
             >
               Remove goal

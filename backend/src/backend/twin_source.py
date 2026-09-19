@@ -53,20 +53,31 @@ def build_from_nessie(config: NessieConfig) -> FinancialTwin:
     as_of = latest_transaction_date(transactions) or on_file.as_of
     # Declared data and identity carry over; the observed half is rebuilt.
     carried = on_file.model_copy(update={"accounts": accounts})
-    return rebuild(carried, [t for t in transactions if t.date <= as_of], as_of)
+    twin = rebuild(carried, [t for t in transactions if t.date <= as_of], as_of)
+    return twin.model_copy(update={"source": "nessie"})
+
+
+def from_fixture() -> FinancialTwin:
+    """The fixture twin, labelled as fixture-derived.
+
+    Every branch of `load_source_twin` that serves the fixture goes through
+    here, so a fallback can never be mistaken for live bank data.
+    """
+    return load_twin().model_copy(update={"source": "fixture"})
 
 
 def load_source_twin() -> FinancialTwin:
     """The twin the rest of the app should work from.
 
     Returns the fixture whenever Nessie is off, unconfigured or unreachable, so
-    the caller never has to handle a missing bank.
+    the caller never has to handle a missing bank. Either way the twin carries
+    the source it came from, so the UI can say which one it is showing.
     """
     global _cached
 
     config = load_config()
     if config is None:
-        return load_twin()
+        return from_fixture()
 
     if _cached is not None and time.monotonic() - _cached[0] < CACHE_SECONDS:
         return _cached[1]
@@ -77,7 +88,7 @@ def load_source_twin() -> FinancialTwin:
         # Loudly, and then carry on: a broken integration must not take the
         # demo down with it.
         logger.warning("Falling back to the fixture twin: %s", e)
-        return load_twin()
+        return from_fixture()
 
     _cached = (time.monotonic(), twin)
     return twin

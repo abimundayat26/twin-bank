@@ -14,9 +14,10 @@ import { BalanceTrajectoryChart } from "@/components/BalanceTrajectoryChart";
 import { ExplanationPanel } from "@/components/ExplanationPanel";
 import { FinancialSummary } from "@/components/FinancialSummary";
 import { GoalCard } from "@/components/GoalCard";
-import { GoalComposer } from "@/components/GoalComposer";
+import { GOALS_SCOPE, GoalComposer } from "@/components/GoalComposer";
 import { Header } from "@/components/Header";
 import { IntentGraph } from "@/components/IntentGraph";
+import { MINIMUM_BALANCE_SCOPE } from "@/components/MinimumBalanceCard";
 import { PurchaseSimulator } from "@/components/PurchaseSimulator";
 import { ScenarioComparison } from "@/components/ScenarioComparison";
 import { Card } from "@/components/ui";
@@ -61,7 +62,10 @@ export default function Home() {
   const [twin, setTwin] = useState<FinancialTwin | null>(null);
   const [source, setSource] = useState<DataSource>();
   const [twinError, setTwinError] = useState<string>();
-  const [isSavingTwin, setIsSavingTwin] = useState(false);
+  // Two things, kept apart: whether a twin update is in flight at all (no second
+  // one may start), and which control began it (only that one says "Saving…").
+  const [isBusy, setIsBusy] = useState(false);
+  const [savingScope, setSavingScope] = useState<string>();
   const [twinUpdateError, setTwinUpdateError] = useState<string>();
 
   // Drafts from the goal compiler, waiting for Alex to confirm them. Kept here
@@ -110,15 +114,19 @@ export default function Home() {
    * Alex changed a declared fact, so any earlier simulation is now stale. A new
    * goal can also move the default horizon, which is why clearing is not optional.
    *
-   * Returns whether the twin was saved, and reports a failure wherever the caller
-   * asks, so an error lands next to the control that caused it.
+   * `scope` names the control that started it — a goal's id, an obligation's id,
+   * or one of the exported scope constants — so the waiting state shows up there
+   * and nowhere else. Returns whether the twin was saved, and reports a failure
+   * wherever the caller asks, so an error lands next to the control that caused it.
    */
   async function updateTwin(
     update: Promise<Loaded<FinancialTwin>>,
+    scope: string,
     reportError: (message?: string) => void = setTwinUpdateError,
   ): Promise<boolean> {
     latestRequest.current += 1;
-    setIsSavingTwin(true);
+    setIsBusy(true);
+    setSavingScope(scope);
     reportError(undefined);
     try {
       const loaded = await update;
@@ -132,7 +140,8 @@ export default function Home() {
       reportError(errorText(error));
       return false;
     } finally {
-      setIsSavingTwin(false);
+      setIsBusy(false);
+      setSavingScope(undefined);
     }
   }
 
@@ -144,12 +153,13 @@ export default function Home() {
         obligation_id: obligationId,
         category,
       }),
+      obligationId,
     );
   }
 
   function handleSetMinimum(amount: number) {
     if (!twin) return;
-    void updateTwin(setMinimumBalance(twin, { amount }));
+    void updateTwin(setMinimumBalance(twin, { amount }), MINIMUM_BALANCE_SCOPE);
   }
 
   /** Drafts only. Nothing reaches the twin until `handleConfirmGoals`. */
@@ -177,7 +187,7 @@ export default function Home() {
    */
   async function handleConfirmGoals(request: DeclaredGoalsRequest) {
     if (!twin) return;
-    if (await updateTwin(saveGoals(twin, request), setGoalSaveError)) {
+    if (await updateTwin(saveGoals(twin, request), GOALS_SCOPE, setGoalSaveError)) {
       setGoalDraft(null);
       setComposerKey((key) => key + 1);
     }
@@ -185,7 +195,7 @@ export default function Home() {
 
   function handleRemoveGoal(goalId: string) {
     if (!twin) return;
-    void updateTwin(saveGoals(twin, withoutGoal(twin, goalId)));
+    void updateTwin(saveGoals(twin, withoutGoal(twin, goalId)), goalId);
   }
 
   async function handleSimulate(event: SimulationEvent) {
@@ -287,7 +297,8 @@ export default function Home() {
             ) : null}
             <FinancialSummary
               twin={twin}
-              isSaving={isSavingTwin}
+              isBusy={isBusy}
+              savingScope={savingScope}
               onAnswer={handleAnswer}
               onSetMinimum={handleSetMinimum}
             />
@@ -305,7 +316,8 @@ export default function Home() {
                       ? "The soonest deadline, which is where the simulation ends."
                       : undefined
                   }
-                  isSaving={isSavingTwin}
+                  isBusy={isBusy}
+                  savingScope={savingScope}
                   onRemove={handleRemoveGoal}
                 />
               ))
@@ -321,9 +333,11 @@ export default function Home() {
               key={composerKey}
               goals={twin.goals}
               constraints={twin.constraints}
+              asOf={twin.as_of}
               draft={goalDraft}
               isCompiling={isCompilingGoal}
-              isSaving={isSavingTwin}
+              isBusy={isBusy}
+              savingScope={savingScope}
               compileError={goalCompileError}
               saveError={goalSaveError}
               onCompile={handleCompileGoal}

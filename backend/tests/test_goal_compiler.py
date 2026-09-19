@@ -313,7 +313,7 @@ def test_goals_put_keeps_the_checking_minimum_unless_given_one():
 )
 def test_goals_put_rejects_bad_goals_and_changes_nothing(goals):
     assert client.put("/twin/alex/goals", json={"goals": goals}).status_code == 422
-    assert get_twin() == load_twin()
+    assert get_twin() == load_twin().model_copy(update={"source": "fixture"})
 
 
 def test_goals_put_rejects_two_reserves_and_unknown_user():

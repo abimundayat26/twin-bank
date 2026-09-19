@@ -17,12 +17,16 @@ function isMandatory(obligation: FinancialObligation): boolean {
 
 export function FinancialSummary({
   twin,
-  isSaving = false,
+  isBusy = false,
+  savingScope,
   onAnswer,
   onSetMinimum,
 }: {
   twin: FinancialTwin;
-  isSaving?: boolean;
+  /** A twin update is in flight somewhere on the page; no second one may start. */
+  isBusy?: boolean;
+  /** Which control started it. Forwarded: each control knows its own scope. */
+  savingScope?: string;
   onAnswer: (obligationId: string, category: ObligationCategory) => void;
   onSetMinimum: (amount: number) => void;
 }) {
@@ -42,7 +46,8 @@ export function FinancialSummary({
         <CategoryQuestion
           key={obligation.id}
           obligation={obligation}
-          isSaving={isSaving}
+          isBusy={isBusy}
+          savingScope={savingScope}
           onAnswer={(category) => onAnswer(obligation.id, category)}
         />
       );
@@ -150,7 +155,8 @@ export function FinancialSummary({
       <MinimumBalanceCard
         key={minimum?.amount ?? "unset"}
         minimum={minimum}
-        isSaving={isSaving}
+        isBusy={isBusy}
+        savingScope={savingScope}
         onSave={onSetMinimum}
       />
     </div>

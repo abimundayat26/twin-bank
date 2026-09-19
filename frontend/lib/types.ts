@@ -161,6 +161,11 @@ export interface FinancialTwin {
   constraints: FinancialConstraint[];
   /** How the observed figures were estimated. Absent/null when not recorded. */
   forecast?: ForecastMetadata | null;
+  /**
+   * Where the observed half came from. Absent on a twin the backend did not
+   * load from a source, and on the offline mock.
+   */
+  source?: "fixture" | "nessie" | null;
   /** Computed server-side; present in the JSON payload. */
   total_balance: number;
 }

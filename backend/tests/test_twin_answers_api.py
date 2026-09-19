@@ -103,4 +103,5 @@ def test_minimum_balance_unknown_user_404():
 
 def test_store_starts_clean():
     # The autouse reset in conftest.py means earlier tests' answers never leak.
-    assert FinancialTwin.model_validate(client.get("/twin/alex").json()) == load_twin()
+    served = FinancialTwin.model_validate(client.get("/twin/alex").json())
+    assert served == load_twin().model_copy(update={"source": "fixture"})

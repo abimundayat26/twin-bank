@@ -213,6 +213,10 @@ class FinancialTwin(BaseModel):
         description="How the observed figures above were estimated. None when they were "
         "written by hand or taken as flat averages without recording the method.",
     )
+    # Where the observed half came from, for the UI to label honestly: a live
+    # backend with no Nessie key still serves fixture-derived data. Only
+    # `twin_source` knows, so a twin assembled anywhere else leaves this None.
+    source: Literal["fixture", "nessie"] | None = None
 
     @computed_field
     @property
