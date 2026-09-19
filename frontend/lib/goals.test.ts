@@ -1,7 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { describeChange, mergeConstraints, mergeGoals, removeGoal, withoutGoal } from "./goals";
-import type { FinancialConstraint, FinancialTwin, Goal } from "./types";
+import {
+  appendAnswers,
+  answerSentence,
+  applyEdits,
+  describeChange,
+  isEditValid,
+  mergeConstraints,
+  mergeGoals,
+  removeGoal,
+  validateEdit,
+  withoutGoal,
+} from "./goals";
+import type {
+  FinancialConstraint,
+  FinancialTwin,
+  Goal,
+  GoalClarification,
+  GoalClarificationField,
+} from "./types";
 
 function goal(id: string, name: string, target: number, deadline: string, current = 0): Goal {
   return {
@@ -195,5 +212,182 @@ describe("withoutGoal", () => {
       goals: [housing],
       constraints: [reserve, minimum],
     });
+  });
+});
+
+function clarification(
+  field: GoalClarificationField,
+  question: string,
+  fragment: string,
+): GoalClarification {
+  return { field, question, fragment };
+}
+
+describe("answerSentence", () => {
+  it("puts an amount before the 'for' phrase, where the compiler reads it", () => {
+    const asked = clarification("amount", "How much?", "I want to save for a trip");
+    expect(answerSentence(asked, "2000")).toBe("I want to save $2000 for a trip");
+  });
+
+  it("leaves an amount the user already wrote as money alone", () => {
+    const asked = clarification("amount", "How much?", "I want to save for a trip");
+    expect(answerSentence(asked, "$2,000")).toBe("I want to save $2,000 for a trip");
+  });
+
+  it("appends an amount when there is no 'for' phrase to sit before", () => {
+    const asked = clarification("amount", "How much?", "save up");
+    expect(answerSentence(asked, "800")).toBe("save up $800");
+  });
+
+  it("adds 'by' to a date that does not say it", () => {
+    const asked = clarification("deadline", "By when?", "I need $800 for a laptop");
+    expect(answerSentence(asked, "2026-12-01")).toBe("I need $800 for a laptop by 2026-12-01");
+  });
+
+  it("does not double a 'by' or an 'in' the user typed", () => {
+    const asked = clarification("deadline", "By when?", "save $800 for a laptop");
+    expect(answerSentence(asked, "by May 1")).toBe("save $800 for a laptop by May 1");
+    expect(answerSentence(asked, "in 6 months")).toBe("save $800 for a laptop in 6 months");
+  });
+
+  it("adds 'for' to a name that does not say it", () => {
+    const asked = clarification("name", "What is $800 for?", "I need $800");
+    expect(answerSentence(asked, "a laptop")).toBe("I need $800 for a laptop");
+    expect(answerSentence(asked, "for a laptop")).toBe("I need $800 for a laptop");
+  });
+
+  it("replaces the fragment for a type question, since only saying it again settles it", () => {
+    const asked = clarification(
+      "type",
+      "A goal or a reserve?",
+      "save $3,000 for an emergency fund by December",
+    );
+    expect(answerSentence(asked, "keep $3,000 for emergencies")).toBe(
+      "keep $3,000 for emergencies",
+    );
+  });
+
+  it("changes nothing when the answer is blank", () => {
+    const asked = clarification("amount", "How much?", "save for a trip");
+    expect(answerSentence(asked, "   ")).toBe("save for a trip");
+  });
+});
+
+describe("appendAnswers", () => {
+  const text = "I want to save for a trip, and keep $300 in checking.";
+  const howMuch = clarification("amount", "How much?", "I want to save for a trip");
+
+  it("rewrites only the clause the question came from", () => {
+    expect(appendAnswers(text, [{ clarification: howMuch, answer: "$2,000" }])).toBe(
+      "I want to save $2,000 for a trip, and keep $300 in checking.",
+    );
+  });
+
+  it("folds in several answers, each where its own question came from", () => {
+    const byWhen = clarification("deadline", "By when?", "I want to save for a trip");
+    expect(
+      appendAnswers(text, [
+        { clarification: howMuch, answer: "$2,000" },
+        { clarification: byWhen, answer: "June 1" },
+      ]),
+    ).toBe("I want to save $2,000 for a trip by June 1, and keep $300 in checking.");
+  });
+
+  it("skips a blank answer", () => {
+    expect(appendAnswers(text, [{ clarification: howMuch, answer: "" }])).toBe(text);
+  });
+
+  it("adds the answer as its own sentence when the fragment is gone", () => {
+    const stale = clarification("deadline", "By when?", "a trip to Japan");
+    expect(appendAnswers("I need $800 for a laptop.", [{ clarification: stale, answer: "May 1" }])).toBe(
+      "I need $800 for a laptop. a trip to Japan by May 1",
+    );
+  });
+});
+
+describe("validateEdit", () => {
+  const asOf = "2026-09-19";
+  const laptop = goal("goal_laptop", "Laptop", 800, "2026-12-01");
+
+  it("passes a row with no edits", () => {
+    expect(isEditValid(validateEdit(laptop, undefined, asOf))).toBe(true);
+    expect(isEditValid(validateEdit(laptop, {}, asOf))).toBe(true);
+  });
+
+  it("rejects an amount that is zero, negative or not a number", () => {
+    for (const target_amount of ["0", "-50", "", "soon"]) {
+      expect(validateEdit(laptop, { target_amount }, asOf).target_amount).toBeDefined();
+    }
+  });
+
+  it("accepts an amount written with a dollar sign or commas", () => {
+    expect(isEditValid(validateEdit(laptop, { target_amount: "$1,250" }, asOf))).toBe(true);
+  });
+
+  it("rejects a deadline on or before the twin's as_of date", () => {
+    expect(validateEdit(laptop, { deadline: asOf }, asOf).deadline).toBeDefined();
+    expect(validateEdit(laptop, { deadline: "2026-09-18" }, asOf).deadline).toBeDefined();
+  });
+
+  it("rejects a date that is not a real day", () => {
+    expect(validateEdit(laptop, { deadline: "2027-02-31" }, asOf).deadline).toBeDefined();
+    expect(validateEdit(laptop, { deadline: "next May" }, asOf).deadline).toBeDefined();
+  });
+
+  it("accepts a deadline after as_of", () => {
+    expect(isEditValid(validateEdit(laptop, { deadline: "2026-12-01" }, asOf))).toBe(true);
+  });
+
+  it("reads blank progress as nothing saved yet", () => {
+    expect(isEditValid(validateEdit(laptop, { current_amount: "" }, asOf))).toBe(true);
+  });
+
+  it("rejects progress that is negative or past the target", () => {
+    expect(validateEdit(laptop, { current_amount: "-1" }, asOf).current_amount).toBeDefined();
+    expect(validateEdit(laptop, { current_amount: "900" }, asOf).current_amount).toBeDefined();
+  });
+
+  it("measures progress against the edited target, not the drafted one", () => {
+    const edit = { target_amount: "1200", current_amount: "900" };
+    expect(isEditValid(validateEdit(laptop, edit, asOf))).toBe(true);
+  });
+});
+
+describe("applyEdits", () => {
+  const asOf = "2026-09-19";
+  const laptop = goal("goal_laptop", "Laptop", 800, "2026-12-01");
+
+  it("leaves a goal with no edits untouched", () => {
+    expect(applyEdits([housing, laptop], {}, asOf)).toEqual([housing, laptop]);
+  });
+
+  it("applies a corrected amount, deadline and progress", () => {
+    const edited = applyEdits(
+      [laptop],
+      { goal_laptop: { target_amount: "$1,200", deadline: "2027-01-15", current_amount: "250" } },
+      asOf,
+    );
+    expect(edited).toEqual([
+      { ...laptop, target_amount: 1200, deadline: "2027-01-15", current_amount: 250 },
+    ]);
+  });
+
+  it("keeps the drafted value for a field that does not validate", () => {
+    const edited = applyEdits(
+      [laptop],
+      { goal_laptop: { target_amount: "0", deadline: "2026-01-01" } },
+      asOf,
+    );
+    expect(edited).toEqual([laptop]);
+  });
+
+  it("ignores edits for a goal that is no longer in the list", () => {
+    expect(applyEdits([laptop], { goal_gone: { target_amount: "5" } }, asOf)).toEqual([laptop]);
+  });
+
+  it("edits only the goal it is keyed to", () => {
+    const edited = applyEdits([housing, laptop], { goal_laptop: { target_amount: "900" } }, asOf);
+    expect(edited[0]).toEqual(housing);
+    expect(edited[1].target_amount).toBe(900);
   });
 });
