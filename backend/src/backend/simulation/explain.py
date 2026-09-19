@@ -251,10 +251,26 @@ def build_optimization_summary(
             f"The closest is \"{closest.label}\": {closest.violations[0]}"
         )
     elif recommended.kind == "buy_now":
-        sentences.append(
-            f"Buying now keeps every limit {name} declared, and none of the other "
-            f"{len(candidates) - 1} options scores better on the goal or on risk."
+        # Ranking is limits first, then goal chance (then reserve risk when there is no goal),
+        # so claim only that, and name any option that trades goal chance for less risk.
+        better_at = (
+            "has a better chance of meeting the goal"
+            if has_goal
+            else "carries less risk to the reserve"
         )
+        sentences.append(
+            f"Buying now keeps every limit {name} declared, and no other option that does {better_at}."
+        )
+        others = [c for c in candidates if c.meets_constraints and c.id != recommended.id]
+        safest = min(others, key=lambda c: c.metrics.prob_below_reserve, default=None)
+        buy_now_risk = recommended.metrics.prob_below_reserve
+        if has_goal and safest is not None and safest.metrics.prob_below_reserve < buy_now_risk:
+            m = safest.metrics
+            sentences.append(
+                f"\"{safest.label}\" lowers the chance of dipping below the reserve to "
+                f"{pct(m.prob_below_reserve)} (buying now: {pct(buy_now_risk)}), but meets the "
+                f"goal in {goal_chance(m)} of futures."
+            )
     else:
         m = recommended.metrics
         outcome = (
@@ -294,6 +310,7 @@ def build_optimization_assumptions(
         f"The {money(low_balance_threshold(twin))} minimum checking balance {name} set is a hard limit."
         if declared_floor
         else f"The low-balance line is not a hard limit, because {name} has not set one.",
+        "Paying from savings breaks a limit in any future where savings cannot cover it on the day.",
         "The emergency reserve counts checking plus savings.",
         "Goals must be met on top of the emergency reserve.",
         f"Delays move the purchase to the day after one of the next {max_delay_paydays} paydays, "

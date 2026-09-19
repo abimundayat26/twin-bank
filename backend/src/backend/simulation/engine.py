@@ -73,6 +73,8 @@ class ScenarioResult:
     savings_sweeps: list[SavingsSweep]
     goals: list[GoalOutcome]
     total_income: float
+    # A purchase took a non-primary account (savings) below $0, which cannot really happen.
+    savings_overdrawn: bool = False
 
     @property
     def goal_shortfall(self) -> float:
@@ -235,6 +237,7 @@ def simulate_scenario(
 
     for event in events_by_day.get(start, []):
         balances[event.account_id] -= event.amount
+    savings_overdrawn = any(b < 0 for acc, b in balances.items() if acc != primary)
 
     dates = [start]
     checking = [balances[primary]]
@@ -250,6 +253,8 @@ def simulate_scenario(
 
         for event in events_by_day.get(day, []):
             balances[event.account_id] -= event.amount
+            if event.account_id != primary and balances[event.account_id] < 0:
+                savings_overdrawn = True
         # Mandatory bills are paid first (stable sort keeps twin order within each group),
         # and each is settled before the next is charged, so a later optional charge can
         # never be the reason an earlier mandatory bill looks unpayable.
@@ -299,6 +304,7 @@ def simulate_scenario(
         savings_sweeps=sweeps,
         goals=evaluate_goals(twin, dates, total, reserve),
         total_income=round(total_income, 2),
+        savings_overdrawn=savings_overdrawn,
     )
 
 

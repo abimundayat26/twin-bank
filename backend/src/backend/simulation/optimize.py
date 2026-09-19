@@ -155,7 +155,11 @@ def reduce_spending_candidates(
 
 
 def from_savings_candidate(twin: FinancialTwin, events: list[SimulationEvent]) -> list[Candidate]:
-    """Only offered when savings alone can pay: a savings account cannot go below zero."""
+    """Only offered when savings can pay on the start date.
+
+    Savings may cover a bill before the purchase date, leaving too little by then;
+    run_optimization flags the futures where the purchase would overdraw savings.
+    """
     savings = savings_account_id(twin)
     if savings is None or all(e.account_id == savings for e in events):
         return []
@@ -209,7 +213,10 @@ def adjusted_twin(twin: FinancialTwin, adjustments: list[SpendingAdjustment]) ->
 
 
 def check_constraints(
-    twin: FinancialTwin, metrics: ScenarioMetrics, baseline: ScenarioMetrics | None = None
+    twin: FinancialTwin,
+    metrics: ScenarioMetrics,
+    baseline: ScenarioMetrics | None = None,
+    prob_savings_overdrawn: float = 0,
 ) -> list[str]:
     """Declared limits this outcome breaks, in words. Empty means every limit is kept.
 
@@ -227,6 +234,11 @@ def check_constraints(
         return f"limit: {pct(limit)}"
 
     violations = []
+    if prob_savings_overdrawn > 0:
+        violations.append(
+            f"Savings would have to go below $0 to pay for it in {pct(prob_savings_overdrawn)} "
+            "of futures, because savings already covered a bill first."
+        )
     uncovered = metrics.prob_obligations_uncovered or 0
     base_uncovered = (baseline.prob_obligations_uncovered or 0) if baseline else None
     if uncovered > allowed(0, base_uncovered):
@@ -300,7 +312,9 @@ def run_optimization(
             # buy_now comes first and runs on the unadjusted twin, so its baseline is the real one.
             baseline = to_metrics(mc.baseline)
         metrics = to_metrics(mc.counterfactual)
-        violations = check_constraints(twin, metrics, baseline)
+        violations = check_constraints(
+            twin, metrics, baseline, mc.counterfactual.prob_savings_overdrawn
+        )
         scored = OptimizationCandidate(
             id=candidate.id,
             kind=candidate.kind,
