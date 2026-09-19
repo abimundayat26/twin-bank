@@ -82,6 +82,8 @@ renders on its own.
 
 Copy `.env.example` to `.env`. The defaults run the demo with mocks and no credentials.
 
+The user's answers (declared categories, minimum balance, goals and reserve) are saved to `backend/.data/answers.json` and survive a backend restart. Delete that file and restart to demo from a clean slate.
+
 ### Using real Nessie data (optional)
 
 Get a key at [api.nessieisreal.com](http://api.nessieisreal.com), then put Alex in the sandbox — it ships empty, so there is nothing to read until you do:
