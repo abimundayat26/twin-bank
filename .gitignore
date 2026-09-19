@@ -9,6 +9,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+# Saved user answers (twin_store)
+backend/.data/
+
 # Node / Next.js
 node_modules/
 .next/
