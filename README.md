@@ -20,7 +20,12 @@ backend/
     twin.json       Alex's Financial Twin
     simulation.json $800 laptop baseline vs counterfactual
   tests/
-frontend/           Next.js (not created yet)
+frontend/           Next.js demo app
+  app/page.tsx      the single demo screen (only component that fetches)
+  components/       presentational panels
+  lib/api.ts        getTwin / runSimulation + offline fixture fallback
+  lib/types.ts      TypeScript mirror of schemas.py
+  lib/mock/         copies of backend/fixtures/ for offline demo
 ```
 
 ## Backend
@@ -43,6 +48,23 @@ Endpoints:
 | POST | `/simulate` | `SimulationResponse` for a `SimulationRequest` |
 
 Interactive docs: http://localhost:8000/docs
+
+## Frontend
+
+Requires Node 22.
+
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:3000
+npm run lint
+npm run typecheck
+npm run build
+```
+
+It calls the backend at `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`) and falls
+back to the fixtures in `frontend/lib/mock/` if the backend is unreachable, so the demo
+renders on its own.
 
 ## Configuration
 

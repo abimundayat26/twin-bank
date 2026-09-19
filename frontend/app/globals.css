@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+/* Fixed dark theme: the demo should look identical on every laptop. */
+@theme {
+  --color-canvas: #0b0f14;
+  --color-surface: #131a22;
+  --color-raised: #1a232e;
+  --color-line: #24303d;
+  --color-ink: #e6edf3;
+  --color-muted: #8b9aab;
+  --color-faint: #5d6b7a;
+
+  --color-baseline: #38e8b0;
+  --color-counter: #a78bfa;
+
+  --color-good: #38e8b0;
+  --color-caution: #ffb84d;
+  --color-bad: #ff6b6b;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+}
+
+/* Tabular figures keep the baseline/counterfactual columns visually aligned. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}

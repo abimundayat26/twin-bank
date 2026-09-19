@@ -1,12 +1,13 @@
-"""TwinBank API. Phase 1: /twin and /simulate return mock fixtures."""
+"""TwinBank API. /twin returns the mock fixture; /simulate runs the deterministic engine."""
 
 import os
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.fixtures import load_simulation, load_twin
+from backend.fixtures import load_twin
 from backend.schemas import FinancialTwin, SimulationRequest, SimulationResponse
+from backend.simulation import SimulationError, run_simulation
 
 app = FastAPI(title="TwinBank API")
 
@@ -33,7 +34,10 @@ def get_twin(user_id: str) -> FinancialTwin:
 
 @app.post("/simulate", response_model=SimulationResponse)
 def simulate(request: SimulationRequest) -> SimulationResponse:
-    # Phase 1: request is validated but the result is a fixed mock.
-    if request.user_id != load_twin().user_id:
+    twin = load_twin()
+    if request.user_id != twin.user_id:
         raise HTTPException(status_code=404, detail=f"No twin for user '{request.user_id}'")
-    return load_simulation()
+    try:
+        return run_simulation(twin, request)
+    except SimulationError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
