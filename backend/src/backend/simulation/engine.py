@@ -10,9 +10,10 @@ from datetime import date, timedelta
 
 from backend.schemas import FinancialObligation, FinancialTwin, SimulationEvent
 
-# Assumption (SPEC open question): "low balance" means checking below this amount,
-# unless the user declares their own minimum_checking_balance constraint.
-LOW_BALANCE_THRESHOLD = 500.0
+# SPEC section 13: "low balance" means checking below this amount, unless the user
+# declares their own minimum_checking_balance constraint. Mirrored in the frontend as
+# DEFAULT_LOW_BALANCE_THRESHOLD (frontend/lib/types.ts) -- change both together.
+LOW_BALANCE_THRESHOLD = 200.0
 # Used when the request has no horizon_end and the twin has no goals.
 DEFAULT_HORIZON_DAYS = 180
 # Longest horizon a request may ask for; run time grows with every simulated day.
