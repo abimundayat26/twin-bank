@@ -8,6 +8,9 @@ Sampling (every value comes from a FinancialTwin field):
   INCOME_CLAMP_SDS standard deviations and never below 0.
 - Each spending category, per 14-day block starting the day after as_of:
   Normal(mean_14d, std_dev_14d), floored at 0, spread evenly over the block.
+  With a seasonal profile, the mean and spread are both scaled by the block's
+  factor (its month factors averaged over its days), the same blocks and factor
+  the deterministic engine uses for its expected spending.
 - Bill amounts and all dates stay fixed. Draws are independent.
 
 Baseline and counterfactual share the same Draws in each run (common random
@@ -18,24 +21,26 @@ import random
 import statistics
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
-from datetime import date, timedelta
+from datetime import date
 
+from backend.forecast import block_factor
 from backend.schemas import FinancialTwin, SimulationEvent
 from backend.simulation.engine import (
     Comparison,
     Draws,
     ScenarioResult,
+    SPENDING_BLOCK_DAYS,
     SimulationError,
     compare,
     income_dates,
     resolve_horizon_end,
     simulate_scenario,
+    spending_blocks,
 )
 
 DEFAULT_SIMULATIONS = 1000
 MAX_SIMULATIONS = 20_000
 INCOME_CLAMP_SDS = 3.0
-SPENDING_BLOCK_DAYS = 14
 
 
 def sample_income(rng: random.Random, mean: float, sd: float) -> float:
@@ -58,12 +63,13 @@ def sample_draws(twin: FinancialTwin, horizon_end: date, rng: random.Random) -> 
         for d in income_dates(stream.next_date, stream.interval_days, twin.as_of, horizon_end):
             income[(stream.id, d)] = sample_income(rng, stream.expected_amount, stream.uncertainty)
 
-    days = [twin.as_of + timedelta(days=i) for i in range(1, (horizon_end - twin.as_of).days + 1)]
-    daily_spending = dict.fromkeys(days, 0.0)
+    blocks = spending_blocks(twin.as_of, horizon_end)
+    daily_spending = {d: 0.0 for block in blocks for d in block}
     for category in twin.variable_spending:
-        for block_start in range(0, len(days), SPENDING_BLOCK_DAYS):
-            block_total = sample_spending(rng, category.mean_14d, category.std_dev_14d)
-            for d in days[block_start : block_start + SPENDING_BLOCK_DAYS]:
+        for block in blocks:
+            factor = block_factor(category.seasonal, block[0], len(block))
+            block_total = sample_spending(rng, category.mean_14d * factor, category.std_dev_14d * factor)
+            for d in block:
                 daily_spending[d] += block_total / SPENDING_BLOCK_DAYS
     return Draws(income=income, daily_spending=daily_spending)
 

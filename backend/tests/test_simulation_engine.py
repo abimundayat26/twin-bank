@@ -3,7 +3,7 @@ from datetime import date, timedelta
 import pytest
 
 from backend.fixtures import load_twin
-from backend.schemas import Goal, SimulationEvent
+from backend.schemas import Goal, SeasonalProfile, SimulationEvent
 from backend.simulation.engine import (
     LOW_BALANCE_THRESHOLD,
     MAX_HORIZON_DAYS,
@@ -287,3 +287,41 @@ def test_a_purchase_savings_cannot_cover_is_flagged_as_overdrawing_it(twin):
     result = simulate_scenario(twin, [purchase(2000, account_id="acc_savings")], HORIZON)
     assert result.savings_overdrawn
     assert not simulate_scenario(twin, [purchase(2000)], HORIZON).savings_overdrawn
+
+
+# --- Seasonal spending ----------------------------------------------------------
+
+# Autumn term heavy, spring light, summer flat; averages 1.0 as the schema requires.
+TERM_SHAPE = {m: 1.5 if m >= 9 else 0.5 if m <= 4 else 1.0 for m in range(1, 13)}
+
+
+def with_profile(twin, factors: dict[int, float]):
+    profile = SeasonalProfile(factors=factors)
+    return twin.model_copy(
+        update={"variable_spending": [v.model_copy(update={"seasonal": profile}) for v in twin.variable_spending]}
+    )
+
+
+def test_a_flat_profile_changes_nothing(twin):
+    flat = with_profile(twin, dict.fromkeys(range(1, 13), 1.0))
+    assert simulate_scenario(flat, [purchase(800)], HORIZON) == simulate_scenario(twin, [purchase(800)], HORIZON)
+
+
+def test_seasonal_spending_follows_the_month_factor(twin):
+    result = simulate_scenario(with_profile(twin, TERM_SHAPE), [], HORIZON)
+    flat = simulate_scenario(twin, [], HORIZON)
+    days = [twin.as_of + timedelta(days=i) for i in range(1, (HORIZON - twin.as_of).days + 1)]
+    # Sep 20 - Dec 31 at 1.5x, Jan 1 - Apr 30 at 0.5x, May 1 at 1.0x of $260 per 14 days.
+    extra = sum(260 / 14 * (TERM_SHAPE[d.month] - 1) for d in days)
+    assert extra == pytest.approx(260 / 14 * (103 * 0.5 - 120 * 0.5))
+    assert result.ending_balance == pytest.approx(flat.ending_balance - extra, abs=0.01)
+
+
+def test_a_heavy_month_spends_faster_than_a_light_one(twin):
+    result = simulate_scenario(with_profile(twin, TERM_SHAPE), [], HORIZON)
+    checking = dict(zip(result.dates, result.checking))
+    # Two paycheck-free, bill-free stretches of equal length: Oct 10-14 and Jan 10-14.
+    october = checking[date(2026, 10, 10)] - checking[date(2026, 10, 14)]
+    january = checking[date(2027, 1, 10)] - checking[date(2027, 1, 14)]
+    assert october == pytest.approx(4 * 260 / 14 * 1.5, abs=0.01)
+    assert january == pytest.approx(4 * 260 / 14 * 0.5, abs=0.01)
