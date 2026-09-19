@@ -37,7 +37,7 @@
     "prob_goal_met": 0.079,
     "prob_savings_sweep": 0.571
   },
-  "summary": "Across 1,000 simulated futures, buying the $800 laptop changes Alex's median projected balance on 2027-05-01 from $3,281 to $2,481 (middle 80% of futures: $1,942 to $3,034). Alex meets the $1,600 summer housing goal on top of the $1,500 emergency reserve in 8% of futures with the purchase, versus 65% without it. Checking falls below the $200 low-balance line in 97% of futures, versus 6% without it. Total savings dip below the $1,500 emergency reserve in 26% of futures, versus under 1%. In 57% of futures Alex would have to move money out of savings to pay a mandatory bill, versus under 1% without the purchase. On the expected-value path, checking bottoms out at -$26 on 2027-01-01 (baseline: $743).",
+  "summary": "Across 1,000 simulated futures, buying the $800 laptop changes Alex's median projected balance on 2027-05-01 from $3,281 to $2,481 (middle 80% of futures: $1,942 to $3,034). Alex meets the $1,600 summer housing goal on top of the $1,500 emergency reserve in 8% of futures with the purchase, versus 65% without it. Checking falls below the $200 low-balance line in 97% of futures, versus 6% without it. Total savings dip below the $1,500 emergency reserve in 26% of futures, versus under 1%. In 57% of futures Alex would have to move money out of savings to pay a mandatory bill, versus under 1% without the purchase. A dated low point takes a single run: on the expected-value path, checking bottoms out at -$26 on 2027-01-01, versus $743 in the baseline.",
   "drivers": [
     {
       "label": "Laptop",
@@ -49,7 +49,7 @@
       "label": "Lowest checking balance",
       "impact_amount": -711.03,
       "direction": "negative",
-      "detail": "In the median future, checking bottoms out at -$39, versus $672 in the baseline."
+      "detail": "Across the 1,000 simulated futures, the median low point for checking is -$39, versus $672 in the baseline."
     },
     {
       "label": "Summer housing goal",

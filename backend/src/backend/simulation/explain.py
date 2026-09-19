@@ -81,8 +81,9 @@ def build_summary(twin: FinancialTwin, events: list[SimulationEvent], mc: MonteC
     expected_base, expected_cf = mc.expected.baseline, mc.expected.counterfactual
     if expected_cf.min_checking < expected_base.min_checking:
         sentences.append(
-            f"On the expected-value path, checking bottoms out at {money(expected_cf.min_checking)} "
-            f"on {expected_cf.min_checking_date} (baseline: {money(expected_base.min_checking)})."
+            f"A dated low point takes a single run: on the expected-value path, checking bottoms "
+            f"out at {money(expected_cf.min_checking)} on {expected_cf.min_checking_date}, versus "
+            f"{money(expected_base.min_checking)} in the baseline."
         )
     return " ".join(sentences)
 
@@ -162,8 +163,9 @@ def build_drivers(
                 label="Lowest checking balance",
                 impact_amount=checking_change,
                 direction="negative" if checking_change < 0 else "positive",
-                detail=f"In the median future, checking bottoms out at {money(cf.min_checking)}, "
-                f"versus {money(base.min_checking)} in the baseline.",
+                detail=f"Across the {mc.n_simulations:,} simulated futures, the median low point "
+                f"for checking is {money(cf.min_checking)}, versus {money(base.min_checking)} in "
+                "the baseline.",
             )
         )
 
