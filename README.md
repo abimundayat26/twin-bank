@@ -84,6 +84,18 @@ Copy `.env.example` to `.env`. The defaults run the demo with mocks and no crede
 
 The user's answers (declared categories, minimum balance, goals and reserve) are saved to `backend/.data/answers.json` and survive a backend restart. Delete that file and restart to demo from a clean slate.
 
+### Drafting goals with Claude (optional)
+
+`POST /goals/compile` uses the rule-based compiler by default, so no key is needed. To have Claude draft goals from the text instead, set these in `.env`:
+
+```sh
+GOAL_COMPILER=llm
+ANTHROPIC_API_KEY=sk-ant-...
+LLM_MODEL=claude-sonnet-5   # optional; this is the default
+```
+
+The LLM only extracts draft items. Deterministic code checks each one: the fragment must appear in the text, the amount must appear in the fragment, and the deadline goes through the same checks as the rules compiler. Anything that fails a check becomes a clarification question. If the key is missing or the call fails or takes over 6 seconds, the endpoint falls back to the rules compiler. The response's `compiler` field says which one ran.
+
 ### Using real Nessie data (optional)
 
 Get a key at [api.nessieisreal.com](http://api.nessieisreal.com), then put Alex in the sandbox — it ships empty, so there is nothing to read until you do:

@@ -9,9 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend import simulation_store
 from backend import twin_store
 from backend.fixtures import load_raw_transactions
-from backend.goal_compiler import compile_goals
 from backend.ingest.build import latest_transaction_date, rebuild
 from backend.ingest.normalize import normalize_all
+from backend.llm_goal_compiler import compile_goals_auto
 from backend.schemas import (
     ClarificationResponseRequest,
     DeclaredGoalsRequest,
@@ -132,7 +132,7 @@ def optimize(request: OptimizationRequest) -> OptimizationResponse:
 def compile_goal_text(request: GoalCompileRequest) -> GoalCompileResponse:
     """Drafts only. Saving them is a separate PUT /twin/{user_id}/goals, after the user confirms."""
     twin = twin_for(request.user_id)
-    return compile_goals(twin.user_id, request.text, twin.as_of)
+    return compile_goals_auto(twin.user_id, request.text, twin.as_of)
 
 
 @app.put("/twin/{user_id}/goals", response_model=FinancialTwin)

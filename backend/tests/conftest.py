@@ -13,3 +13,10 @@ def reset_twin_store(tmp_path, monkeypatch):
     yield
     for module in (twin_store, simulation_store, twin_source):
         module.reset()
+
+
+@pytest.fixture(autouse=True)
+def no_real_llm(monkeypatch):
+    """A developer's shell may export a real key; tests must never call Claude."""
+    for name in ("GOAL_COMPILER", "ANTHROPIC_API_KEY", "LLM_MODEL"):
+        monkeypatch.delenv(name, raising=False)
