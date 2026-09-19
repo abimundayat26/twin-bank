@@ -354,7 +354,18 @@ export interface OptimizationResponse {
 
 // --- Goal compiler ------------------------------------------------------------
 
-export type GoalClarificationField = "amount" | "deadline" | "name" | "type";
+/**
+ * "type": a goal or a standing reserve. "account": which account pays a one-time
+ * obligation. "intent": the text could be a goal or a declared obligation and the
+ * Assistant must ask rather than choose.
+ */
+export type GoalClarificationField =
+  | "amount"
+  | "deadline"
+  | "name"
+  | "type"
+  | "account"
+  | "intent";
 
 export interface GoalCompileRequest {
   user_id: string;
@@ -376,7 +387,15 @@ export interface GoalCompileResponse {
   text: string;
   goals: Goal[];
   constraints: FinancialConstraint[];
-  /** Asked instead of guessing. A goal missing a detail is not in goals. */
+  /**
+   * Drafted one-off expenses the user says they already owe. Absent from a backend
+   * that predates the contract, so read it as "none drafted", never as an error.
+   */
+  one_time_obligations?: OneTimeObligation[];
+  /**
+   * Asked instead of guessing. A goal or obligation missing a detail is not drafted
+   * at all.
+   */
   clarifications: GoalClarification[];
   /** Parts of the text that matched nothing. */
   unparsed: string[];

@@ -15,6 +15,7 @@ from backend.goal_compiler import (
 )
 from backend.main import app
 from backend.schemas import (
+    Account,
     FinancialConstraint,
     FinancialTwin,
     GoalCompileResponse,
@@ -33,6 +34,92 @@ def compile_text(text: str, as_of: date = AS_OF) -> GoalCompileResponse:
 
 def fields(result: GoalCompileResponse) -> list[str]:
     return [c.field for c in result.clarifications]
+
+
+
+# --- One-time obligations ------------------------------------------------------
+
+TUITION = "I have $1,200 tuition due 2027-01-15 from checking"
+
+
+def compile_obligation(text: str, accounts=None, as_of: date = AS_OF) -> GoalCompileResponse:
+    """Alex's two accounts unless a test needs a different set."""
+    return compile_goals("alex", text, as_of, load_twin().accounts if accounts is None else accounts)
+
+
+def test_a_declared_obligation_compiles_with_nothing_left_to_ask():
+    result = compile_obligation(TUITION)
+    [obligation] = result.one_time_obligations
+    assert (obligation.name, obligation.amount) == ("Tuition", 1200.0)
+    assert obligation.due_date == date(2027, 1, 15)
+    assert obligation.account_id == "acc_checking"
+    assert obligation.mandatory is True
+    assert obligation.provenance == "declared"
+    assert result.goals == [] and result.clarifications == [] and result.unparsed == []
+
+
+def test_an_obligation_without_an_amount_asks_and_drafts_nothing():
+    result = compile_obligation("I have tuition due 2027-01-15 from checking")
+    assert result.one_time_obligations == []
+    assert fields(result) == ["amount"]
+    assert result.clarifications[0].fragment == "I have tuition due 2027-01-15 from checking"
+
+
+def test_an_obligation_without_a_due_date_asks_and_drafts_nothing():
+    result = compile_obligation("I have $1,200 tuition from checking")
+    assert result.one_time_obligations == []
+    assert fields(result) == ["deadline"]
+
+
+def test_an_obligation_without_a_name_asks_and_drafts_nothing():
+    result = compile_obligation("I owe $1,200 by 2027-01-15 from checking")
+    assert result.one_time_obligations == []
+    assert fields(result) == ["name"]
+
+
+def test_an_obligation_with_no_funding_account_named_asks_which_one():
+    result = compile_obligation("I have $1,200 tuition due 2027-01-15")
+    assert result.one_time_obligations == []
+    assert fields(result) == ["account"]
+    assert "Everyday Checking" in result.clarifications[0].question
+
+
+def test_one_account_on_file_is_the_only_answer_there_is():
+    only = [Account(id="acc_only", name="Everyday Checking", type="checking", balance=500)]
+    [obligation] = compile_obligation("I have $1,200 tuition due 2027-01-15", only).one_time_obligations
+    assert obligation.account_id == "acc_only"
+
+
+def test_a_savings_goal_is_still_a_goal_not_an_obligation():
+    """The regression that matters most: obligation words must not steal goals."""
+    result = compile_obligation("save $2,000 for a trip by 2027-06-01")
+    assert result.one_time_obligations == []
+    assert [(g.name, g.deadline) for g in result.goals] == [("Trip", date(2027, 6, 1))]
+
+
+def test_a_clause_that_reads_as_either_asks_which_it_is():
+    result = compile_obligation("I need to pay $400")
+    assert result.one_time_obligations == [] and result.goals == []
+    assert fields(result) == ["intent"]
+
+
+def test_an_obligation_already_past_is_asked_about_not_back_dated():
+    result = compile_obligation("I have $1,200 tuition due 2020-01-15 from checking")
+    assert result.one_time_obligations == []
+    assert fields(result) == ["deadline"]
+    assert "already passed" in result.clarifications[0].question
+
+
+def test_two_obligations_in_one_sentence_split():
+    result = compile_obligation(
+        "I have $1,200 tuition due 2027-01-15 from checking "
+        "and $400 car insurance due 2026-11-01 from checking"
+    )
+    assert [(o.id, o.name, o.amount) for o in result.one_time_obligations] == [
+        ("one_tuition", "Tuition", 1200.0),
+        ("one_car_insurance", "Car insurance", 400.0),
+    ]
+    assert result.clarifications == []
 
 
 # --- compiler -----------------------------------------------------------------
@@ -259,6 +346,20 @@ def test_compile_endpoint_survives_an_out_of_range_date():
     response = compile_api("Save $500 for a trip in 99999 years")
     assert response.status_code == 200
     assert response.json()["clarifications"][0]["field"] == "deadline"
+
+
+def test_compile_endpoint_drafts_an_obligation_against_the_twins_own_accounts():
+    """The endpoint, not just the function: acc_checking can only come from the twin."""
+    response = compile_api(TUITION)
+    assert response.status_code == 200
+    result = GoalCompileResponse.model_validate(response.json())
+    assert [(o.name, o.amount, o.account_id) for o in result.one_time_obligations] == [
+        ("Tuition", 1200.0, "acc_checking")
+    ]
+    assert result.compiler == "rules"
+    assert result.clarifications == []
+    # Drafts only. Nothing is saved until the user confirms.
+    assert get_twin().one_time_obligations == []
 
 
 def test_compile_endpoint_rejects_unknown_user_and_empty_text():
