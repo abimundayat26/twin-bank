@@ -24,6 +24,7 @@ from uuid import uuid4
 from backend.schemas import (
     CandidateKind,
     FinancialTwin,
+    OneTimeObligation,
     OptimizationCandidate,
     OptimizationRequest,
     OptimizationResponse,
@@ -78,6 +79,34 @@ class Candidate:
     events: list[SimulationEvent]
     spending_adjustments: list[SpendingAdjustment]
     disruption: float  # days delayed, or share of spending cut
+
+
+def declared_commitments(twin: FinancialTwin, horizon_end: date) -> list[OneTimeObligation]:
+    """One-time obligations that actually fall inside this run, in the engine's window."""
+    return [o for o in twin.one_time_obligations if twin.as_of < o.due_date <= horizon_end]
+
+
+def commitments_assumption(twin: FinancialTwin, horizon_end: date) -> list[str]:
+    """Say that alternatives were weighed against what the user already owes.
+
+    Every candidate moves the purchase or trims discretionary spending; none of them
+    touches a declared obligation. A commitment the user has already made is not
+    TwinBank's to reschedule, and the spec sets no criterion that would make
+    "delay the tuition" a legal option, so it is not generated. Saying so is the
+    difference between the numbers quietly changing and the user knowing why.
+    """
+    owed = declared_commitments(twin, horizon_end)
+    if not owed:
+        return []
+    total = money(sum(o.amount for o in owed))
+    noun = "commitment" if len(owed) == 1 else "commitments"
+    line = (
+        f"Every option is weighed against {total} of one-time {noun} you have already "
+        f"declared between {twin.as_of} and {horizon_end}"
+    )
+    if any(o.mandatory for o in owed):
+        line += ", and no option moves or cancels one you marked mandatory"
+    return [f"{line}."]
 
 
 def describe_purchase(events: list[SimulationEvent]) -> str:
@@ -416,6 +445,7 @@ def run_optimization(
             *build_optimization_assumptions(
                 twin, horizon_end, n_simulations, MAX_CONSTRAINT_RISK, MAX_DELAY_PAYDAYS
             ),
+            *commitments_assumption(twin, horizon_end),
             *([COMBINED_ASSUMPTION] if tried_combined else []),
         ],
         num_simulations=n_simulations,

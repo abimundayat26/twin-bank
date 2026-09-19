@@ -10,6 +10,7 @@ from backend.forecast import block_factor
 from backend.main import app
 from backend.schemas import (
     FinancialConstraint,
+    OneTimeObligation,
     OptimizationRequest,
     OptimizationResponse,
     SeasonalProfile,
@@ -24,6 +25,7 @@ from backend.simulation.optimize import (
     adjusted_twin,
     check_constraints,
     combined_candidates,
+    commitments_assumption,
     generate_candidates,
     run_optimization,
 )
@@ -424,3 +426,78 @@ def test_optimize_endpoint_rejects_unknown_account():
 
 def test_optimize_endpoint_rejects_unknown_user():
     assert client.post("/optimize", json={**LAPTOP_REQUEST, "user_id": "bob"}).status_code == 404
+
+
+# --- One-time obligations ------------------------------------------------------
+
+
+def owing(twin, amount: float, due: str = "2026-11-10", mandatory: bool = True):
+    return twin.model_copy(
+        update={
+            "one_time_obligations": [
+                OneTimeObligation(
+                    id="one_tuition",
+                    name="Tuition",
+                    amount=amount,
+                    due_date=date.fromisoformat(due),
+                    account_id="acc_checking",
+                    mandatory=mandatory,
+                )
+            ]
+        }
+    )
+
+
+def test_no_obligations_leaves_the_result_exactly_as_it_was(twin):
+    """The no-regression proof: every twin on file has this list empty."""
+    empty = twin.model_copy(update={"one_time_obligations": []})
+    assert optimize(empty).model_dump(exclude={"optimization_id"}) == optimize(
+        twin
+    ).model_dump(exclude={"optimization_id"})
+
+
+def test_a_commitment_shrinks_the_set_of_options_that_keep_every_limit(twin):
+    def feasible(result):
+        return [c.id for c in result.candidates if c.meets_constraints]
+
+    assert len(feasible(optimize(owing(twin, 2000)))) < len(feasible(optimize(twin)))
+
+
+def test_no_option_moves_or_cancels_a_declared_commitment(twin):
+    """A commitment the user has already made is not TwinBank's to reschedule."""
+    owed = owing(twin, 2000)
+    horizon = resolve_horizon_end(owed, None)
+    for candidate in generate_candidates(owed, [laptop()], horizon):
+        assert all(e.type == "purchase" for e in candidate.events)
+        assert all(a.category != "one_tuition" for a in candidate.spending_adjustments)
+    # And nothing reaches the response either.
+    for scored in optimize(owed).candidates:
+        assert all(e.type == "purchase" for e in scored.events)
+
+
+def test_a_recommended_option_still_keeps_every_limit_with_a_commitment_present(twin):
+    # Small enough that an option survives, so this checks the recommendation rather
+    # than the absence of one.
+    result = optimize(owing(twin, 200))
+    recommended = next(c for c in result.candidates if c.id == result.recommended_id)
+    assert recommended.meets_constraints and recommended.violations == []
+    # The reserve and the minimum-checking limit still hold, and the recommendation
+    # does not get there by leaving the commitment itself unpaid.
+    assert recommended.metrics.prob_obligations_uncovered == 0
+
+
+def test_the_run_says_what_it_weighed_the_options_against(twin):
+    [line] = commitments_assumption(owing(twin, 1200), date(2027, 5, 1))
+    assert "$1,200" in line and "no option moves or cancels one you marked mandatory" in line
+    assert line in optimize(owing(twin, 1200)).assumptions
+
+
+def test_an_optional_commitment_is_weighed_but_not_promised_to_be_kept(twin):
+    [line] = commitments_assumption(owing(twin, 1200, mandatory=False), date(2027, 5, 1))
+    assert "$1,200" in line and "mandatory" not in line
+
+
+def test_a_commitment_outside_the_horizon_is_not_claimed_to_have_been_weighed(twin):
+    """It never happens in this run, so saying it was weighed would be untrue."""
+    assert commitments_assumption(owing(twin, 1200, due="2027-09-01"), date(2027, 5, 1)) == []
+    assert commitments_assumption(twin, date(2027, 5, 1)) == []
