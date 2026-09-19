@@ -410,6 +410,8 @@ Focus:
 
 Ownership means responsibility, not exclusive permission to modify code.
 
+A feature is not done until the demo shows it. Once a backend endpoint exists, the workstream that built it also builds its frontend (API client, types, UI), coordinating with Workstream 3 on layout. Workstream 3 owns the overall page, shared components, and demo polish.
+
 ---
 
 ## 11. Non-Goals During MVP
@@ -443,14 +445,22 @@ Then mocks should be progressively replaced by real implementations without brea
 
 ---
 
-## 13. Open Questions
+## 13. Decisions and Open Questions
 
-These must be decided by the team, not by an individual Claude Code session. Until they are decided, use the proposed default and label it as an assumption.
+These are decided by the team, not by an individual Claude Code session. A new open question goes in the second table with a proposed default; until the team decides it, use the default and label it as an assumption.
+
+Decided:
+
+| Question | Decision |
+| --- | --- |
+| What balance counts as "low balance"? | Checking below the user's own minimum checking balance, which they set in the app (`PUT /twin/{user_id}/minimum-balance`); $200 until they set one |
+| Does the emergency reserve count checking only, or checking plus savings? | Checking plus savings |
+| What is the simulation horizon? | Through the earliest goal deadline (2027-05-01 for Alex); 180 days when there are no goals; at most 730 days |
+| Which LLM provider do we use? | Anthropic, Claude Haiku (`claude-haiku-4-5`), off by default behind `GOAL_COMPILER=llm`; explanations stay template-based |
+| Does the housing goal draw from the same money as the emergency reserve? | No; the goal must be met on top of the reserve |
+
+Open:
 
 | Question | Proposed default |
 | --- | --- |
-| What balance counts as "low balance"? | Checking balance below $200 |
-| Does the emergency reserve count checking only, or checking plus savings? | Checking plus savings |
-| What is the simulation horizon? | From today through the housing goal deadline (2027-05-01) |
-| Which LLM provider do we use? | Undecided; explanations are template-based until Phase 5 |
-| Does the housing goal draw from the same money as the emergency reserve? | No; the goal must be met on top of the reserve |
+| (none yet) | |
