@@ -11,7 +11,10 @@ Rules, per clause:
 - "keep at least $300 in checking" -> minimum_checking_balance.
 - "$2,000 for summer housing by May" -> a goal. Deadlines: "by May" (the 1st of
   the next May after as_of), "by May 15", "by end of May", "by May 2027",
-  "by 2027-05-01", "in 6 months" / "in 3 weeks" / "in 1 year".
+  "by 2027-05-01", "in 6 months" / "in 3 weeks" / "in 1 year". A deadline more
+  than MAX_HORIZON_DAYS after as_of, or one that is not a real date, is asked about.
+- Reserve words with a deadline, or without "keep"-style words ("save $3,000 for an
+  emergency fund by December"), ask whether it is a goal or a reserve.
 """
 
 import calendar
@@ -19,6 +22,7 @@ import re
 from datetime import date, timedelta
 
 from backend.schemas import FinancialConstraint, Goal, GoalClarification, GoalCompileResponse
+from backend.simulation.engine import MAX_HORIZON_DAYS
 
 RESERVE_ID = "con_emergency_reserve"
 # Same id as twin_store.MINIMUM_BALANCE_ID, so a confirmed draft replaces the saved answer.
@@ -82,7 +86,11 @@ NAME = re.compile(
     re.I,
 )
 
-CLAUSE_SPLIT = re.compile(r"[;!?]+|\.(?=\s|$)|\n+")
+# A period ends a sentence, except after a month abbreviation followed by a day ("by Jan. 15").
+MONTH_ABBRS = "|".join(name.lower() for name in calendar.month_abbr if name)
+CLAUSE_SPLIT = re.compile(
+    rf"[;!?]+|(?<!\b(?:{MONTH_ABBRS}))\.(?=\s|$)|\.(?=\s*$|\s+[^\s\d])|\n+", re.IGNORECASE
+)
 AND_SPLIT = re.compile(r",?\s+(?:and|but|also|plus)\s+", re.I)
 
 
@@ -131,23 +139,27 @@ def parse_deadline(clause: str, as_of: date) -> tuple[date | None, str | None]:
         if not m:
             continue
         words = m.group(0)
-        if kind == "iso":
-            try:
-                return date.fromisoformat(m.group("iso")), words
-            except ValueError:
-                return None, words
-        if kind == "relative":
-            n = 1 if m.group("n").lower() in ("a", "an", "one") else int(m.group("n"))
-            unit = m.group("unit").lower()
-            if unit == "week":
-                return as_of + timedelta(weeks=n), words
-            return add_months(as_of, n * (12 if unit == "year" else 1)), words
-        month = MONTHS[m.group("month").lower()]
-        year = int(m.group("year")) if m.group("year") else None
-        day = -1 if kind == "end_of_month" else int(m.group("day")) if "day" in m.groupdict() else None
-        return next_occurrence(as_of, month, day, year), words
+        try:
+            return deadline_from_match(kind, m, as_of), words
+        except (ValueError, OverflowError):  # year 0, "in 99999 years", 2027-02-30
+            return None, words
     vague = VAGUE_DEADLINE.search(clause)
     return None, vague.group(0) if vague else None
+
+
+def deadline_from_match(kind: str, m: re.Match[str], as_of: date) -> date | None:
+    if kind == "iso":
+        return date.fromisoformat(m.group("iso"))
+    if kind == "relative":
+        n = 1 if m.group("n").lower() in ("a", "an", "one") else int(m.group("n"))
+        unit = m.group("unit").lower()
+        if unit == "week":
+            return as_of + timedelta(weeks=n)
+        return add_months(as_of, n * (12 if unit == "year" else 1))
+    month = MONTHS[m.group("month").lower()]
+    year = int(m.group("year")) if m.group("year") else None
+    day = -1 if kind == "end_of_month" else int(m.group("day")) if "day" in m.groupdict() else None
+    return next_occurrence(as_of, month, day, year)
 
 
 def split_clauses(text: str) -> list[str]:
@@ -190,6 +202,9 @@ def compile_goals(user_id: str, text: str, as_of: date) -> GoalCompileResponse:
     def ask(field, question: str, fragment: str) -> None:
         clarifications.append(GoalClarification(field=field, question=question, fragment=fragment))
 
+    # PUT /twin/{user_id}/goals rejects anything later, so a draft never goes past it.
+    latest_deadline = as_of + timedelta(days=MAX_HORIZON_DAYS)
+
     for clause in split_clauses(text):
         amounts = [parse_amount(m) for m in AMOUNT.finditer(clause)]
         is_reserve = bool(RESERVE_WORDS.search(clause))
@@ -210,6 +225,16 @@ def compile_goals(user_id: str, text: str, as_of: date) -> GoalCompileResponse:
                     "type",
                     "Should this be an emergency reserve across checking and savings, "
                     "or a minimum balance in checking alone?",
+                    clause,
+                )
+            elif is_reserve and (parse_deadline(clause, as_of)[1] or not FLOOR_WORDS.search(clause)):
+                # "save $3,000 for an emergency fund by December" or "reserve $200 for
+                # tickets by October 30": could be a goal as much as a standing reserve.
+                amount = f"{money(amounts[0])} " if amounts else ""
+                ask(
+                    "type",
+                    f"Is this {amount}a savings goal with a deadline, or an emergency reserve "
+                    "to keep across checking and savings at all times?",
                     clause,
                 )
             elif not amounts:
@@ -269,6 +294,14 @@ def compile_goals(user_id: str, text: str, as_of: date) -> GoalCompileResponse:
             missing = True
         elif deadline <= as_of:
             ask("deadline", f"{deadline} has already passed. When do you need it {what}?", clause)
+            missing = True
+        elif deadline > latest_deadline:
+            ask(
+                "deadline",
+                f"{deadline} is too far ahead to plan for; goals can be due by {latest_deadline} "
+                f"at the latest. When do you need the money {what}?",
+                clause,
+            )
             missing = True
         if missing:
             continue
