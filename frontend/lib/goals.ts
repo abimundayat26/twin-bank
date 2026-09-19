@@ -12,7 +12,14 @@
  * inferred).
  */
 
-import type { DeclaredGoalsRequest, FinancialConstraint, FinancialTwin, Goal } from "@/lib/types";
+import type {
+  DeclaredGoalsRequest,
+  FinancialConstraint,
+  FinancialTwin,
+  Goal,
+  GoalClarification,
+  IsoDate,
+} from "@/lib/types";
 
 /** How a merged goal relates to what the twin held before. */
 export type GoalChange = "new" | "updated" | "unchanged";
@@ -107,4 +114,187 @@ function isSameGoal(a: Goal, b: Goal): boolean {
     a.current_amount === b.current_amount &&
     a.provenance === b.provenance
   );
+}
+
+// --- Answering a clarification ----------------------------------------------
+
+/**
+ * `POST /goals/compile` is stateless and there is no endpoint for answering a
+ * question: the compiler only ever reads text. So an answer is folded back into
+ * the words the user wrote and the whole thing is compiled again.
+ *
+ * Nothing here invents a value. The answer is the user's own, and the only
+ * judgement is where in their sentence it belongs.
+ */
+export interface ClarificationAnswer {
+  clarification: GoalClarification;
+  /** What the user typed in the box under the question. */
+  answer: string;
+}
+
+/** Leading words that already say "this is a date", so "by" would be doubled. */
+const DEADLINE_LEAD = /^(?:by|before|until|no later than|on|in|within)\b/i;
+/** A bare number: the compiler reads money, so it needs the dollar sign. */
+const BARE_NUMBER = /^[\d.,]+$/;
+
+/**
+ * The fragment the question was about, rewritten with the answer in it.
+ *
+ * An amount goes before the "for …" phrase, because the compiler reads
+ * everything after "for" as the goal's name. A `type` answer replaces the
+ * fragment outright: the question is which of two readings the user meant, and
+ * only saying that part again can settle it.
+ */
+export function answerSentence(clarification: GoalClarification, answer: string): string {
+  const said = answer.trim();
+  const fragment = clarification.fragment.trim();
+  if (!said) return fragment;
+  switch (clarification.field) {
+    case "amount": {
+      const amount = BARE_NUMBER.test(said) ? `$${said}` : said;
+      return fragment.includes(" for ")
+        ? fragment.replace(" for ", ` ${amount} for `)
+        : `${fragment} ${amount}`;
+    }
+    case "deadline":
+      return `${fragment} ${DEADLINE_LEAD.test(said) ? said : `by ${said}`}`;
+    case "name":
+      return `${fragment} ${/^for\b/i.test(said) ? said : `for ${said}`}`;
+    case "type":
+      return said;
+  }
+}
+
+/**
+ * The text to compile again, with each answer folded in where its question came
+ * from. The rest of what the user wrote is left alone, so answering one question
+ * cannot quietly drop another goal.
+ *
+ * An answer whose fragment is no longer in the text — the user edited the box
+ * since — is added as its own sentence rather than dropped.
+ */
+export function appendAnswers(text: string, answers: ClarificationAnswer[]): string {
+  let result = text;
+  // Two questions usually come from the same clause — one for the amount, one for
+  // the deadline — so the second answer is folded into what the first left behind.
+  const rewritten = new Map<string, string>();
+  for (const { clarification, answer } of answers) {
+    if (!answer.trim()) continue;
+    const fragment = clarification.fragment.trim();
+    const current = rewritten.get(fragment) ?? fragment;
+    const sentence = answerSentence({ ...clarification, fragment: current }, answer);
+    rewritten.set(fragment, sentence);
+    const at = current ? result.indexOf(current) : -1;
+    result =
+      at === -1
+        ? `${result.replace(/[\s.]*$/, "")}. ${sentence}`
+        : result.slice(0, at) + sentence + result.slice(at + current.length);
+  }
+  return result;
+}
+
+// --- Correcting a drafted goal ----------------------------------------------
+
+/**
+ * What the user typed into a review row, as raw strings — an input mid-edit is
+ * not a number yet, and blanking a field should not silently mean zero dollars.
+ * A field left `undefined` is untouched and keeps the drafted value.
+ */
+export interface GoalEdit {
+  target_amount?: string;
+  deadline?: string;
+  current_amount?: string;
+}
+
+/** Edits keyed by goal id. Ids with no row left are ignored. */
+export type GoalEdits = Record<string, GoalEdit | undefined>;
+
+/** One message per bad field. An empty object means the row can be saved. */
+export type GoalEditErrors = { [K in keyof GoalEdit]?: string };
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Dollars from what was typed: `$1,200` and `1200` are the same number. */
+function parseMoney(raw: string): number | null {
+  const cleaned = raw.replace(/[$,\s]/g, "");
+  if (cleaned === "") return null;
+  const value = Number(cleaned);
+  return Number.isFinite(value) ? value : null;
+}
+
+/** A real calendar day, not just ISO-shaped: 2026-02-31 is neither. */
+function isRealDate(value: string): boolean {
+  if (!ISO_DATE.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+/** Blank progress means none saved yet; blank anything else is missing, not zero. */
+function parseProgress(raw: string): number | null {
+  return raw.trim() === "" ? 0 : parseMoney(raw);
+}
+
+/**
+ * Why a row cannot be saved, if it cannot.
+ *
+ * The same rules the backend enforces on `PUT /twin/{user_id}/goals`, checked
+ * here so a typo is caught next to the field instead of as a 400 after Confirm.
+ * The backend also refuses a deadline further out than its horizon; that one
+ * stays server-side, since the limit is not part of the contract.
+ */
+export function validateEdit(goal: Goal, edit: GoalEdit | undefined, asOf: IsoDate): GoalEditErrors {
+  const errors: GoalEditErrors = {};
+  if (!edit) return errors;
+
+  let target = goal.target_amount;
+  if (edit.target_amount !== undefined) {
+    const amount = parseMoney(edit.target_amount);
+    if (amount === null || amount <= 0) errors.target_amount = "Enter an amount above $0.";
+    else target = amount;
+  }
+
+  if (edit.deadline !== undefined) {
+    if (!isRealDate(edit.deadline)) errors.deadline = "Enter a date as YYYY-MM-DD.";
+    else if (edit.deadline <= asOf) errors.deadline = `Pick a date after ${asOf}.`;
+  }
+
+  if (edit.current_amount !== undefined) {
+    const saved = parseProgress(edit.current_amount);
+    if (saved === null) errors.current_amount = "Enter an amount, or leave it empty.";
+    else if (saved < 0) errors.current_amount = "This cannot be negative.";
+    else if (saved > target) errors.current_amount = "This is more than the target.";
+  }
+
+  return errors;
+}
+
+/** True when nothing on the row is wrong. */
+export function isEditValid(errors: GoalEditErrors): boolean {
+  return Object.keys(errors).length === 0;
+}
+
+/**
+ * The goals with the user's corrections applied — the set that is both shown and
+ * sent, so the review list cannot describe one thing while another is saved.
+ *
+ * A field that does not validate keeps the drafted value; Confirm is blocked
+ * while any row is invalid, so nothing half-typed is ever saved.
+ */
+export function applyEdits(goals: Goal[], edits: GoalEdits, asOf: IsoDate): Goal[] {
+  return goals.map((goal) => {
+    const edit = edits[goal.id];
+    if (!edit) return goal;
+    const errors = validateEdit(goal, edit, asOf);
+    const next = { ...goal };
+
+    const target = edit.target_amount === undefined ? null : parseMoney(edit.target_amount);
+    if (target !== null && !errors.target_amount) next.target_amount = target;
+
+    if (edit.deadline !== undefined && !errors.deadline) next.deadline = edit.deadline;
+
+    const saved = edit.current_amount === undefined ? null : parseProgress(edit.current_amount);
+    if (saved !== null && !errors.current_amount) next.current_amount = saved;
+
+    return next;
+  });
 }

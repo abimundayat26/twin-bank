@@ -10,15 +10,23 @@ import { money } from "@/lib/format";
 import { DEFAULT_LOW_BALANCE_THRESHOLD, type FinancialConstraint } from "@/lib/types";
 import { Card, ProvenanceTag } from "./ui";
 
+/** Names this card's save, so only this button says "Saving…". */
+export const MINIMUM_BALANCE_SCOPE = "minimum-balance";
+
 export function MinimumBalanceCard({
   minimum,
-  isSaving,
+  isBusy,
+  savingScope,
   onSave,
 }: {
   minimum?: FinancialConstraint;
-  isSaving: boolean;
+  /** A twin update is in flight somewhere on the page; no second one may start. */
+  isBusy: boolean;
+  /** Which control started it, so only that one says "Saving…". */
+  savingScope?: string;
   onSave: (amount: number) => void;
 }) {
+  const isSaving = savingScope === MINIMUM_BALANCE_SCOPE;
   const [draft, setDraft] = useState(minimum ? String(minimum.amount) : "");
   const amount = Number(draft);
   const valid = draft.trim() !== "" && Number.isFinite(amount) && amount >= 0;
@@ -57,7 +65,7 @@ export function MinimumBalanceCard({
         />
         <button
           type="submit"
-          disabled={!valid || isSaving}
+          disabled={!valid || isBusy}
           className="shrink-0 rounded-lg bg-counter px-4 py-2 text-sm font-semibold text-canvas transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isSaving ? "Saving…" : minimum ? "Update" : "Set"}

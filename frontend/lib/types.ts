@@ -88,11 +88,26 @@ export interface FinancialObligation {
   declared_category?: ObligationCategory | null;
 }
 
+/**
+ * How a category's spending moves around the year. `factors` maps calendar month to a
+ * multiplier on both `mean_14d` and `std_dev_14d`: a busy month is proportionally more
+ * variable, not just larger.
+ *
+ * The factors are mean-preserving — the twelve average to 1.0 — so `mean_14d` still means
+ * the annual-average fortnight. The keys are the months 1-12, as strings, because that is
+ * how JSON carries them.
+ */
+export interface SeasonalProfile {
+  factors: Record<string, number>;
+}
+
 export interface VariableSpendingDistribution {
   category: string;
   mean_14d: number;
   std_dev_14d: number;
   provenance: Provenance;
+  /** Per-month shape. Absent/null means a flat mean and spread across the year. */
+  seasonal?: SeasonalProfile | null;
 }
 
 export interface Goal {
@@ -113,6 +128,27 @@ export interface FinancialConstraint {
   provenance: "declared";
 }
 
+/**
+ * Where the twin's observed figures came from: which method produced them, over what
+ * window, and how heavily it weighted recent fortnights. Describes the estimate, not
+ * the future.
+ */
+export interface ForecastMetadata {
+  /**
+   * flat_mean: every observed fortnight weighted equally, no seasonality.
+   * seasonal_ewma: recency-weighted, with a per-month seasonal profile.
+   */
+  method: "flat_mean" | "seasonal_ewma";
+  /** Last day of observed data behind the estimate. */
+  as_of: IsoDate;
+  /** First day of observed data behind the estimate. */
+  window_start: IsoDate;
+  /** 14-day blocks the estimate is fitted to. */
+  observed_fortnights: number;
+  /** Days after which an observation carries half the weight. Absent/null when equally weighted. */
+  half_life_days?: number | null;
+}
+
 export interface FinancialTwin {
   user_id: string;
   display_name: string;
@@ -123,6 +159,8 @@ export interface FinancialTwin {
   variable_spending: VariableSpendingDistribution[];
   goals: Goal[];
   constraints: FinancialConstraint[];
+  /** How the observed figures were estimated. Absent/null when not recorded. */
+  forecast?: ForecastMetadata | null;
   /**
    * Where the observed half came from. Absent on a twin the backend did not
    * load from a source, and on the offline mock.
