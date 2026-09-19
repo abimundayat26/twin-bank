@@ -10,11 +10,17 @@ Conventions: money is USD dollars, dates are ISO 8601, probabilities are 0-1.
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 # "observed" = derived from banking data; "declared" = stated by the user.
 Provenance = Literal["observed", "declared"]
 Probability = Field(ge=0, le=1)
+
+# What a recurring obligation is for. Observed data can only suggest this;
+# the user's answer is stored separately as declared_category.
+ObligationCategory = Literal[
+    "bill", "savings_transfer", "debt_repayment", "optional_spending", "not_recurring"
+]
 
 
 # --- Financial Twin -----------------------------------------------------------
@@ -37,6 +43,11 @@ class IncomeStream(BaseModel):
     provenance: Provenance = "observed"
 
 
+class CategoryCandidate(BaseModel):
+    category: ObligationCategory
+    probability: float = Probability
+
+
 class FinancialObligation(BaseModel):
     id: str
     name: str
@@ -45,6 +56,27 @@ class FinancialObligation(BaseModel):
     mandatory: bool = True
     confidence: float = Probability
     provenance: Provenance = "observed"
+    category_candidates: list[CategoryCandidate] = Field(
+        default=[],
+        description="Likely categories, most likely first. Non-empty means the app should "
+        "ask the user which one applies.",
+    )
+    declared_category: ObligationCategory | None = Field(
+        default=None, description="The user's answer to the category question."
+    )
+
+    @field_validator("category_candidates")
+    @classmethod
+    def check_candidates(cls, candidates: list[CategoryCandidate]) -> list[CategoryCandidate]:
+        categories = [c.category for c in candidates]
+        if len(set(categories)) != len(categories):
+            raise ValueError("category candidates must not repeat a category")
+        probabilities = [c.probability for c in candidates]
+        if probabilities != sorted(probabilities, reverse=True):
+            raise ValueError("category candidates must be ordered most likely first")
+        if sum(probabilities) > 1 + 1e-9:
+            raise ValueError("category candidate probabilities must sum to at most 1")
+        return candidates
 
 
 class VariableSpendingDistribution(BaseModel):
@@ -65,7 +97,9 @@ class Goal(BaseModel):
 
 class FinancialConstraint(BaseModel):
     id: str
-    type: Literal["minimum_reserve"]
+    # minimum_reserve: checking plus savings. minimum_checking_balance: checking only,
+    # the user's own low-balance line.
+    type: Literal["minimum_reserve", "minimum_checking_balance"]
     amount: float = Field(ge=0)
     description: str
     provenance: Literal["declared"] = "declared"
@@ -86,6 +120,19 @@ class FinancialTwin(BaseModel):
     @property
     def total_balance(self) -> float:
         return round(sum(a.balance for a in self.accounts), 2)
+
+
+# --- Twin updates ------------------------------------------------------------
+
+
+class ClarificationResponseRequest(BaseModel):
+    user_id: str
+    obligation_id: str
+    category: ObligationCategory
+
+
+class MinimumBalanceRequest(BaseModel):
+    amount: float = Field(ge=0)
 
 
 # --- Simulation ---------------------------------------------------------------

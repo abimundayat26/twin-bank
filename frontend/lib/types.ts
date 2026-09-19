@@ -31,6 +31,19 @@ export interface IncomeStream {
   provenance: Provenance;
 }
 
+/** What a recurring obligation is for. The user's answer is `declared_category`. */
+export type ObligationCategory =
+  | "bill"
+  | "savings_transfer"
+  | "debt_repayment"
+  | "optional_spending"
+  | "not_recurring";
+
+export interface CategoryCandidate {
+  category: ObligationCategory;
+  probability: number;
+}
+
 export interface FinancialObligation {
   id: string;
   name: string;
@@ -40,6 +53,10 @@ export interface FinancialObligation {
   mandatory: boolean;
   confidence: number;
   provenance: Provenance;
+  /** Likely categories, most likely first. Non-empty means ask the user. */
+  category_candidates?: CategoryCandidate[];
+  /** The user's answer to the category question. */
+  declared_category?: ObligationCategory | null;
 }
 
 export interface VariableSpendingDistribution {
@@ -60,7 +77,8 @@ export interface Goal {
 
 export interface FinancialConstraint {
   id: string;
-  type: "minimum_reserve";
+  /** minimum_reserve: checking plus savings. minimum_checking_balance: checking only. */
+  type: "minimum_reserve" | "minimum_checking_balance";
   amount: number;
   description: string;
   provenance: "declared";
@@ -78,6 +96,18 @@ export interface FinancialTwin {
   constraints: FinancialConstraint[];
   /** Computed server-side; present in the JSON payload. */
   total_balance: number;
+}
+
+// --- Twin updates -----------------------------------------------------------
+
+export interface ClarificationResponseRequest {
+  user_id: string;
+  obligation_id: string;
+  category: ObligationCategory;
+}
+
+export interface MinimumBalanceRequest {
+  amount: number;
 }
 
 // --- Simulation -------------------------------------------------------------

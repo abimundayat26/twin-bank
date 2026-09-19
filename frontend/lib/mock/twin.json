@@ -35,7 +35,9 @@
       "due_day": 1,
       "mandatory": true,
       "confidence": 0.99,
-      "provenance": "observed"
+      "provenance": "observed",
+      "category_candidates": [],
+      "declared_category": null
     },
     {
       "id": "obl_utilities",
@@ -44,7 +46,9 @@
       "due_day": 15,
       "mandatory": true,
       "confidence": 0.9,
-      "provenance": "observed"
+      "provenance": "observed",
+      "category_candidates": [],
+      "declared_category": null
     },
     {
       "id": "obl_phone",
@@ -53,7 +57,9 @@
       "due_day": 20,
       "mandatory": true,
       "confidence": 0.98,
-      "provenance": "observed"
+      "provenance": "observed",
+      "category_candidates": [],
+      "declared_category": null
     },
     {
       "id": "obl_subscriptions",
@@ -62,7 +68,9 @@
       "due_day": 10,
       "mandatory": false,
       "confidence": 0.95,
-      "provenance": "observed"
+      "provenance": "observed",
+      "category_candidates": [],
+      "declared_category": null
     },
     {
       "id": "obl_mystery_transfer",
@@ -71,7 +79,22 @@
       "due_day": 5,
       "mandatory": false,
       "confidence": 0.55,
-      "provenance": "observed"
+      "provenance": "observed",
+      "category_candidates": [
+        {
+          "category": "savings_transfer",
+          "probability": 0.55
+        },
+        {
+          "category": "debt_repayment",
+          "probability": 0.3
+        },
+        {
+          "category": "optional_spending",
+          "probability": 0.15
+        }
+      ],
+      "declared_category": null
     }
   ],
   "variable_spending": [

@@ -16,8 +16,20 @@ import { Header } from "@/components/Header";
 import { PurchaseSimulator } from "@/components/PurchaseSimulator";
 import { ScenarioComparison } from "@/components/ScenarioComparison";
 import { Card } from "@/components/ui";
-import { getTwin, runSimulation, type DataSource } from "@/lib/api";
-import type { FinancialTwin, SimulationEvent, SimulationResponse } from "@/lib/types";
+import {
+  getTwin,
+  respondToClarification,
+  runSimulation,
+  setMinimumBalance,
+  type DataSource,
+  type Loaded,
+} from "@/lib/api";
+import type {
+  FinancialTwin,
+  ObligationCategory,
+  SimulationEvent,
+  SimulationResponse,
+} from "@/lib/types";
 
 const DEMO_USER_ID = "alex";
 
@@ -25,6 +37,7 @@ export default function Home() {
   const [twin, setTwin] = useState<FinancialTwin | null>(null);
   const [source, setSource] = useState<DataSource>();
   const [twinError, setTwinError] = useState<string>();
+  const [isSavingTwin, setIsSavingTwin] = useState(false);
 
   const [simulation, setSimulation] = useState<SimulationResponse | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -45,6 +58,35 @@ export default function Home() {
       cancelled = true;
     };
   }, []);
+
+  /** Alex changed a declared fact, so any earlier simulation is now stale. */
+  async function updateTwin(update: Promise<Loaded<FinancialTwin>>) {
+    setIsSavingTwin(true);
+    try {
+      const loaded = await update;
+      setTwin(loaded.data);
+      setSource(loaded.source);
+      setSimulation(null);
+    } finally {
+      setIsSavingTwin(false);
+    }
+  }
+
+  function handleAnswer(obligationId: string, category: ObligationCategory) {
+    if (!twin) return;
+    void updateTwin(
+      respondToClarification(twin, {
+        user_id: twin.user_id,
+        obligation_id: obligationId,
+        category,
+      }),
+    );
+  }
+
+  function handleSetMinimum(amount: number) {
+    if (!twin) return;
+    void updateTwin(setMinimumBalance(twin, { amount }));
+  }
 
   async function handleSimulate(event: SimulationEvent) {
     if (!twin) return;
@@ -106,7 +148,12 @@ export default function Home() {
                 What the bank observed, plus what {twin.display_name} declared.
               </p>
             </div>
-            <FinancialSummary twin={twin} />
+            <FinancialSummary
+              twin={twin}
+              isSaving={isSavingTwin}
+              onAnswer={handleAnswer}
+              onSetMinimum={handleSetMinimum}
+            />
           </div>
 
           <div className="grid gap-6">
