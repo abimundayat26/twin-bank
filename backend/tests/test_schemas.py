@@ -18,7 +18,8 @@ def test_monte_carlo_fields_are_optional():
     metrics = ScenarioMetrics(**METRICS)
     assert metrics.prob_obligations_uncovered is None
     assert metrics.prob_goal_met is None
-    assert load_simulation().num_simulations is None
+    response = load_simulation().model_dump(exclude={"num_simulations"})
+    assert SimulationResponse.model_validate(response).num_simulations is None
 
 
 def test_monte_carlo_fields_accept_probabilities():
