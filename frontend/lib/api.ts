@@ -30,6 +30,14 @@ import type {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+/**
+ * `fetch` has no default timeout. A backend that accepts the connection and then
+ * never answers would spin the UI forever, which is worse than being offline:
+ * offline at least falls back to a fixture. Aborting turns a hang into that same
+ * honest fallback.
+ */
+const TIMEOUT_MS = 8000;
+
 /** Where a payload came from, so the UI can be honest about it. */
 export type DataSource = "api" | "fixture";
 
@@ -68,6 +76,8 @@ async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
     cache: "no-store",
     headers: { "Content-Type": "application/json" },
     ...init,
+    // After `...init` so no caller can accidentally drop the timeout.
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new ApiError(await errorMessage(response), response.status);

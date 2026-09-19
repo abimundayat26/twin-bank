@@ -8,6 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend import simulation_store
 from backend import twin_store
+from backend.fixtures import load_raw_transactions
+from backend.ingest.build import latest_transaction_date, rebuild
+from backend.ingest.normalize import normalize_all
 from backend.llm_goal_compiler import compile_goals_auto
 from backend.schemas import (
     ClarificationResponseRequest,
@@ -20,6 +23,7 @@ from backend.schemas import (
     OptimizationResponse,
     SimulationRequest,
     SimulationResponse,
+    TwinBuildRequest,
 )
 from backend.simulation import SimulationError, run_simulation
 from backend.simulation.optimize import run_optimization
@@ -52,6 +56,28 @@ def twin_for(user_id: str) -> FinancialTwin:
 @app.get("/twin/{user_id}", response_model=FinancialTwin)
 def get_twin(user_id: str) -> FinancialTwin:
     return twin_for(user_id)
+
+
+@app.post("/twin/build", response_model=FinancialTwin)
+def build_twin(request: TwinBuildRequest) -> FinancialTwin:
+    """Rebuild a twin's observed structure from the user's transaction history.
+
+    The result is returned, not stored: `GET /twin/{user_id}` keeps serving the
+    twin on file, so a detector that reads the history differently cannot break
+    the demo.
+    """
+    twin = twin_for(request.user_id)
+    # The seam Phase 3 replaces: the same transactions, fetched from Nessie.
+    transactions = normalize_all(load_raw_transactions())
+    as_of = request.as_of or latest_transaction_date(transactions)
+    if as_of is None:
+        raise HTTPException(
+            status_code=422, detail=f"No transaction history for user '{request.user_id}'"
+        )
+    if request.accounts is not None:
+        twin = twin.model_copy(update={"accounts": request.accounts})
+    # A twin as of a past date must not see what happened after it.
+    return rebuild(twin, [t for t in transactions if t.date <= as_of], as_of)
 
 
 @app.put("/twin/{user_id}/minimum-balance", response_model=FinancialTwin)

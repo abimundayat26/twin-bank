@@ -1,22 +1,34 @@
-"""Turning raw banking events into normalized transactions.
+"""Turning raw banking events into a Financial Twin's observed structure.
 
-The first half of Workstream 1's pipeline:
+Workstream 1's pipeline:
 
-    raw bank events -> normalize -> Transaction[] -> (recurrence detection) -> FinancialTwin
+    raw bank events -> normalize -> Transaction[] -> recurrence detection -> FinancialTwin
 
-Only the normalization half lives here so far. Nothing in this package is wired
-into the API yet: `GET /twin/alex` still serves the hand-written fixture, so the
-demo is unaffected.
+Both halves live here now. Nothing in this package is wired into the API yet:
+`GET /twin/alex` still serves the hand-written fixture, so the demo is
+unaffected by anything detection gets wrong.
 """
 
 from backend.ingest.models import Category, RawTransaction, Transaction
 from backend.ingest.normalize import categorize, normalize, normalize_all
+from backend.ingest.recurrence import (
+    DetectedStructure,
+    detect_income,
+    detect_obligations,
+    detect_structure,
+    detect_variable_spending,
+)
 
 __all__ = [
     "Category",
+    "DetectedStructure",
     "RawTransaction",
     "Transaction",
     "categorize",
+    "detect_income",
+    "detect_obligations",
+    "detect_structure",
+    "detect_variable_spending",
     "normalize",
     "normalize_all",
 ]

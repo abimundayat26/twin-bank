@@ -176,6 +176,28 @@ At every phase, preserve a functioning end-to-end demo.
 
 Phases describe what the demo on `main` does. Workstreams (Section 10) may build later-phase components in parallel, as long as each component stays behind a mock until it is ready.
 
+### Current Status (2026-09-19)
+
+| Phase | State |
+| --- | --- |
+| 1. Mocked end-to-end demo | Done |
+| 2. Deterministic calculations | Done |
+| 3. Nessie data | Mostly done. The client exists, but the demo still runs on fixture data. |
+| 4. Monte Carlo | Done, including a fan chart in the UI |
+| 5. Goal compilation and optimization | Backend done (rule-based). No UI yet. |
+| 6. Databricks and MLflow | Not started |
+| 7. Demo polish | Not started |
+
+Main gaps, in priority order:
+
+1. The Phase 5 features (goal entry and alternatives to a purchase) are not visible in the demo.
+2. The twin the app shows is hand-written, not derived from transaction data.
+3. There is no forecasting step. The simulation uses the twin's current averages.
+4. No LLM is used yet. Goal compilation and explanations are rule- and template-based.
+5. Databricks and MLflow are not integrated.
+6. User answers are lost when the server restarts.
+7. There is no scripted demo walkthrough.
+
 ---
 
 ## 6. Architecture
@@ -341,47 +363,54 @@ Do not build all endpoints immediately.
 
 Build only what the current phase requires.
 
-Phase 1 needs only `GET /health`, `GET /twin/{user_id}`, and `POST /simulate`. In Phase 1, `POST /simulate` returns the explanation inline, so `GET /explain/{simulation_id}` (which requires storing simulations) is deferred.
+All of these endpoints now exist. Several of them (goal compilation, optimization, twin build) are not yet used by the frontend. Wire existing endpoints into the UI before adding new ones.
 
 ---
 
 ## 10. Shared Team Workstreams
 
-### Workstream 1 — Data / Financial Twin
+Each workstream's focus below targets the gaps in Section 5 (Current Status), in priority order.
 
-Owns:
+### Workstream 1: Data / Financial Twin (Jordan12369)
 
-* Nessie,
-* transaction normalization,
-* recurrence detection,
-* forecasting,
-* Databricks,
-* Financial Twin generation.
+Owns Nessie, transaction normalization, recurrence detection, forecasting, Databricks and Financial Twin generation.
 
-### Workstream 2 — Simulation / Intelligence
+Built: normalization, recurrence detection, twin building, the Nessie client.
 
-Owns:
+Focus:
 
-* deterministic simulator,
-* Monte Carlo,
-* goal compiler,
-* counterfactual simulation,
-* explainability,
-* optimization.
+1. Make the twin the app shows come from transaction data (fixture or Nessie), not a hand-written file. Declared goals and constraints stay user-declared (Section 2).
+2. Add a simple forecast of income and spending that feeds the simulation.
+3. After 1 and 2, move data processing into Databricks with MLflow tracking, behind a flag.
 
-### Workstream 3 — Frontend / Integration
+### Workstream 2: Simulation / Intelligence (abimundayat26)
 
-Owns:
+Owns the simulator, Monte Carlo, the goal compiler, counterfactual simulation, explainability and optimization. It also owns the alternatives UI.
 
-* Next.js frontend,
-* Twin visualization,
-* scenario UI,
-* charts,
-* API integration,
-* Financial Intent Graph,
-* demo polish.
+Built: the deterministic and Monte Carlo simulation, explanations, optimization, and the rule-based goal compiler.
+
+Focus:
+
+1. Alternatives panel: show the optimizer's ranked alternatives to a purchase and their tradeoffs in the UI, without telling the user what to do (Section 3).
+2. Finish the LLM goal compiler behind a flag, with the rule-based compiler as the fallback.
+3. Optionally, have the LLM write explanations, rephrasing only the computed results.
+4. Keep user answers across a server restart.
+
+### Workstream 3: Frontend / Integration (mkrishiv)
+
+Owns the Next.js frontend, Twin visualization, the scenario UI, charts, API integration, the Financial Intent Graph and demo polish.
+
+Built: the twin view, the scenario comparison, explanations, the Financial Intent Graph, the fan chart, and handling of an offline backend.
+
+Focus:
+
+1. Goal entry: the user types a goal, reviews the compiled draft and any clarification questions, and confirms.
+2. Show where the twin's data came from (fixture or Nessie).
+3. Demo polish and a scripted walkthrough from a fresh clone (Phase 7).
 
 Ownership means responsibility, not exclusive permission to modify code.
+
+A feature is not done until the demo shows it. Once a backend endpoint exists, the workstream that built it also builds its frontend (API client, types, UI), coordinating with Workstream 3 on layout. Workstream 3 owns the overall page, shared components, and demo polish.
 
 ---
 
@@ -416,14 +445,22 @@ Then mocks should be progressively replaced by real implementations without brea
 
 ---
 
-## 13. Open Questions
+## 13. Decisions and Open Questions
 
-These must be decided by the team, not by an individual Claude Code session. Until they are decided, use the proposed default and label it as an assumption.
+These are decided by the team, not by an individual Claude Code session. A new open question goes in the second table with a proposed default; until the team decides it, use the default and label it as an assumption.
+
+Decided:
+
+| Question | Decision |
+| --- | --- |
+| What balance counts as "low balance"? | Checking below the user's own minimum checking balance, which they set in the app (`PUT /twin/{user_id}/minimum-balance`); $200 until they set one |
+| Does the emergency reserve count checking only, or checking plus savings? | Checking plus savings |
+| What is the simulation horizon? | Through the earliest goal deadline (2027-05-01 for Alex); 180 days when there are no goals; at most 730 days |
+| Which LLM provider do we use? | Anthropic, Claude Haiku (`claude-haiku-4-5`), off by default behind `GOAL_COMPILER=llm`; explanations stay template-based |
+| Does the housing goal draw from the same money as the emergency reserve? | No; the goal must be met on top of the reserve |
+
+Open:
 
 | Question | Proposed default |
 | --- | --- |
-| What balance counts as "low balance"? | Checking balance below $200 |
-| Does the emergency reserve count checking only, or checking plus savings? | Checking plus savings |
-| What is the simulation horizon? | From today through the housing goal deadline (2027-05-01) |
-| Which LLM provider do we use? | Undecided; explanations are template-based until Phase 5 |
-| Does the housing goal draw from the same money as the emergency reserve? | No; the goal must be met on top of the reserve |
+| (none yet) | |

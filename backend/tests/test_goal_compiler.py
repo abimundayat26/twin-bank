@@ -180,6 +180,21 @@ def test_amount_after_a_keep_carries_the_keep(text):
     assert result.clarifications == [] and result.unparsed == []
 
 
+def test_reserve_amount_after_a_checking_keep_carries_the_keep():
+    result = compile_text("keep at least $300 in checking and $1,500 for emergencies")
+    assert [(c.type, c.amount) for c in result.constraints] == [
+        ("minimum_checking_balance", 300),
+        ("minimum_reserve", 1500),
+    ]
+    assert result.clarifications == [] and result.unparsed == []
+
+
+def test_carried_keep_with_a_deadline_still_asks_which_kind():
+    result = compile_text("keep $300 in checking and $1,500 for emergencies by May")
+    assert [c.type for c in result.constraints] == ["minimum_checking_balance"]
+    assert fields(result) == ["type"]
+
+
 def test_checking_balance_statement_is_not_a_minimum():
     result = compile_text("Keep at least $1,500 for emergencies. I have $300 in checking.")
     assert [c.type for c in result.constraints] == ["minimum_reserve"]

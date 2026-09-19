@@ -285,7 +285,7 @@ def compile_goals(user_id: str, text: str, as_of: date) -> GoalCompileResponse:
                     "or a minimum balance in checking alone?",
                     clause,
                 )
-            elif is_reserve and (parse_deadline(clause, as_of)[1] or not FLOOR_WORDS.search(clause)):
+            elif is_reserve and (parse_deadline(clause, as_of)[1] or not has_floor):
                 # "save $3,000 for an emergency fund by December" or "reserve $200 for
                 # tickets by October 30": could be a goal as much as a standing reserve.
                 amount = f"{money(amounts[0])} " if amounts else ""
