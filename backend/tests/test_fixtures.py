@@ -1,4 +1,6 @@
-from backend.fixtures import load_simulation, load_twin
+from backend.fixtures import load_raw_transactions, load_simulation, load_twin
+from backend.ingest.normalize import normalize_all
+from backend.ingest.recurrence import detect_structure
 
 
 def test_twin_fixture_validates():
@@ -66,3 +68,14 @@ def test_simulation_fixture_references_twin_account():
     account_ids = {a.id for a in load_twin().accounts}
     for event in load_simulation().request.events:
         assert event.account_id in account_ids
+
+
+def test_seasonal_profiles_are_fitted_from_the_feed():
+    """The fixture's profiles are what the forecaster recovers from transactions.json,
+    fitted through the last transaction (the /twin/build default), not hand-written."""
+    transactions = normalize_all(load_raw_transactions())
+    as_of = max(t.date for t in transactions)
+    fitted = {v.category: v.seasonal for v in detect_structure(transactions, as_of).variable_spending}
+    for spending in load_twin().variable_spending:
+        assert spending.seasonal is not None, spending.category
+        assert spending.seasonal == fitted[spending.category], spending.category

@@ -2,7 +2,6 @@ from datetime import date, timedelta
 
 import pytest
 
-from backend.fixtures import load_twin
 from backend.schemas import Goal, SeasonalProfile, SimulationEvent
 from backend.simulation.engine import (
     LOW_BALANCE_THRESHOLD,
@@ -23,8 +22,9 @@ def purchase(amount: float, on: str = "2026-09-20", account_id: str = "acc_check
 
 
 @pytest.fixture
-def twin():
-    return load_twin()
+def twin(flat_twin):
+    # Hand-checked arithmetic below assumes flat 14-day spending.
+    return flat_twin
 
 
 # --- No hypothetical purchase -------------------------------------------------

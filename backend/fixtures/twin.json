@@ -31,8 +31,30 @@
     }
   ],
   "variable_spending": [
-    { "category": "groceries", "mean_14d": 150.0, "std_dev_14d": 40.0, "provenance": "observed" },
-    { "category": "discretionary", "mean_14d": 110.0, "std_dev_14d": 65.0, "provenance": "observed" }
+    {
+      "category": "groceries",
+      "mean_14d": 150.0,
+      "std_dev_14d": 40.0,
+      "provenance": "observed",
+      "seasonal": {
+        "factors": {
+          "1": 1.632, "2": 1.1848, "3": 1.0633, "4": 0.7069, "5": 0.9215, "6": 0.7137,
+          "7": 0.6034, "8": 0.6725, "9": 1.2767, "10": 1.1759, "11": 1.3042, "12": 0.7451
+        }
+      }
+    },
+    {
+      "category": "discretionary",
+      "mean_14d": 110.0,
+      "std_dev_14d": 65.0,
+      "provenance": "observed",
+      "seasonal": {
+        "factors": {
+          "1": 1.0119, "2": 0.874, "3": 1.228, "4": 0.4888, "5": 0.5527, "6": 0.9292,
+          "7": 0.6004, "8": 0.687, "9": 1.2491, "10": 0.9687, "11": 1.0681, "12": 2.3421
+        }
+      }
+    }
   ],
   "goals": [
     {

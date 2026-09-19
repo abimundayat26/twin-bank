@@ -304,7 +304,6 @@ def test_seasonal_profile_rejects_factors_that_do_not_average_one():
 def test_spending_distribution_without_a_seasonal_profile_is_valid():
     spending = VariableSpendingDistribution(category="groceries", mean_14d=150, std_dev_14d=40)
     assert spending.seasonal is None
-    assert all(s.seasonal is None for s in load_twin().variable_spending)
 
 
 def test_seasonal_profile_round_trips_through_json_string_keys():

@@ -237,10 +237,13 @@ def test_combined_options_are_tried_when_no_single_option_keeps_every_limit(twin
     assert COMBINED_ASSUMPTION in result.assumptions
 
 
-def test_a_combined_option_can_keep_limits_no_single_option_keeps(twin):
-    # On Alex's fixture, $900 is more than any single option absorbs within the
-    # reserve limit, but waiting a few paydays and cutting discretionary spending is.
-    result = optimize(twin, laptop(amount=900))
+def test_a_combined_option_can_keep_limits_no_single_option_keeps(flat_twin):
+    # This checks the optimizer's fallback, not the fixture, so it runs on flat Alex:
+    # on the seasonal fixture the case holds only at exactly $1,100 ($1,200 leaves no
+    # option at all). On flat Alex it holds from $1,200 to $1,400; $1,300 is the middle.
+    # There, no single option keeps the reserve limit, but waiting a few paydays and
+    # cutting discretionary spending does.
+    result = optimize(flat_twin, laptop(amount=1300))
     single = [c for c in result.candidates if not (c.kind == "delay" and c.spending_adjustments)]
     assert not any(c.meets_constraints for c in single)
     recommended = next(c for c in result.candidates if c.id == result.recommended_id)
