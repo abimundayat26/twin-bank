@@ -271,7 +271,12 @@ export default function Home() {
 
   return (
     <>
-      <Header userName={twin.display_name} source={source} isMock={simulation?.is_mock} />
+      <Header
+        userName={twin.display_name}
+        backend={source}
+        twinSource={twin.source}
+        isMock={simulation?.is_mock}
+      />
 
       <main className="mx-auto w-full max-w-6xl px-6 py-8">
         {/* Full width and first: the structure of the money is what makes this
