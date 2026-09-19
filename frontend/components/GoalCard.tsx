@@ -4,12 +4,21 @@ import { money, longDate } from "@/lib/format";
 import type { Goal } from "@/lib/types";
 import { Card, ProvenanceTag } from "./ui";
 
-export function GoalCard({ goal }: { goal: Goal }) {
+export function GoalCard({
+  goal,
+  title = "Active savings goal",
+  subtitle,
+}: {
+  goal: Goal;
+  /** Every declared goal gets a card, so the caller says which one this is. */
+  title?: string;
+  subtitle?: string;
+}) {
   // Display-only bar width, clamped. The dollar figures below are the contract's.
   const filled = Math.min(100, Math.max(0, (goal.current_amount / goal.target_amount) * 100));
 
   return (
-    <Card title="Active savings goal">
+    <Card title={title} subtitle={subtitle}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-lg font-medium text-ink">{goal.name}</p>

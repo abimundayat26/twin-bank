@@ -14,23 +14,28 @@ import { BalanceTrajectoryChart } from "@/components/BalanceTrajectoryChart";
 import { ExplanationPanel } from "@/components/ExplanationPanel";
 import { FinancialSummary } from "@/components/FinancialSummary";
 import { GoalCard } from "@/components/GoalCard";
+import { GoalComposer } from "@/components/GoalComposer";
 import { Header } from "@/components/Header";
 import { IntentGraph } from "@/components/IntentGraph";
 import { PurchaseSimulator } from "@/components/PurchaseSimulator";
 import { ScenarioComparison } from "@/components/ScenarioComparison";
 import { Card } from "@/components/ui";
 import {
+  compileGoal,
   getTwin,
   respondToClarification,
   runOptimization,
   runSimulation,
+  saveGoals,
   setMinimumBalance,
   type DataSource,
   type Loaded,
 } from "@/lib/api";
 import type {
+  DeclaredGoalsRequest,
   FinancialTwin,
   Goal,
+  GoalCompileResponse,
   ObligationCategory,
   OptimizationResponse,
   SimulationEvent,
@@ -43,9 +48,12 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** The backend's default horizon ends at the earliest goal deadline; match it. */
-function earliestGoal(goals: Goal[]): Goal | undefined {
-  return [...goals].sort((a, b) => a.deadline.localeCompare(b.deadline))[0];
+/**
+ * Soonest deadline first. The backend's default horizon ends at the earliest
+ * goal deadline, so the first of these is the one that sets it.
+ */
+function byDeadline(goals: Goal[]): Goal[] {
+  return [...goals].sort((a, b) => a.deadline.localeCompare(b.deadline));
 }
 
 export default function Home() {
@@ -54,6 +62,15 @@ export default function Home() {
   const [twinError, setTwinError] = useState<string>();
   const [isSavingTwin, setIsSavingTwin] = useState(false);
   const [twinUpdateError, setTwinUpdateError] = useState<string>();
+
+  // Drafts from the goal compiler, waiting for Alex to confirm them. Kept here
+  // because compiling is an API call; the composer itself only receives props.
+  const [goalDraft, setGoalDraft] = useState<GoalCompileResponse | null>(null);
+  const [isCompilingGoal, setIsCompilingGoal] = useState(false);
+  const [goalCompileError, setGoalCompileError] = useState<string>();
+  const [goalSaveError, setGoalSaveError] = useState<string>();
+  // Bumped after a confirmed save, to remount the composer with an empty box.
+  const [composerKey, setComposerKey] = useState(0);
 
   const [simulation, setSimulation] = useState<SimulationResponse | null>(null);
   const [simulationSource, setSimulationSource] = useState<DataSource>();
@@ -88,11 +105,20 @@ export default function Home() {
     };
   }, []);
 
-  /** Alex changed a declared fact, so any earlier simulation is now stale. */
-  async function updateTwin(update: Promise<Loaded<FinancialTwin>>) {
+  /**
+   * Alex changed a declared fact, so any earlier simulation is now stale. A new
+   * goal can also move the default horizon, which is why clearing is not optional.
+   *
+   * Returns whether the twin was saved, and reports a failure wherever the caller
+   * asks, so an error lands next to the control that caused it.
+   */
+  async function updateTwin(
+    update: Promise<Loaded<FinancialTwin>>,
+    reportError: (message?: string) => void = setTwinUpdateError,
+  ): Promise<boolean> {
     latestRequest.current += 1;
     setIsSavingTwin(true);
-    setTwinUpdateError(undefined);
+    reportError(undefined);
     try {
       const loaded = await update;
       setTwin(loaded.data);
@@ -100,8 +126,10 @@ export default function Home() {
       setSimulation(null);
       setSimulationError(undefined);
       clearOptimization();
+      return true;
     } catch (error: unknown) {
-      setTwinUpdateError(errorText(error));
+      reportError(errorText(error));
+      return false;
     } finally {
       setIsSavingTwin(false);
     }
@@ -121,6 +149,37 @@ export default function Home() {
   function handleSetMinimum(amount: number) {
     if (!twin) return;
     void updateTwin(setMinimumBalance(twin, { amount }));
+  }
+
+  /** Drafts only. Nothing reaches the twin until `handleConfirmGoals`. */
+  async function handleCompileGoal(text: string) {
+    if (!twin) return;
+    setIsCompilingGoal(true);
+    setGoalCompileError(undefined);
+    setGoalSaveError(undefined);
+    try {
+      const loaded = await compileGoal({ user_id: twin.user_id, text });
+      setGoalDraft(loaded.data);
+    } catch (error: unknown) {
+      // No fixture behind `compileGoal`: there is nothing honest to show instead.
+      setGoalDraft(null);
+      setGoalCompileError(errorText(error));
+    } finally {
+      setIsCompilingGoal(false);
+    }
+  }
+
+  /**
+   * `request` is the complete declared set the composer merged, not just the new
+   * goal: the endpoint replaces everything it is sent. A rejected save keeps the
+   * draft on screen so Alex can fix the text rather than retype it.
+   */
+  async function handleConfirmGoals(request: DeclaredGoalsRequest) {
+    if (!twin) return;
+    if (await updateTwin(saveGoals(twin, request), setGoalSaveError)) {
+      setGoalDraft(null);
+      setComposerKey((key) => key + 1);
+    }
   }
 
   async function handleSimulate(event: SimulationEvent) {
@@ -190,7 +249,8 @@ export default function Home() {
     );
   }
 
-  const goal = earliestGoal(twin.goals);
+  const goals = byDeadline(twin.goals);
+  const goal = goals[0];
   const reserve = twin.constraints.find((c) => c.type === "minimum_reserve");
 
   return (
@@ -228,7 +288,35 @@ export default function Home() {
           </div>
 
           <div className="grid gap-6">
-            {goal ? <GoalCard goal={goal} /> : null}
+            {goals.map((each, index) => (
+              <GoalCard
+                key={each.id}
+                goal={each}
+                title={index === 0 ? "Active savings goal" : "Also saving for"}
+                subtitle={
+                  index === 0 && goals.length > 1
+                    ? "The soonest deadline, which is where the simulation ends."
+                    : undefined
+                }
+              />
+            ))}
+
+            <GoalComposer
+              key={composerKey}
+              goals={twin.goals}
+              constraints={twin.constraints}
+              draft={goalDraft}
+              isCompiling={isCompilingGoal}
+              isSaving={isSavingTwin}
+              compileError={goalCompileError}
+              saveError={goalSaveError}
+              onCompile={handleCompileGoal}
+              onConfirm={handleConfirmGoals}
+              onDiscard={() => {
+                setGoalDraft(null);
+                setGoalSaveError(undefined);
+              }}
+            />
 
             <PurchaseSimulator
               twin={twin}
