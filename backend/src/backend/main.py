@@ -1,10 +1,12 @@
-"""TwinBank API. /twin returns the mock fixture plus the user's answers; /simulate runs the Monte Carlo simulation."""
+"""TwinBank API. /twin returns the mock fixture plus the user's answers; /simulate runs the Monte Carlo simulation
+and /explain/{simulation_id} returns a recent simulation again."""
 
 import os
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend import simulation_store
 from backend import twin_store
 from backend.schemas import (
     ClarificationResponseRequest,
@@ -69,9 +71,22 @@ def respond_to_clarification(request: ClarificationResponseRequest) -> Financial
 def simulate(request: SimulationRequest) -> SimulationResponse:
     twin = twin_for(request.user_id)
     try:
-        return run_simulation(twin, request, seed=SIMULATION_SEED)
+        response = run_simulation(twin, request, seed=SIMULATION_SEED)
     except SimulationError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+    simulation_store.save(response)
+    return response
+
+
+@app.get("/explain/{simulation_id}", response_model=SimulationResponse)
+def explain(simulation_id: str) -> SimulationResponse:
+    """The stored result of a recent /simulate call, explanation included."""
+    response = simulation_store.get(simulation_id)
+    if response is None:
+        raise HTTPException(
+            status_code=404, detail=f"Unknown or expired simulation_id '{simulation_id}'"
+        )
+    return response
 
 
 @app.post("/optimize", response_model=OptimizationResponse)
