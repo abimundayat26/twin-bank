@@ -81,7 +81,11 @@ def to_raw(
         # From the endpoint, never from record["type"]: a purchase says "merchant".
         type=KIND_TO_TYPE[kind],
         transaction_date=when,
-        # Unsigned in principle, but not always in practice.
+        # Unsigned in principle, but not always in practice. Whole dollars in
+        # practice too: verified 2026-09-19, Nessie stores every amount rounded
+        # down (the seeder posts 31.58, Nessie returns 31). Over Alex's year
+        # that is $128.55 of cents, and every fixture-vs-Nessie comparison has
+        # to tolerate it. Nothing here can recover them.
         amount=abs(float(record.get("amount", 0))),
         description=str(text).strip() or UNKNOWN_DESCRIPTION,
         status=str(record.get("status") or "completed"),
