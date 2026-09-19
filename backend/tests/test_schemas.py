@@ -68,7 +68,9 @@ def test_category_fields_default_to_unasked():
     obligation = FinancialObligation(**OBLIGATION)
     assert obligation.category_candidates == []
     assert obligation.declared_category is None
-    assert all(o.category_candidates == [] for o in load_twin().obligations)
+    asked = [o.id for o in load_twin().obligations if o.category_candidates]
+    assert asked == ["obl_mystery_transfer"]
+    assert all(o.declared_category is None for o in load_twin().obligations)
 
 
 def test_category_candidates_accept_ordered_probabilities():

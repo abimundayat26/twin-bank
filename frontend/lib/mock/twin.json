@@ -80,7 +80,20 @@
       "mandatory": false,
       "confidence": 0.55,
       "provenance": "observed",
-      "category_candidates": [],
+      "category_candidates": [
+        {
+          "category": "savings_transfer",
+          "probability": 0.55
+        },
+        {
+          "category": "debt_repayment",
+          "probability": 0.3
+        },
+        {
+          "category": "optional_spending",
+          "probability": 0.15
+        }
+      ],
       "declared_category": null
     }
   ],

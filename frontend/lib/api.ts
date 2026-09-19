@@ -13,9 +13,16 @@
  * change there, re-copy them here.
  */
 
+import { money } from "./format";
 import mockSimulation from "./mock/simulation.json";
 import mockTwin from "./mock/twin.json";
-import type { FinancialTwin, SimulationRequest, SimulationResponse } from "./types";
+import type {
+  ClarificationResponseRequest,
+  FinancialTwin,
+  MinimumBalanceRequest,
+  SimulationRequest,
+  SimulationResponse,
+} from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -62,5 +69,55 @@ export async function runSimulation(
     // Returned verbatim, exactly as the mocked backend does: the numbers do
     // not respond to the request yet. `is_mock` and `assumptions` say so.
     return { data: mockSimulation as SimulationResponse, source: "fixture" };
+  }
+}
+
+/**
+ * Records Alex's answer to "What is this?" for an ambiguous obligation.
+ * Offline, the answer is applied to the local twin so the UI still reflects it.
+ */
+export async function respondToClarification(
+  twin: FinancialTwin,
+  request: ClarificationResponseRequest,
+): Promise<Loaded<FinancialTwin>> {
+  try {
+    const data = await getJson<FinancialTwin>("/clarifications/respond", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+    return { data, source: "api" };
+  } catch (error) {
+    console.warn("Backend unavailable; keeping the answer locally.", error);
+    const obligations = twin.obligations.map((o) =>
+      o.id === request.obligation_id ? { ...o, declared_category: request.category } : o,
+    );
+    return { data: { ...twin, obligations }, source: "fixture" };
+  }
+}
+
+/** Sets the checking balance Alex doesn't want to fall below (their low-balance line). */
+export async function setMinimumBalance(
+  twin: FinancialTwin,
+  request: MinimumBalanceRequest,
+): Promise<Loaded<FinancialTwin>> {
+  try {
+    const data = await getJson<FinancialTwin>(`/twin/${twin.user_id}/minimum-balance`, {
+      method: "PUT",
+      body: JSON.stringify(request),
+    });
+    return { data, source: "api" };
+  } catch (error) {
+    console.warn("Backend unavailable; keeping the minimum locally.", error);
+    const constraints = [
+      ...twin.constraints.filter((c) => c.type !== "minimum_checking_balance"),
+      {
+        id: "con_minimum_checking",
+        type: "minimum_checking_balance" as const,
+        amount: request.amount,
+        description: `Keep at least ${money(request.amount)} in checking.`,
+        provenance: "declared" as const,
+      },
+    ];
+    return { data: { ...twin, constraints }, source: "fixture" };
   }
 }

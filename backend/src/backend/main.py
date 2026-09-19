@@ -1,12 +1,18 @@
-"""TwinBank API. /twin returns the mock fixture; /simulate runs the Monte Carlo simulation."""
+"""TwinBank API. /twin returns the mock fixture plus the user's answers; /simulate runs the Monte Carlo simulation."""
 
 import os
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.fixtures import load_twin
-from backend.schemas import FinancialTwin, SimulationRequest, SimulationResponse
+from backend import twin_store
+from backend.schemas import (
+    ClarificationResponseRequest,
+    FinancialTwin,
+    MinimumBalanceRequest,
+    SimulationRequest,
+    SimulationResponse,
+)
 from backend.simulation import SimulationError, run_simulation
 
 # Optional: fix the Monte Carlo seed so demo numbers repeat. Unset means fresh randomness.
@@ -27,19 +33,38 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/twin/{user_id}", response_model=FinancialTwin)
-def get_twin(user_id: str) -> FinancialTwin:
-    twin = load_twin()
+def twin_for(user_id: str) -> FinancialTwin:
+    twin = twin_store.get_twin()
     if user_id != twin.user_id:
         raise HTTPException(status_code=404, detail=f"No twin for user '{user_id}'")
     return twin
 
 
+@app.get("/twin/{user_id}", response_model=FinancialTwin)
+def get_twin(user_id: str) -> FinancialTwin:
+    return twin_for(user_id)
+
+
+@app.put("/twin/{user_id}/minimum-balance", response_model=FinancialTwin)
+def set_minimum_balance(user_id: str, request: MinimumBalanceRequest) -> FinancialTwin:
+    twin_for(user_id)
+    return twin_store.set_minimum_checking_balance(request.amount)
+
+
+@app.post("/clarifications/respond", response_model=FinancialTwin)
+def respond_to_clarification(request: ClarificationResponseRequest) -> FinancialTwin:
+    twin_for(request.user_id)
+    try:
+        return twin_store.declare_category(request.obligation_id, request.category)
+    except twin_store.UnknownObligation as e:
+        raise HTTPException(
+            status_code=422, detail=f"Unknown obligation_id '{request.obligation_id}'"
+        ) from e
+
+
 @app.post("/simulate", response_model=SimulationResponse)
 def simulate(request: SimulationRequest) -> SimulationResponse:
-    twin = load_twin()
-    if request.user_id != twin.user_id:
-        raise HTTPException(status_code=404, detail=f"No twin for user '{request.user_id}'")
+    twin = twin_for(request.user_id)
     try:
         return run_simulation(twin, request, seed=SIMULATION_SEED)
     except SimulationError as e:
