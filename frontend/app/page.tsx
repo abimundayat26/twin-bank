@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { BalanceTrajectoryChart } from "@/components/BalanceTrajectoryChart";
 import { ExplanationPanel } from "@/components/ExplanationPanel";
 import { FinancialSummary } from "@/components/FinancialSummary";
 import { GoalCard } from "@/components/GoalCard";
@@ -208,6 +209,24 @@ export default function Home() {
                     </p>
                   </Card>
                 ) : null}
+                {/* Above the table: the shape of the two futures, then the
+                    numbers. `reserve` is the same constraint the table captions,
+                    so the dashed line and the caption can never disagree. */}
+                <BalanceTrajectoryChart
+                  bands={simulation.balance_bands}
+                  reserve={reserve?.amount}
+                  simulations={simulation.num_simulations}
+                  markers={[
+                    ...simulation.request.events.map((event) => ({
+                      date: event.date,
+                      label: event.description,
+                      tone: "counter" as const,
+                    })),
+                    ...(goal
+                      ? [{ date: goal.deadline, label: goal.name, tone: "faint" as const }]
+                      : []),
+                  ]}
+                />
                 <ScenarioComparison
                   simulation={simulation}
                   reserve={reserve}
