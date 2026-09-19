@@ -250,40 +250,49 @@ def build_optimization_summary(
             f"None of the {len(candidates)} options keeps every limit {name} declared. "
             f"The closest is \"{closest.label}\": {closest.violations[0]}"
         )
-    elif recommended.kind == "buy_now":
-        # Ranking is limits first, then goal chance (then reserve risk when there is no goal),
-        # so claim only that, and name any option that trades goal chance for less risk.
+    else:
+        # recommended is only the first in rank order (limits, then goal chance, then reserve
+        # risk when there is no goal). Claim only that ordering, never that it is the one to pick,
+        # and name any option that trades goal chance for less risk.
         better_at = (
             "has a better chance of meeting the goal"
             if has_goal
             else "carries less risk to the reserve"
         )
-        sentences.append(
-            f"Buying now keeps every limit {name} declared, and no other option that does {better_at}."
-        )
+        risk = recommended.metrics.prob_below_reserve
+        if recommended.kind == "buy_now":
+            sentences.append(
+                f"Buying now keeps every limit {name} declared, and no other option that does "
+                f"{better_at}."
+            )
+        else:
+            m = recommended.metrics
+            outcome = (
+                f"meets the goal in {goal_chance(m)} of futures"
+                if has_goal
+                else f"ends with a median {money(m.ending_balance)}"
+            )
+            sentences.append(
+                f"Of the options that keep every limit {name} declared, none {better_at} than "
+                f"\"{recommended.label}\": it {outcome}, and checking plus savings dips below the "
+                f"reserve in {pct(risk)} of futures (buying now: "
+                f"{pct(buy_now.metrics.prob_below_reserve)})."
+            )
         others = [c for c in candidates if c.meets_constraints and c.id != recommended.id]
         safest = min(others, key=lambda c: c.metrics.prob_below_reserve, default=None)
-        buy_now_risk = recommended.metrics.prob_below_reserve
-        if has_goal and safest is not None and safest.metrics.prob_below_reserve < buy_now_risk:
+        if (
+            has_goal
+            and safest is not None
+            and safest.metrics.prob_below_reserve < risk
+            and safest.metrics.prob_goal_met < recommended.metrics.prob_goal_met
+        ):
             m = safest.metrics
+            first = "buying now" if recommended.kind == "buy_now" else f"\"{recommended.label}\""
             sentences.append(
                 f"\"{safest.label}\" lowers the chance of dipping below the reserve to "
-                f"{pct(m.prob_below_reserve)} (buying now: {pct(buy_now_risk)}), but meets the "
+                f"{pct(m.prob_below_reserve)} ({first}: {pct(risk)}), but meets the "
                 f"goal in {goal_chance(m)} of futures."
             )
-    else:
-        m = recommended.metrics
-        outcome = (
-            f"meets the goal in {goal_chance(m)} of futures"
-            if has_goal
-            else f"ends with a median {money(m.ending_balance)}"
-        )
-        sentences.append(
-            f"The best-scoring option that keeps every limit {name} declared is "
-            f"\"{recommended.label}\": it {outcome}, and checking plus savings dips below the "
-            f"reserve in {pct(m.prob_below_reserve)} of futures (buying now: "
-            f"{pct(buy_now.metrics.prob_below_reserve)})."
-        )
 
     breaking = sum(not c.meets_constraints for c in candidates)
     if breaking and recommended is not None:
