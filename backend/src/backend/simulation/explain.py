@@ -1,5 +1,6 @@
 """Template-based explanations built only from computed simulation results."""
 
+import calendar
 from datetime import date
 
 from backend.schemas import (
@@ -7,6 +8,7 @@ from backend.schemas import (
     FinancialTwin,
     OptimizationCandidate,
     ScenarioMetrics,
+    SeasonalProfile,
     SimulationEvent,
 )
 from backend.simulation.engine import low_balance_threshold
@@ -180,6 +182,56 @@ def category_assumptions(twin: FinancialTwin) -> list[str]:
     return assumptions
 
 
+def join_months(months: list[int]) -> str:
+    names = [calendar.month_name[m] for m in sorted(months)]
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + f" and {names[-1]}"
+
+
+def seasonal_assumption(category: str, profile: SeasonalProfile) -> str | None:
+    """The busiest and quietest months of one category, or None if the profile is flat."""
+    levels: dict[float, list[int]] = {}
+    for month, factor in profile.factors.items():
+        levels.setdefault(round(factor, 2), []).append(month)
+    if len(levels) < 2:
+        return None
+    high, low = max(levels), min(levels)
+    return (
+        f"{category.replace('_', ' ').capitalize()} spending is highest in {join_months(levels[high])} "
+        f"({high:.2f}× an average fortnight) and lowest in {join_months(levels[low])} ({low:.2f}×)."
+    )
+
+
+def forecast_assumptions(twin: FinancialTwin) -> list[str]:
+    """What the spending figures were fitted to and how they move through the year."""
+    assumptions = []
+    forecast = twin.forecast
+    if forecast is not None:
+        weighting = (
+            f"recent fortnights count more, and one {forecast.half_life_days:g} days older counts half as much."
+            if forecast.half_life_days is not None
+            else "every fortnight counts equally."
+        )
+        assumptions.append(
+            f"Spending figures are fitted to {forecast.observed_fortnights} fortnights of observed "
+            f"spending, {forecast.window_start} to {forecast.as_of}; {weighting}"
+        )
+    seasonal = [
+        text
+        for v in twin.variable_spending
+        if v.seasonal is not None and (text := seasonal_assumption(v.category, v.seasonal)) is not None
+    ]
+    if seasonal:
+        assumptions.append(
+            f"A category with a seasonal pattern has its average and spread scaled for each "
+            f"{SPENDING_BLOCK_DAYS}-day period by the months that period covers (a period spanning two "
+            "months blends them); over a full year it averages to the twin's figure."
+        )
+        assumptions.extend(seasonal)
+        if len(seasonal) < len(twin.variable_spending):
+            assumptions.append("Every other spending category is flat across the year.")
+    return assumptions
+
+
 def build_assumptions(twin: FinancialTwin, mc: MonteCarloComparison) -> list[str]:
     assumptions = [
         f"Monte Carlo over {mc.n_simulations:,} simulated futures. In each future, the baseline and the "
@@ -192,6 +244,7 @@ def build_assumptions(twin: FinancialTwin, mc: MonteCarloComparison) -> list[str
         f"Spending in each category is drawn independently for every {SPENDING_BLOCK_DAYS}-day period "
         "from a normal distribution using the twin's mean and standard deviation, spread evenly over "
         "the period and never below $0 (which raises average spending slightly).",
+        *forecast_assumptions(twin),
         "Bill amounts, bill due dates, and paycheck dates are fixed; bill confidence is not used.",
         "A mandatory bill checking cannot cover is paid by moving money from savings, even if "
         "that breaks the emergency reserve; it counts as uncovered only when checking and savings "
