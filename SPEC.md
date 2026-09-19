@@ -182,7 +182,7 @@ Phases describe what the demo on `main` does. Workstreams (Section 10) may build
 | --- | --- |
 | 1. Mocked end-to-end demo | Done |
 | 2. Deterministic calculations | Done |
-| 3. Nessie data | Client, seeder and twin source are wired, and Alex is seeded in the live sandbox. `USE_MOCKS=false` plus a key builds the twin from Nessie. Reading that twin back has not been checked yet. |
+| 3. Nessie data | Done. Client, seeder and twin source are wired, and Alex is seeded in the live sandbox. `USE_MOCKS=false` plus a key builds the twin from Nessie. Reading Alex back out of the live sandbox (`python -m backend.nessie.readback`) was checked on 2026-09-19 and he is recognisable. The demo stays on fixtures by default. |
 | 4. Monte Carlo | Done, including a fan chart in the UI |
 | 5. Goal compilation and optimization | Done. Goal entry and the alternatives panel are in the UI. The rule-based compiler is the default; an LLM compiler sits behind `GOAL_COMPILER=llm` and falls back to rules. |
 | 6. Databricks and MLflow | Not started |
@@ -190,11 +190,10 @@ Phases describe what the demo on `main` does. Workstreams (Section 10) may build
 
 Main gaps, in priority order:
 
-1. The demo still shows the hand-written twin, which is the intended default. Building it from transaction data works and Alex is seeded in the sandbox, but nobody has yet confirmed that a twin read back out of Nessie describes the same person.
-2. There is no forecasting step. The simulation uses the twin's current averages.
-3. The LLM goal compiler is off by default and explanations are template-based (Section 13).
-4. Databricks and MLflow are not integrated.
-5. There is no scripted demo walkthrough.
+1. There is no forecasting step. The simulation uses the twin's current averages.
+2. The LLM goal compiler is off by default and explanations are template-based (Section 13).
+3. Databricks and MLflow are not integrated.
+4. There is no scripted demo walkthrough.
 
 ---
 
@@ -375,18 +374,17 @@ Each workstream's focus below targets the gaps in Section 5 (Current Status), in
 
 Owns Nessie, transaction normalization, recurrence detection, forecasting, Databricks and Financial Twin generation.
 
-Built: normalization, recurrence detection, twin building, the Nessie client, the sandbox seeder, and the switch that decides whether a twin comes from the fixture or from Nessie.
+Built: normalization, recurrence detection, twin building, the Nessie client, the sandbox seeder, the switch that decides whether a twin comes from the fixture or from Nessie, and a read-back check (`backend.nessie.readback`) that confirmed a twin built from the live sandbox is still Alex.
 
 Focus:
 
-1. Read Alex back out of Nessie and check he is still recognisable: the paycheck around $720 every 14 days, rent on the 1st, the goal and reserve carried through untouched (Section 2). Building the twin is wired and Alex is seeded, so this is the one step left to call Phase 3 finished. Seeding was only proved by running it for real — the seeder's tests mock Nessie, and so missed a payload Nessie rejects. Expect reading back to have its own version of that, and do not trust the mocked tests alone. The demo stays on fixtures by default either way.
-2. Give the mock feed something to forecast, then forecast it.
+1. Give the mock feed something to forecast, then forecast it.
 
    The generator draws every fortnight from the same distribution, so the feed has no trend and no seasonality in it. Measured over the year, grocery spending drifts by about one month-to-month standard deviation, which is noise. A forecaster fitted to this would be fitting noise, and a test asserting it found a trend would be asserting an artifact of the seed.
 
    So add a known signal first — a start-of-term spike, a holiday bump, a gentle drift — the same way `transactions.json` was generated from `twin.json` so recurrence detection could be tested on recovering it. Then a forecast has something real to recover.
-3. Then the forecast itself. Today the simulation holds one flat `mean_14d` and `std_dev_14d` per category across the whole horizon, and recurrence detection computes that mean weighting a fortnight from eleven months ago the same as last fortnight. Recency weighting and a per-month seasonal factor are enough to start. Section 8 already calls for forecast metadata on the twin; there is no field for it yet, so that is a small shared-schema change of its own.
-4. After the above, move data processing into Databricks with MLflow tracking, behind a flag.
+2. Then the forecast itself. Today the simulation holds one flat `mean_14d` and `std_dev_14d` per category across the whole horizon, and recurrence detection computes that mean weighting a fortnight from eleven months ago the same as last fortnight. Recency weighting and a per-month seasonal factor are enough to start. Section 8 already calls for forecast metadata on the twin; there is no field for it yet, so that is a small shared-schema change of its own.
+3. After the above, move data processing into Databricks with MLflow tracking, behind a flag.
 
 ### Workstream 2: Simulation / Intelligence (abimundayat26)
 
