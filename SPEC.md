@@ -185,15 +185,18 @@ Phases describe what the demo on `main` does. Workstreams (Section 10) may build
 | 3. Nessie data | Done. Alex is seeded in the live sandbox, and `USE_MOCKS=false` plus a key builds the twin from Nessie. Read back from the live sandbox on 2026-09-19, Alex is recognisable (`backend.nessie.readback`, #65); Nessie stores amounts in whole dollars (#68). The demo stays on fixtures by default. |
 | 4. Monte Carlo | Done, including a fan chart in the UI |
 | 5. Goal compilation and optimization | Done. Goal entry and the alternatives panel are in the UI. The rule-based compiler is the default; an LLM compiler sits behind `GOAL_COMPILER=llm` and falls back to rules. |
-| 6. Databricks and MLflow | Not started |
-| 7. Demo polish | Not started |
+| 6. Databricks and MLflow | Backend done, not yet visible. Every twin build logs an MLflow run behind `TRACK_TWIN_BUILDS` (#76, #77, #78, #80); the build runs as a Databricks asset bundle job (`backend/databricks.yml`, #79, #83, #90); `DATABRICKS_TWIN_PATH` serves the twin that job wrote and labels its provenance (#92, #93, #96). None of it has been run end to end against a real workspace, and the UI does not show lineage yet. |
+| 7. Demo polish | In progress. The single page is now an app shell with Overview, Purchase Simulator, Balance Trajectory and Plans routes (#84–#89), components carry tests (#95), three display defects are fixed (#94), and the palette matches Section 6 (#98). Forecast & Data is open in #97. The frontend specification (`frontend/SPEC.md`) defines the rest. |
+| 8. Stretch (ANS) | Not started, and out of scope until Phase 7 is finished |
 
 Main gaps, in priority order:
 
-1. The forecast is not in the demo yet. Twins built from transactions carry a recency-weighted, per-month seasonal forecast, and the simulator, explanations and optimizer all use it, but Alex's hand-written demo twin is still flat. Giving it seasonal profiles needs the demo twin rebalanced (#72).
-2. The LLM goal compiler is off by default and explanations are template-based (Section 13).
-3. Databricks and MLflow are not integrated.
-4. There is no scripted demo walkthrough.
+1. One-time declared obligations are specified in `frontend/SPEC.md` but have no shared contract, no compiler support and no place in the baseline simulation. Everything downstream of them is blocked until that contract lands.
+2. The TwinBank Assistant does not exist. Goal entry and category clarification are separate widgets rather than one conversation that routes intent.
+3. Phase 6 is invisible. Nothing in the UI says whether a twin came through Databricks, and no MLflow lineage reaches the browser.
+4. Forecast & Data is unfinished (#97), so the seasonal forecast that the simulator already uses is still not explained to the user.
+5. There is no scripted demo walkthrough and no pre-demo verification checklist.
+6. Explanations remain template-based by decision (Section 13), and the LLM goal compiler stays off by default.
 
 ---
 
@@ -368,44 +371,136 @@ All of these endpoints now exist, and the frontend uses all of them except `POST
 
 ## 10. Shared Team Workstreams
 
-Each workstream's focus below targets the gaps in Section 5 (Current Status), in priority order.
+Phases 1 to 5 are finished, so the workstreams below are no longer split by layer alone. They are
+split by the gaps in Section 5, and reweighted for the remaining push: Workstream 2 carries the
+largest share because one-time obligations and the Assistant both start in its code and block the
+other two.
 
-### Workstream 1: Data / Financial Twin (Jordan12369)
+Target split of remaining effort:
 
-Owns Nessie, transaction normalization, recurrence detection, forecasting, Databricks and Financial Twin generation.
+| Workstream | Owner | Share |
+| --- | --- | --- |
+| 1. Data, Forecast and Platform | Jordan12369 | 30% |
+| 2. Simulation, Intelligence and Demo | abimundayat26 | 40% |
+| 3. Frontend and Integration | mkrishiv | 30% |
 
-Built: normalization, recurrence detection, twin building, the Nessie client, the sandbox seeder, the switch that decides whether a twin comes from the fixture or from Nessie, and the read-back check that Alex comes out of the live sandbox recognisable (#65). The mock feed now carries a known seasonal signal (`SEASONAL_WEIGHTS` in `ingest/generate_transactions.py`), and recurrence detection fits a recency-weighted mean and a per-month seasonal profile per category, recorded on the twin as forecast metadata (#59).
+Shares describe effort, not exclusive permission. Ownership means responsibility for the gap, and a
+feature is not done until the demo shows it.
 
-Focus:
+### Sequencing constraint
 
-1. Rebalance Alex's demo twin so it can carry its fitted seasonal profiles and the demo still tells its story: the laptop clearly risky, with at least one alternative that keeps every limit (#72).
-2. Then move data processing into Databricks with MLflow tracking, behind a flag.
+Two pieces of work gate the others and must land first:
 
-### Workstream 2: Simulation / Intelligence (abimundayat26)
+1. The one-time obligation contract in `schemas.py` (Workstream 2). Workstream 3 cannot build the
+   obligation UI and Workstream 1 cannot include obligations in a built twin until it exists.
+2. The lineage contract that exposes Databricks and MLflow metadata over the API (Workstream 1).
+   Workstream 3 cannot build the Forecast & Data provenance surface until it exists.
 
-Owns the simulator, Monte Carlo, the goal compiler, counterfactual simulation, explainability and optimization. It also owns the alternatives UI.
+Both are small schema-only pull requests, per the Shared Contracts rules in `CLAUDE.md`. Ship them
+before the feature work that depends on them.
 
-Built: the deterministic and Monte Carlo simulation, explanations, optimization, the rule-based goal compiler, the LLM goal compiler behind a flag with rules as the fallback, the alternatives panel, and user answers kept across a server restart. Both simulators apply a twin's per-month seasonal spending profile, and a twin without one simulates flat as before (#63). Explanations describe the forecast and a busy or quiet spending stretch after a purchase (#64, #69), and when no single alternative keeps every limit, the optimizer also tries waiting combined with a spending cut (#70).
+---
 
-Focus:
+### Workstream 1: Data, Forecast and Platform (Jordan12369) — 30%
 
-1. Keep explanations and alternatives useful once Alex's demo twin carries seasonal profiles.
-2. Optionally, and only if the team reverses the Section 13 decision, have the LLM write explanations, rephrasing only the computed results.
+Owns Nessie, transaction normalization, recurrence detection, forecasting, Databricks, MLflow and
+Financial Twin generation.
 
-### Workstream 3: Frontend / Integration (mkrishiv)
+Built: normalization, recurrence detection, twin building, the Nessie client, the sandbox seeder,
+the fixture-or-Nessie switch, the read-back check (#65), the recency-weighted per-month seasonal
+profiles (#59), Alex's rebalanced seasonal demo twin (#72), MLflow run logging behind
+`TRACK_TWIN_BUILDS` (#76, #77, #78, #80), the Databricks asset bundle build job (#79, #83, #90) and
+the Databricks twin source with its provenance label (#92, #93, #96).
 
-Owns the Next.js frontend, Twin visualization, the scenario UI, charts, API integration, the Financial Intent Graph and demo polish.
+Focus, in order:
 
-Built: the twin view, the scenario comparison, explanations, the Financial Intent Graph, the fan chart, goal entry (type a goal, review the compiled draft and clarifications, confirm), and handling of an offline backend.
+1. **Prove Phase 6 against a real workspace.** The Databricks job and MLflow logging are written but
+   have never run end to end outside tests. Run the bundle, log a real build, serve the resulting
+   twin through `DATABRICKS_TWIN_PATH`, and write down what the demo can honestly claim.
+2. **Ship the lineage contract.** Expose the metadata Forecast & Data needs — processing location,
+   MLflow run identifier, as-of date, observation window, forecast method, seasonal profiles — as a
+   schema addition on the twin or a dedicated endpoint. Identifiers and metadata only; no
+   credentials, no connection strings, nothing that could reach the browser as a secret.
+3. **Verify the official Nessie demo path.** Confirm `USE_MOCKS=false` plus a key still runs the
+   whole laptop story, and settle the Section 13 open question on whether the official demo runs on
+   fixtures or on Nessie.
+4. **Include confirmed one-time obligations in the built twin**, once Workstream 2's contract lands.
+5. **Close out `feat/forecast-estimator`.** Its one unmerged commit (shrink monthly factors toward
+   flat) looks superseded by the merged `feat/forecast-shrinkage`. Merge it or delete the branch.
 
-Focus:
+---
 
-1. Show where the twin's data came from (fixture or Nessie), separately from whether the backend is reachable.
-2. Demo polish and a scripted walkthrough from a fresh clone (Phase 7).
+### Workstream 2: Simulation, Intelligence and Demo (abimundayat26) — 40%
 
-Ownership means responsibility, not exclusive permission to modify code.
+Owns the simulator, Monte Carlo, the goal compiler, counterfactual simulation, explainability,
+optimization, the one-time obligation contract, Assistant intent routing, and the demo script.
 
-A feature is not done until the demo shows it. Once a backend endpoint exists, the workstream that built it also builds its frontend (API client, types, UI), coordinating with Workstream 3 on layout. Workstream 3 owns the overall page, shared components, and demo polish.
+Built: deterministic and Monte Carlo simulation, explanations, optimization, the rule-based goal
+compiler, the LLM goal compiler behind a flag with rules as the fallback, the alternatives panel,
+user answers kept across a restart, seasonal profiles applied in both simulators (#63),
+forecast-aware and busy-stretch explanations (#64, #69), and combined wait-plus-cut alternatives
+(#70).
+
+Focus, in order:
+
+1. **One-time declared obligations, end to end.** This is the largest single gap and it blocks the
+   other two workstreams.
+   - Ship the shared contract in `schemas.py` first, as its own small pull request.
+   - Extend the goal compiler to draft a one-time obligation from natural language, with
+     clarification questions when the amount, date or name is missing.
+   - Include confirmed obligations in the baseline simulation and make the optimizer aware of them,
+     so a laptop is weighed against real upcoming commitments rather than against spending alone.
+   - Keep a hypothetical purchase visibly distinct from a declared obligation.
+2. **Assistant intent routing.** One conversation must tell a goal from a constraint, from a
+   detected-obligation classification, from a one-time obligation, and ask when it is ambiguous.
+   Own the routing behavior and the honest provenance label on every reply — rules, deterministic
+   template, or the optional configured model. Workstream 3 builds the conversation layout on top.
+3. **Fix two demo defects found on 2026-09-19.**
+   - The rules compiler does not parse relative month names: "save $2,000 for a trip by next June"
+     returns zero goals and asks for a deadline. Teach it relative months, or pin the demo script to
+     explicit dates and record that choice here.
+   - `/explain` labels two different statistics as the balance "bottoming out" — the expected-value
+     path and the median future — and shows them adjacent. Distinguish them in wording so they do
+     not read as numbers that disagree.
+4. **Own the scripted demo walkthrough and the pre-demo verification checklist.** The Section 12
+   success criterion is this workstream's, so the script that proves it is too. Rehearse it from a
+   fresh clone.
+5. **Keep explanations and alternatives correct** as seasonal twins and one-time obligations change
+   what the simulator sees.
+
+---
+
+### Workstream 3: Frontend and Integration (mkrishiv) — 30%
+
+Owns the Next.js frontend, twin visualization, the scenario UI, charts, API integration, the
+Financial Intent Graph, the Assistant conversation layout and demo polish.
+
+Built: the app shell and routes (#87, #88), the twin provider (#85), twin provenance (#84, #96),
+scenario comparison, explanations, the Financial Intent Graph, the fan chart, the simulator
+trajectory chart (#89), goal entry with compiled drafts and clarifications, offline-backend
+handling, component-level test coverage (#86, #95), three display fixes (#94) and the Section 6
+palette (#98).
+
+Focus, in order:
+
+1. **Finish Forecast & Data (#97).** Show the data source, as-of date and observation window,
+   explain recency weighting and seasonality in plain language, and render an honest unavailable
+   state when metadata is missing. Add the Databricks processing-location and MLflow lineage surface
+   once Workstream 1's contract lands, including pending, stale-run, failed-run and local-fallback
+   states.
+2. **Build the Assistant conversation layout** on Plans & Assistant, with visibly separate goal and
+   obligation summaries, review before anything saves, recoverable input on failure, and accurate
+   rules/template/model labels supplied by Workstream 2.
+3. **Redesign the Intent Graph** (`frontend/SPEC.md` Increment 7): stable directional layout,
+   legend, plain-language introduction, accessible fallback and collision handling.
+4. **Responsive and accessibility pass** (Increment 8): supported widths, long-content cases,
+   collision regression checks, no unintended scrolling.
+
+---
+
+Ownership means responsibility, not exclusive permission to modify code. Once a backend endpoint
+exists, the workstream that built it also builds its frontend, coordinating with Workstream 3 on
+layout. Workstream 3 owns the overall page, shared components and demo polish.
 
 ---
 
@@ -458,4 +553,5 @@ Open:
 
 | Question | Proposed default |
 | --- | --- |
-| (none yet) | |
+| Does the official demo run on fixtures or on live Nessie? | Fixtures. Section 5 says the demo stays on fixtures by default, but `frontend/SPEC.md` Section 4 says the official demo "requires Nessie". Until the team decides, run the demo on fixtures and treat Nessie as the verified-but-optional path. Workstream 1 owns closing this. |
+| Who reviews a one-time obligation before it enters the baseline? | The user, explicitly, in the Assistant. Nothing enters a simulation without confirmation, matching the existing goal flow. |
