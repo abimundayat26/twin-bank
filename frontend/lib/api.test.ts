@@ -3,14 +3,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   compileGoal,
-  getForecast,
+  createOneTimeObligation,
+  createRecurringObligation,
+  deleteOneTimeObligation,
+  deleteRecurringObligation,
   getExplanation,
+  getForecast,
+  getObligations,
   getOverview,
   getTwin,
+  respondToClarification,
   runOptimization,
   runSimulation,
   saveGoals,
   setMinimumBalance,
+  updateOneTimeObligation,
+  updateRecurringObligation,
 } from "./api";
 import mockOverview from "./mock/overview.json";
 import mockTwin from "./mock/twin.json";
@@ -20,6 +28,7 @@ import type {
   FinancialTwin,
   Goal,
   GoalCompileResponse,
+  ObligationsPayload,
   OptimizationResponse,
   OverviewPayload,
   SimulationRequest,
@@ -284,6 +293,211 @@ describe("saveGoals", () => {
       await expect(
         saveGoals(twin, { goals: [housing], constraints: [reserve] }),
       ).rejects.toThrow("fetch failed");
+    });
+  });
+});
+
+describe("getObligations", () => {
+  const listing: ObligationsPayload = {
+    user_id: "alex",
+    as_of: "2026-09-18",
+    recurring: [
+      {
+        id: "rec_rent",
+        name: "Rent",
+        amount: 1200,
+        frequency: "monthly",
+        due_day: 1,
+        active: true,
+        origin: "detected",
+        category_label: "Bill",
+        needs_answer: false,
+        options: [],
+      },
+    ],
+    one_time: [
+      {
+        id: "one_dentist",
+        name: "Dentist",
+        amount: 180,
+        due_date: "2026-10-02",
+        account_id: "acc_checking",
+        account_name: "Main checking",
+        mandatory: true,
+      },
+    ],
+  };
+
+  it("reads the listing through the normal request path", async () => {
+    backendReplies(200, listing);
+    await expect(getObligations("alex user")).resolves.toEqual({
+      data: listing,
+      source: "api",
+    });
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toMatch(/\/twin\/alex%20user\/obligations$/);
+    expect(init?.method).toBeUndefined();
+    expect(init?.cache).toBe("no-store");
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("surfaces the backend detail instead of a fixture listing", async () => {
+    backendReplies(404, { detail: "No twin for user 'nobody'" });
+    const result = getObligations("nobody");
+    await expect(result).rejects.toBeInstanceOf(ApiError);
+    await expect(result).rejects.toMatchObject({
+      status: 404,
+      message: "No twin for user 'nobody'",
+    });
+  });
+
+  it("has no bundled listing, so an unreachable backend throws", async () => {
+    backendDown();
+    await expect(getObligations("alex")).rejects.toThrow("fetch failed");
+  });
+});
+
+describe("obligation writes", () => {
+  /** Every write answers with the whole updated twin, which the caller adopts. */
+  const saved = { ...twin, user_id: "alex" } as FinancialTwin;
+
+  function lastCall() {
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    return {
+      url: String(url),
+      method: init?.method,
+      body: init?.body === undefined ? undefined : JSON.parse(init.body as string),
+      signal: init?.signal,
+    };
+  }
+
+  it("posts a new recurring obligation with exactly the declared fields", async () => {
+    backendReplies(201, saved);
+    const request = { name: "Gym", amount: 40, due_day: 5, mandatory: false };
+    await expect(createRecurringObligation("alex", request)).resolves.toEqual({
+      data: saved,
+      source: "api",
+    });
+    const call = lastCall();
+    expect(call.url).toMatch(/\/twin\/alex\/obligations\/recurring$/);
+    expect(call.method).toBe("POST");
+    expect(call.body).toEqual(request);
+  });
+
+  it("puts only the changed recurring fields, with the id encoded in the path", async () => {
+    backendReplies(200, saved);
+    await updateRecurringObligation("alex", "rec_gym membership", { active: false });
+    const call = lastCall();
+    expect(call.url).toMatch(/\/twin\/alex\/obligations\/recurring\/rec_gym%20membership$/);
+    expect(call.method).toBe("PUT");
+    expect(call.body).toEqual({ active: false });
+  });
+
+  it("deletes a recurring obligation without a body", async () => {
+    backendReplies(200, saved);
+    await deleteRecurringObligation("alex", "rec_gym");
+    const call = lastCall();
+    expect(call.url).toMatch(/\/twin\/alex\/obligations\/recurring\/rec_gym$/);
+    expect(call.method).toBe("DELETE");
+    expect(call.body).toBeUndefined();
+  });
+
+  it("posts a new one-time obligation against an account id, not its name", async () => {
+    backendReplies(201, saved);
+    const request = {
+      name: "Dentist",
+      amount: 180,
+      due_date: "2026-10-02",
+      account_id: "acc_checking",
+      mandatory: true,
+    };
+    await createOneTimeObligation("alex", request);
+    const call = lastCall();
+    expect(call.url).toMatch(/\/twin\/alex\/obligations\/one-time$/);
+    expect(call.method).toBe("POST");
+    expect(call.body).toEqual(request);
+  });
+
+  it("puts one-time changes to the encoded id", async () => {
+    backendReplies(200, saved);
+    await updateOneTimeObligation("alex", "one_dentist", { amount: 200 });
+    const call = lastCall();
+    expect(call.url).toMatch(/\/twin\/alex\/obligations\/one-time\/one_dentist$/);
+    expect(call.method).toBe("PUT");
+    expect(call.body).toEqual({ amount: 200 });
+  });
+
+  it("deletes a one-time obligation without a body", async () => {
+    backendReplies(200, saved);
+    await deleteOneTimeObligation("alex", "one_dentist");
+    const call = lastCall();
+    expect(call.url).toMatch(/\/twin\/alex\/obligations\/one-time\/one_dentist$/);
+    expect(call.method).toBe("DELETE");
+    expect(call.body).toBeUndefined();
+  });
+
+  it("posts a clarification answer to the shared route", async () => {
+    backendReplies(200, saved);
+    const request = {
+      user_id: "alex",
+      obligation_id: "rec_unknown",
+      category: "savings_transfer" as const,
+    };
+    await respondToClarification(twin, request);
+    const call = lastCall();
+    expect(call.url).toMatch(/\/clarifications\/respond$/);
+    expect(call.method).toBe("POST");
+    expect(call.body).toEqual(request);
+  });
+
+  it("arms the 10 s signal on a write, like every other request", async () => {
+    backendReplies(200, saved);
+    await deleteRecurringObligation("alex", "rec_gym");
+    expect(lastCall().signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("surfaces a detected-delete conflict verbatim, with its status", async () => {
+    backendReplies(409, { detail: "Detected payments can be paused, not deleted." });
+    const result = deleteRecurringObligation("alex", "rec_rent");
+    await expect(result).rejects.toBeInstanceOf(ApiError);
+    await expect(result).rejects.toMatchObject({
+      status: 409,
+      message: "Detected payments can be paused, not deleted.",
+    });
+  });
+
+  it("joins a validation error list rather than dropping the later messages", async () => {
+    backendReplies(422, {
+      detail: [{ msg: "amount must be greater than 0" }, { msg: "due_day must be <= 31" }],
+    });
+    await expect(
+      createRecurringObligation("alex", { name: "Gym", amount: -1, due_day: 40 }),
+    ).rejects.toThrow("amount must be greater than 0; due_day must be <= 31");
+  });
+
+  describe("when the backend is unreachable", () => {
+    beforeEach(backendDown);
+
+    it("does not pretend any obligation write succeeded locally", async () => {
+      await expect(
+        createRecurringObligation("alex", { name: "Gym", amount: 40, due_day: 5 }),
+      ).rejects.toThrow("fetch failed");
+      await expect(
+        updateRecurringObligation("alex", "rec_gym", { active: false }),
+      ).rejects.toThrow("fetch failed");
+      await expect(deleteRecurringObligation("alex", "rec_gym")).rejects.toThrow("fetch failed");
+      await expect(
+        createOneTimeObligation("alex", {
+          name: "Dentist",
+          amount: 180,
+          due_date: "2026-10-02",
+          account_id: "acc_checking",
+        }),
+      ).rejects.toThrow("fetch failed");
+      await expect(
+        updateOneTimeObligation("alex", "one_dentist", { amount: 200 }),
+      ).rejects.toThrow("fetch failed");
+      await expect(deleteOneTimeObligation("alex", "one_dentist")).rejects.toThrow("fetch failed");
     });
   });
 });
