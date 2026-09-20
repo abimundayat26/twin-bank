@@ -50,28 +50,41 @@ AMOUNT = re.compile(
 )
 
 DEADLINE_WORD = r"(?:by|before|until|no later than)"
+# "by next June" is the same date as "by June": next_occurrence already rolls past as_of,
+# so the qualifier only has to stop the month patterns failing to match at all.
+MONTH_QUALIFIER = r"(?:(?:next|this|coming)\s+)?"
 DEADLINE_PATTERNS = [
     ("iso", re.compile(rf"\b{DEADLINE_WORD}\s+(?P<iso>\d{{4}}-\d{{2}}-\d{{2}})\b", re.I)),
     (
         "end_of_month",
-        re.compile(rf"\b{DEADLINE_WORD}\s+(?:the\s+)?end\s+of\s+{MONTH}(?:\s+(?P<year>\d{{4}}))?\b", re.I),
+        re.compile(
+            rf"\b{DEADLINE_WORD}\s+(?:the\s+)?end\s+of\s+{MONTH_QUALIFIER}{MONTH}"
+            rf"(?:\s+(?P<year>\d{{4}}))?\b",
+            re.I,
+        ),
     ),
     (
         "month_day",
         re.compile(
-            rf"\b{DEADLINE_WORD}\s+{MONTH}\s+(?P<day>\d{{1,2}})(?:st|nd|rd|th)?\b(?:,?\s+(?P<year>\d{{4}}))?",
+            rf"\b{DEADLINE_WORD}\s+{MONTH_QUALIFIER}{MONTH}\s+(?P<day>\d{{1,2}})(?:st|nd|rd|th)?\b"
+            rf"(?:,?\s+(?P<year>\d{{4}}))?",
             re.I,
         ),
     ),
     (
         "day_month",
         re.compile(
-            rf"\b{DEADLINE_WORD}\s+(?:the\s+)?(?P<day>\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?{MONTH}"
+            rf"\b{DEADLINE_WORD}\s+(?:the\s+)?(?P<day>\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?"
+            rf"{MONTH_QUALIFIER}{MONTH}"
             rf"(?:,?\s+(?P<year>\d{{4}}))?",
             re.I,
         ),
     ),
-    ("month", re.compile(rf"\b{DEADLINE_WORD}\s+{MONTH}(?:\s+(?P<year>\d{{4}}))?\b", re.I)),
+    ("month", re.compile(rf"\b{DEADLINE_WORD}\s+{MONTH_QUALIFIER}{MONTH}(?:\s+(?P<year>\d{{4}}))?\b", re.I)),
+    (
+        "month_offset",
+        re.compile(rf"\b{DEADLINE_WORD}\s+(?P<offset>next|this|coming)\s+month\b", re.I),
+    ),
     (
         "relative",
         re.compile(r"\b(?:in|within)\s+(?P<n>\d+|a|an|one)\s+(?P<unit>week|month|year)s?\b", re.I),
@@ -200,6 +213,13 @@ def deadline_from_match(kind: str, m: re.Match[str], as_of: date) -> date | None
         if unit == "week":
             return as_of + timedelta(weeks=n)
         return add_months(as_of, n * (12 if unit == "year" else 1))
+    if kind == "month_offset":
+        # "by next month", like "by June", means by the time that month starts. "by this
+        # month" can only mean the end of the month we are already partway through.
+        this_month = m.group("offset").lower() == "this"
+        target = as_of if this_month else add_months(as_of, 1)
+        day = calendar.monthrange(target.year, target.month)[1] if this_month else 1
+        return date(target.year, target.month, day)
     month = MONTHS[m.group("month").lower()]
     year = int(m.group("year")) if m.group("year") else None
     day = -1 if kind == "end_of_month" else int(m.group("day")) if "day" in m.groupdict() else None
