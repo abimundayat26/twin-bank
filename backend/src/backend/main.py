@@ -17,7 +17,11 @@ from backend.schemas import (
     AssistantMessageResponse,
     AssistantOpening,
     ClarificationResponseRequest,
+    CommitPurchaseRequest,
+    CommitPurchaseResponse,
     DeclaredGoalsRequest,
+    EarliestDateRequest,
+    EarliestDateResponse,
     FinancialTwin,
     GoalCompileRequest,
     GoalCompileResponse,
@@ -32,6 +36,7 @@ from backend.schemas import (
     TwinBuildRequest,
 )
 from backend.simulation import SimulationError, run_simulation
+from backend.simulation.earliest_date import GoalNotEligible, GoalNotFound, find_earliest_date
 from backend.simulation.optimize import run_optimization
 from backend.tracking import log_twin_build
 
@@ -266,3 +271,37 @@ def decide_proposal(
         raise HTTPException(status_code=409, detail="That no longer applies. Ask again.") from e
     assistant_store.set_status(proposal_id, "accepted")
     return ProposalDecisionResponse(proposal_id=proposal_id, status="accepted", twin=twin)
+
+
+@app.post("/twin/{user_id}/goals/{goal_id}/earliest-date", response_model=EarliestDateResponse)
+def earliest_date(user_id: str, goal_id: str, request: EarliestDateRequest) -> EarliestDateResponse:
+    """The first deadline at which this purchase stops costing the goal (CM-2)."""
+    twin = twin_for(user_id)
+    try:
+        return find_earliest_date(twin, goal_id, request.events, seed=SIMULATION_SEED)
+    except GoalNotFound as e:
+        raise HTTPException(status_code=404, detail=f"Unknown goal '{goal_id}'") from e
+    except (GoalNotEligible, SimulationError) as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@app.post("/twin/{user_id}/purchases/commit", response_model=CommitPurchaseResponse)
+def commit_purchase(user_id: str, request: CommitPurchaseRequest) -> CommitPurchaseResponse:
+    """Add the purchase to the plan, moving a goal's deadline with it (CM-3, CM-4).
+
+    Nothing here moves money. It records a decision the user has already confirmed.
+    """
+    twin_for(user_id)
+    try:
+        twin, created_ids, already_committed = twin_store.commit_purchase(
+            request.events, request.goal_updates
+        )
+    except twin_store.UnknownGoal as e:
+        raise HTTPException(status_code=404, detail=f"Unknown goal '{e.args[0]}'") from e
+    except twin_store.StaleDeadline as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except twin_store.InvalidDeclaration as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    return CommitPurchaseResponse(
+        twin=twin, created_ids=created_ids, already_committed=already_committed
+    )
