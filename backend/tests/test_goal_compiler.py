@@ -79,6 +79,13 @@ def test_vague_deadline_is_asked_about_not_resolved():
         ("by Dec 12, 2027", date(2027, 12, 12)),
         ("by May 2028", date(2028, 5, 1)),
         ("by 2027-03-15", date(2027, 3, 15)),
+        ("by next June", date(2027, 6, 1)),  # same as "by June": the qualifier adds nothing
+        ("by next March", date(2027, 3, 1)),
+        ("by this December", date(2026, 12, 1)),  # "this" must not push it a year out
+        ("by next month", date(2026, 10, 1)),
+        ("by this month", date(2026, 9, 30)),
+        ("by the end of next June", date(2027, 6, 30)),
+        ("by the 15th of next June", date(2027, 6, 15)),
         ("in 6 months", date(2027, 3, 19)),
         ("in 3 weeks", date(2026, 10, 10)),
         ("within a year", date(2027, 9, 19)),
@@ -87,6 +94,26 @@ def test_vague_deadline_is_asked_about_not_resolved():
 def test_deadlines(phrase, expected):
     [goal] = compile_text(f"I need $500 for a trip {phrase}").goals
     assert goal.deadline == expected
+
+
+def test_a_month_qualifier_does_not_change_the_date():
+    [plain] = compile_text("I need $500 for a trip by June").goals
+    [qualified] = compile_text("I need $500 for a trip by next June").goals
+    assert plain.deadline == qualified.deadline == date(2027, 6, 1)
+
+
+def test_next_summer_is_still_vague_rather_than_a_silent_date():
+    result = compile_text("I want $2000 for housing by next summer")
+    assert result.goals == []
+    assert fields(result) == ["deadline"]
+    assert "by next summer" in result.clarifications[0].question
+
+
+def test_a_qualifier_in_front_of_a_non_month_is_still_no_date():
+    result = compile_text("I want $2000 for housing by next Foo")
+    assert result.goals == []
+    assert fields(result) == ["deadline"]
+    assert result.clarifications[0].question == "When do you need the money for housing?"
 
 
 def test_past_deadline_is_asked_about():
@@ -253,6 +280,17 @@ def test_compile_endpoint_returns_drafts_and_saves_nothing():
     result = GoalCompileResponse.model_validate(response.json())
     assert [g.name for g in result.goals] == ["Car"]
     assert get_twin().goals == load_twin().goals
+
+
+def test_compile_endpoint_resolves_a_relative_month_without_clarifying():
+    response = compile_api("I want to save $2,000 for a trip by next June")
+    assert response.status_code == 200
+    result = GoalCompileResponse.model_validate(response.json())
+    assert [(goal.name, goal.target_amount, goal.deadline) for goal in result.goals] == [
+        ("Trip", 2000.0, date(2027, 6, 1))
+    ]
+    assert result.clarifications == []
+    assert result.compiler == "rules"
 
 
 def test_compile_endpoint_survives_an_out_of_range_date():
