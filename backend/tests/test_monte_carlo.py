@@ -4,7 +4,13 @@ from datetime import date
 import pytest
 
 from backend.fixtures import load_twin
-from backend.schemas import SeasonalProfile, SimulationEvent, SimulationRequest, VariableSpendingDistribution
+from backend.schemas import (
+    OneTimeObligation,
+    SeasonalProfile,
+    SimulationEvent,
+    SimulationRequest,
+    VariableSpendingDistribution,
+)
 from backend.simulation import run_simulation
 from backend.simulation.engine import SimulationError, compare, simulate_scenario
 from backend.simulation.monte_carlo import (
@@ -240,3 +246,52 @@ def test_seasonal_factor_scales_the_spread_too(twin):
     idle_autumn = with_profile(twin, {m: 2.0 if m <= 6 else 0.0 for m in range(1, 13)})
     draws = sample_draws(idle_autumn, date(2026, 12, 31), random.Random(0))
     assert set(draws.daily_spending.values()) == {0.0}
+
+
+# --- One-time obligations ------------------------------------------------------
+
+
+def owing(twin, amount: float, due: str = "2026-11-10"):
+    return twin.model_copy(
+        update={
+            "one_time_obligations": [
+                OneTimeObligation(
+                    id="one_tuition",
+                    name="Tuition",
+                    amount=amount,
+                    due_date=date.fromisoformat(due),
+                    account_id="acc_checking",
+                    mandatory=True,
+                )
+            ]
+        }
+    )
+
+
+def test_a_large_one_time_obligation_raises_the_chance_of_an_uncovered_bill(twin):
+    # $3,000 is past what checking plus savings can absorb by November in most futures.
+    without = run_monte_carlo(twin, [purchase(800)], n_simulations=200, seed=5)
+    with_it = run_monte_carlo(owing(twin, 3000), [purchase(800)], n_simulations=200, seed=5)
+    assert (
+        with_it.baseline.prob_obligations_uncovered > without.baseline.prob_obligations_uncovered
+    )
+    assert (
+        with_it.counterfactual.prob_obligations_uncovered
+        > without.counterfactual.prob_obligations_uncovered
+    )
+
+
+def test_a_seeded_run_with_an_obligation_is_still_reproducible(twin):
+    owed = owing(twin, 3000)
+    first = run_monte_carlo(owed, [purchase(800)], n_simulations=200, seed=42)
+    assert run_monte_carlo(owed, [purchase(800)], n_simulations=200, seed=42) == first
+
+
+def test_an_obligation_is_in_both_runs_so_it_is_not_the_delta(twin):
+    """It belongs to the baseline, so the purchase is still the only difference."""
+    owed = owing(twin, 1000)
+    plain = run_monte_carlo(twin, [purchase(800)], n_simulations=100, seed=9)
+    with_it = run_monte_carlo(owed, [purchase(800)], n_simulations=100, seed=9)
+    delta_plain = plain.baseline.ending_balance - plain.counterfactual.ending_balance
+    delta_owed = with_it.baseline.ending_balance - with_it.counterfactual.ending_balance
+    assert delta_owed == pytest.approx(delta_plain, abs=0.01)
