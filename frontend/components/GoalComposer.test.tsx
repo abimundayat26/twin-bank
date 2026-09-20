@@ -142,6 +142,16 @@ describe("composing", () => {
   });
 });
 
+describe("keyboard operation", () => {
+  // SPEC section 11: the presenter types the goal with the keyboard, so the box
+  // must show focus rather than only recolouring its border.
+  it("keeps a focus ring on the goal text box", () => {
+    renderComposer();
+    expect(screen.getByRole("textbox")).not.toHaveClass("outline-none");
+    expect(screen.getByRole("textbox")).toHaveClass("focus-visible:outline");
+  });
+});
+
 describe("reviewing a draft", () => {
   it("says whether rules or the model read the text", () => {
     const { rerender } = renderComposer({ draft: draftOf() });
@@ -168,6 +178,22 @@ describe("reviewing a draft", () => {
     expect(screen.getByText("A bike")).toBeInTheDocument();
     expect(screen.getByText("Summer housing")).toBeInTheDocument();
     expect(screen.getByText(RESERVE.description)).toBeInTheDocument();
+  });
+
+  // SPEC 7.1: a long goal name must stay readable in the review list.
+  it("wraps a long goal name instead of clipping it", () => {
+    const name = "Summer housing deposit and first month of shared apartment rent";
+    renderComposer({
+      draft: draftOf({ goals: [{ ...HOUSING, id: "goal_long", name }] }),
+    });
+    const label = screen.getByText(name);
+    expect(label).not.toHaveClass("truncate");
+    expect(label).toHaveClass("break-words");
+  });
+
+  it("wraps a long declared constraint instead of clipping it", () => {
+    renderComposer({ draft: draftOf() });
+    expect(screen.getByText(RESERVE.description)).toHaveClass("break-words");
   });
 
   it("labels what is new, what changed, and what is merely carried through", () => {

@@ -68,8 +68,11 @@ const ANSWER_HINT: Record<GoalClarification["field"], string> = {
   type: "Say this part again in your own words",
 };
 
+// A 1px border recolour is not a focus indicator on its own: it is the same
+// shape as the unfocused state and reads as colour alone. SPEC section 11
+// wants focus visible, so the ring is kept alongside the border change.
 const inputClass =
-  "w-full rounded-lg border border-line bg-raised px-3 py-2 text-sm text-ink outline-none placeholder:text-faint focus:border-counter";
+  "w-full rounded-lg border border-line bg-raised px-3 py-2 text-sm text-ink placeholder:text-faint focus:border-counter focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-counter";
 
 export function GoalComposer({
   goals,
@@ -265,9 +268,9 @@ function Review({
               const edit = edits[goal.id];
               return (
                 <li key={goal.id} className="border-b border-line py-2 last:border-0">
-                  <div className="flex items-baseline justify-between gap-4">
-                    <p className="min-w-0 truncate text-sm text-ink">{goal.name}</p>
-                    <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+                    <p className="min-w-0 break-words text-sm text-ink">{goal.name}</p>
+                    <div className="flex flex-wrap items-center gap-2 self-end sm:shrink-0 sm:self-auto">
                       <Badge tone={CHANGE_TONE[change]}>{change}</Badge>
                       {editable ? null : (
                         <span className="tnum text-sm text-ink">{money(goal.target_amount)}</span>
@@ -334,12 +337,12 @@ function Review({
             {mergedConstraints.map((constraint) => (
               <li
                 key={constraint.id}
-                className="flex items-baseline justify-between gap-4 border-b border-line py-2 last:border-0"
+                className="flex flex-col gap-2 border-b border-line py-2 last:border-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
               >
                 <div className="min-w-0">
-                  <p className="text-sm text-ink">{constraint.description}</p>
+                  <p className="break-words text-sm text-ink">{constraint.description}</p>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 self-end sm:shrink-0 sm:self-auto">
                   <Badge tone={fromText.has(constraint.type) ? "info" : "neutral"}>
                     {fromText.has(constraint.type) ? "from this" : "kept"}
                   </Badge>
