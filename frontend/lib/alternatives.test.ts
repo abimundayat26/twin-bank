@@ -79,6 +79,21 @@ describe("alternativeRows", () => {
     expect(rows[1].violations).toEqual(["Dips below the $1,500 reserve"]);
   });
 
+  it("keeps the closest row when buy now is ranked first and nothing is recommended", () => {
+    const rows = alternativeRows(
+      optimization({
+        recommended_id: null,
+        candidates: [BUY_NOW, DELAY, CUT],
+      }),
+    );
+
+    expect(rows.map((r) => [r.key, r.label, r.candidate.id])).toEqual([
+      ["buy_now", "Buy as planned", "cand_buy_now"],
+      ["best", "Closest to your limits", "cand_delay"],
+      ["compromise", "Compromise", "cand_cut_discretionary_50"],
+    ]);
+  });
+
   it("skips a compromise that would only repeat the lever already shown", () => {
     const rows = alternativeRows(
       optimization({ candidates: [BUY_NOW, DELAY, DELAY_LONGER] }),
