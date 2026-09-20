@@ -52,3 +52,28 @@ body {
 .tnum {
   font-variant-numeric: tabular-nums;
 }
+
+/*
+ * Reduced motion (SPEC section 11).
+ *
+ * Nothing here is motion the user asked for: the transitions are hover and
+ * focus polish on controls, and React Flow marches dashes along the purchase
+ * edge on a loop. For a viewer who has asked their system for less motion,
+ * that loop is the worst of it — it never stops on its own.
+ *
+ * So the rule removes the animation rather than shortening it. Timings go to
+ * 0.01ms instead of 0 because a zero-duration transition never fires
+ * `transitionend`, and anything waiting on that event would hang; a loop is
+ * also cut to one pass. Colour and state changes still happen, just instantly,
+ * so no information conveyed by a transition is lost.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
