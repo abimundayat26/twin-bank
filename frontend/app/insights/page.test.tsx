@@ -15,9 +15,10 @@ import { TwinProvider } from "@/lib/state/TwinProvider";
 import ForecastPage from "./page";
 
 /**
- * The shipped demo twin: seasonal profiles on both spending categories, and no
- * forecast block. Only a twin rebuilt from transactions carries one, so "no
- * forecast metadata" is the default demo state, not an edge case.
+ * The shipped demo twin: seasonal profiles on both spending categories and a
+ * forecast block, because it is rebuilt from a year of transactions. A twin
+ * without one is still a real state -- a Nessie account with a few months of
+ * history -- so the tests for it pass `forecast: null` explicitly.
  */
 const TWIN = mockTwin as unknown as FinancialTwin;
 
@@ -92,7 +93,7 @@ describe("Forecast & Data", () => {
 describe("Data source panel", () => {
   it("reports the as-of date and how many accounts were read", async () => {
     await renderLoaded();
-    expect(screen.getByText("September 19, 2026")).toBeInTheDocument();
+    expect(screen.getByText("September 18, 2026")).toBeInTheDocument();
     expect(screen.getByText("2 accounts")).toBeInTheDocument();
   });
 
@@ -155,8 +156,8 @@ describe("Processing panel", () => {
 describe("Detected structure panel", () => {
   it("describes income as a cadence rather than an interval in days", async () => {
     await renderLoaded();
-    expect(screen.getByText("Campus bookstore paycheck")).toBeInTheDocument();
-    expect(screen.getByText(/Every 14 days · ±\$60/)).toBeInTheDocument();
+    expect(screen.getByText("Campus Bookstore Payroll")).toBeInTheDocument();
+    expect(screen.getByText(/Every 14 days · ±\$59/)).toBeInTheDocument();
   });
 
   it("counts the obligations by how the projection treats them", async () => {
@@ -190,7 +191,7 @@ describe("Detected structure panel", () => {
     const panel = screen.getByText("Detected structure").closest("section");
     expect(within(panel!).getByText("Groceries")).toBeInTheDocument();
     expect(within(panel!).getByText("Discretionary")).toBeInTheDocument();
-    expect(within(panel!).getByText("$150 / 14d")).toBeInTheDocument();
+    expect(within(panel!).getByText("$148 / 14d")).toBeInTheDocument();
   });
 });
 
@@ -210,6 +211,18 @@ describe("Forecast panel", () => {
     ).toBeGreaterThanOrEqual(1);
   });
 
+  it("explains the shipped demo twin's own forecast, not an empty state", async () => {
+    // The page whose whole purpose is provenance must not open on "unavailable".
+    await renderLoaded();
+    expect(screen.getByText("Seasonal EWMA")).toBeInTheDocument();
+    expect(screen.getByText("180-day half-life")).toBeInTheDocument();
+    expect(screen.getByText("25")).toBeInTheDocument();
+    expect(
+      screen.getAllByText("September 20, 2025 – September 18, 2026").length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/No forecast metadata recorded/)).not.toBeInTheDocument();
+  });
+
   it("does not imply recency weighting when every fortnight counted equally", async () => {
     loads(
       twinWith({
@@ -225,6 +238,9 @@ describe("Forecast panel", () => {
   });
 
   it("says plainly when no forecast metadata was recorded, and still shows the shapes", async () => {
+    // A twin can carry seasonal profiles without a forecast block: a Nessie
+    // account with a few months of history fits shapes it cannot yet describe.
+    loads(twinWith({ forecast: null }));
     await renderLoaded();
     expect(screen.getByText("No forecast metadata recorded for this twin.")).toBeInTheDocument();
     expect(screen.getByText("Not recorded")).toBeInTheDocument();
@@ -280,6 +296,7 @@ describe("Forecast panel", () => {
 
 describe("Limitations panel", () => {
   it("lists the missing forecast metadata as a limitation of the page", async () => {
+    loads(twinWith({ forecast: null }));
     await renderLoaded();
     expect(
       screen.getByText(/No forecast metadata was recorded for this twin, so the estimation method/),
