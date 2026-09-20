@@ -228,6 +228,7 @@ def owing(twin, amount: float = 1200.0, due: str = "2026-11-10"):
                     amount=amount,
                     due_date=date.fromisoformat(due),
                     account_id="acc_checking",
+                    mandatory=True,
                 )
             ]
         }
