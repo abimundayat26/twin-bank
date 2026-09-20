@@ -162,6 +162,7 @@
       "provenance": "declared"
     }
   ],
+  "one_time_obligations": [],
   "forecast": {
     "method": "seasonal_ewma",
     "as_of": "2026-09-18",
