@@ -17,6 +17,12 @@ Rules, per clause:
   than MAX_HORIZON_DAYS after as_of, or one that is not a real date, is asked about.
 - Reserve words with a deadline, or without "keep"-style words ("save $3,000 for an
   emergency fund by December"), ask whether it is a goal or a reserve.
+
+Amounts are read in the forms listed in `frontend/SPEC.md` 8.5: "$2,000", "2000",
+"2000 dollars", "2k", "$2.5k", "two thousand", "fifteen hundred", "a grand", with a
+leading "around"/"about"/"roughly"/"~" ignored. A bare number is money only once the
+date and period readings are ruled out, so "due Jan 15" and "in 6 months" stay dates.
+Anything else is not guessed.
 """
 
 import calendar
@@ -54,13 +60,53 @@ MONTHS |= {name.lower(): i for i, name in enumerate(calendar.month_abbr) if name
 MONTH = r"(?P<month>" + "|".join(sorted(MONTHS, key=len, reverse=True)) + r")\.?"
 
 NUMBER = r"\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?"
+MONTH_NAMES = "|".join(sorted(MONTHS, key=len, reverse=True))
+
+# What a scale word multiplies by. "k", "thousand" and "grand" are the same thousand
+# (frontend/SPEC.md 8.5).
+SCALES = {"k": 1000, "thousand": 1000, "grand": 1000, "hundred": 100}
+SCALE = r"k|thousand|grand"
+
+# Number words, for "two thousand", "fifteen hundred", "a grand". A scale word is
+# required: "I want two laptops" names a count, not an amount.
+ONES = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+    "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
+    "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+    "nineteen": 19,
+}
+TENS = {
+    "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60,
+    "seventy": 70, "eighty": 80, "ninety": 90,
+}
+_ONES_ALT = "|".join(sorted(ONES, key=len, reverse=True))
+_TENS_ALT = "|".join(sorted(TENS, key=len, reverse=True))
+WORD_NUMBER = rf"(?:{_TENS_ALT})(?:[-\s](?:{_ONES_ALT}))?|{_ONES_ALT}|an|a"
+
+# Four branches, tried in this order at each position:
+#   1. "$2,000", "$2.5k"        -- a dollar sign leads
+#   2. "2k", "1.2k", "2 grand", "2000 dollars" -- a scale or "dollars" follows
+#   3. "two thousand", "fifteen hundred", "a grand" -- number words plus a scale
+#   4. "2000", "1050", "300"    -- a bare number, which is only money once the
+#      date-shaped and period-shaped readings are excluded. `mon` catches "Jan 15"
+#      and "May 2027" by consuming the month name, so `iter_amounts` can drop the
+#      whole match rather than mistake the day or the year for dollars.
 AMOUNT = re.compile(
-    rf"\$\s?(?P<a>{NUMBER})\s?(?P<ak>k|thousand)?\b"
-    rf"|\b(?P<b>{NUMBER})\s?(?:(?P<bk>k|thousand)\b(?:\s?dollars)?|dollars\b)",
+    rf"\$\s?(?P<a>{NUMBER})\s?(?P<ak>{SCALE})?\b"
+    rf"|\b(?P<b>{NUMBER})\s?(?:(?P<bk>{SCALE})\b(?:\s?dollars)?|dollars\b)"
+    rf"|\b(?P<w>{WORD_NUMBER})[-\s]+(?P<ws>hundred|thousand|grand)\b"
+    rf"|(?P<mon>\b(?:{MONTH_NAMES})\.?\s+)?"
+    rf"(?<![\d.,\-/$])\b(?P<c>{NUMBER})\b"
+    rf"(?!\s?(?:{SCALE})\b)(?!\s?dollars\b)(?!(?:st|nd|rd|th)\b)"
+    rf"(?!\s+(?:day|week|month|year)s?\b)(?![\d\-/:])(?!\s*%)"
+    # "by Dec 12, 2027": the year belongs to the date, so swallow it with the rest.
+    rf"(?(mon)(?:,?\s+\d{{4}})?)",
     re.IGNORECASE,
 )
 
 DEADLINE_WORD = r"(?:by|before|until|no later than)"
+# "by 2027", "in 2030": a bare year after a timing word is a deadline, not dollars.
+YEAR_AFTER_TIMING = re.compile(rf"\b(?:by|before|until|than|in|on|during)\s+$", re.I)
 # "by next June" is the same date as "by June": next_occurrence already rolls past as_of,
 # so the qualifier only has to stop the month patterns failing to match at all.
 MONTH_QUALIFIER = r"(?:(?:next|this|coming)\s+)?"
@@ -116,7 +162,6 @@ NAME = re.compile(
 
 # --- One-time obligations -----------------------------------------------------
 
-MONTH_NAMES = "|".join(sorted(MONTHS, key=len, reverse=True))
 # "due 2027-01-15", "due on the 15th of January", "on October 1": timing words the
 # goal patterns do not know. Rewriting them to "by" reuses parse_deadline whole
 # instead of growing a second date parser. "on" counts only when a date plainly
@@ -161,11 +206,60 @@ CLAUSE_SPLIT = re.compile(
 AND_SPLIT = re.compile(r",?\s+(?:and|but|also|plus)\s+", re.I)
 
 
+def word_number(words: str) -> int:
+    """"fifteen" -> 15, "twenty five" -> 25, "a" -> 1. Words it does not know count 0."""
+    total = 0
+    for word in re.split(r"[-\s]+", words.lower()):
+        if word in ("a", "an"):
+            total += 1
+        else:
+            total += ONES.get(word, 0) + TENS.get(word, 0)
+    return total
+
+
 def parse_amount(match: re.Match[str]) -> float:
-    number = match.group("a") or match.group("b")
-    thousands = match.group("ak") or match.group("bk")
+    """The dollars one AMOUNT match stands for (frontend/SPEC.md 8.5)."""
+    if match.group("w"):
+        return float(word_number(match.group("w")) * SCALES[match.group("ws").lower()])
+    number = match.group("a") or match.group("b") or match.group("c")
+    scale = match.group("ak") or match.group("bk")
     value = float(number.replace(",", ""))
-    return value * 1000 if thousands else value
+    return value * SCALES[scale.lower()] if scale else value
+
+
+def is_money(match: re.Match[str], text: str) -> bool:
+    """False for a bare number that is really part of a date (AS-6).
+
+    The regex cannot decide this alone: "Jan 15" and "by 2027" are both a number
+    after a word, and only the words around them say which is dollars.
+    """
+    if match.group("mon"):  # "Jan 15", "May 2027": the month name was consumed
+        return False
+    if match.group("c") and 1900 <= float(match.group("c").replace(",", "")) <= 2100:
+        if YEAR_AFTER_TIMING.search(text[: match.start()]):
+            return False
+    return True
+
+
+def iter_amounts(text: str) -> list[re.Match[str]]:
+    """Every amount of money in `text`, in the order it was written."""
+    return [m for m in AMOUNT.finditer(text) if is_money(m, text)]
+
+
+def strip_amounts(text: str, repl: str = "") -> str:
+    """`text` with its amounts taken out, so what is left can be read as a name."""
+    out, last = [], 0
+    for match in iter_amounts(text):
+        out.append(text[last : match.start()])
+        out.append(repl)
+        last = match.end()
+    out.append(text[last:])
+    return "".join(out)
+
+
+def starts_with_amount(text: str) -> bool:
+    """"$300 in checking" carries on the "keep" before it; "I have $300" does not."""
+    return any(m.start() == 0 for m in iter_amounts(text))
 
 
 def money(amount: float) -> str:
@@ -244,7 +338,7 @@ def split_clauses(text: str) -> list[str]:
         parts = [p.strip(" ,\t\r\n") for p in AND_SPLIT.split(sentence) if p.strip(" ,\t\r\n")]
         merged: list[str] = []
         for part in parts:
-            if merged and not AMOUNT.search(part) and not RESERVE_WORDS.search(part):
+            if merged and not iter_amounts(part) and not RESERVE_WORDS.search(part):
                 merged[-1] = f"{merged[-1]} and {part}"
             else:
                 merged.append(part)
@@ -257,10 +351,10 @@ def goal_name(clause: str) -> tuple[str, str] | None:
     m = NAME.search(clause)
     if not m:
         return None
-    name = AMOUNT.sub("", m.group("name")).strip(" ,.")
+    name = strip_amounts(m.group("name")).strip(" ,.")
     if not name:
         return None
-    return name[:1].upper() + name[1:], AMOUNT.sub("", m.group("phrase")).strip(" ,.")
+    return name[:1].upper() + name[1:], strip_amounts(m.group("phrase")).strip(" ,.")
 
 
 def slug(name: str) -> str:
@@ -300,7 +394,7 @@ def obligation_name(clause: str, deadline_words: str | None) -> str | None:
     if named:  # "I owe $300 for a parking ticket by Nov 1"
         return named[0]
     rest = clause.replace(deadline_words, " ", 1) if deadline_words else clause
-    rest = STATUS_WORDS.sub(" ", AMOUNT.sub(" ", FUNDING.sub(" ", rest)))
+    rest = STATUS_WORDS.sub(" ", strip_amounts(FUNDING.sub(" ", rest), " "))
     words = [w for w in rest.split() if w]
     while words and re.sub(r"[^a-z]", "", words[0].lower()) in LEAD_WORDS:
         words.pop(0)
@@ -426,7 +520,7 @@ def draft_obligation(
     the user has confirmed a complete draft (frontend/SPEC.md 3.2).
     """
     normalized = DUE_WORDS.sub("by", clause)
-    amounts = [parse_amount(m) for m in AMOUNT.finditer(normalized)]
+    amounts = [parse_amount(m) for m in iter_amounts(normalized)]
     name = obligation_name(normalized, parse_deadline(normalized, as_of)[1])
     what = f"the {name.lower()}" if name else "this"
     missing = False
@@ -494,13 +588,13 @@ def compile_goals(
         clarifications.append(GoalClarification(field=field, question=question, fragment=fragment))
 
     for clause in split_clauses(text):
-        amounts = [parse_amount(m) for m in AMOUNT.finditer(clause)]
+        amounts = [parse_amount(m) for m in iter_amounts(clause)]
         is_reserve = bool(RESERVE_WORDS.search(clause))
         # "keep $1,500 for emergencies and $300 in checking": a part that is just an
         # amount carries on the "keep" before it. "I have $300 in checking" does not.
         continues_floor = (
             previous_is_floor
-            and bool(AMOUNT.match(clause))
+            and starts_with_amount(clause)
             and not GOAL_WORDS.search(clause)
         )
         has_floor = bool(FLOOR_WORDS.search(clause)) or continues_floor
