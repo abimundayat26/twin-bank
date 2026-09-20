@@ -38,11 +38,16 @@ def no_real_databricks(monkeypatch):
 
 @pytest.fixture
 def flat_twin():
-    """Alex's fixture twin with its seasonal profiles removed.
+    """Alex's fixture twin with its seasonal profiles and forecast removed.
 
     For tests whose arithmetic is worked out by hand against flat 14-day averages,
     so they keep checking the engine rather than the fixture's seasonal shape.
+
+    The forecast goes with the profiles. It records `method="seasonal_ewma"`, and
+    a twin claiming a seasonal method while carrying no seasonal profile would
+    describe an estimate that is not the one on it. A test that wants the
+    metadata back adds it explicitly.
     """
     twin = load_twin()
     flat = [v.model_copy(update={"seasonal": None}) for v in twin.variable_spending]
-    return twin.model_copy(update={"variable_spending": flat})
+    return twin.model_copy(update={"variable_spending": flat, "forecast": None})

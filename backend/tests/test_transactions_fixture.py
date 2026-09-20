@@ -1,19 +1,22 @@
-"""The mock raw feed must actually contain the structure twin.json describes.
+"""The mock raw feed must actually contain the structure twin_seed.json describes.
 
-Recurrence detection (next slice) has to rediscover the paycheck cadence, the
-monthly bills and the fortnightly spending distributions from these records. If
-the fixture does not contain them, the detector cannot be developed against it —
-so these tests check the data, not the code that reads it.
+Recurrence detection has to rediscover the paycheck cadence, the monthly bills
+and the fortnightly spending distributions from these records. If the fixture
+does not contain them, the detector cannot be developed against it — so these
+tests check the data, not the code that reads it.
+
+The comparison is against the seed, which is what the generator was fed, not
+against `twin.json`, which is what the detector produces from the result.
 """
 
 import statistics
 from collections import Counter, defaultdict
 
-from backend.fixtures import load_raw_transactions, load_twin
+from backend.fixtures import load_raw_transactions, load_seed_twin
 from backend.ingest import normalize_all
 from backend.ingest.generate_transactions import build_feed
 
-TWIN = load_twin()
+TWIN = load_seed_twin()
 TRANSACTIONS = normalize_all(load_raw_transactions())
 
 

@@ -5,7 +5,7 @@ from datetime import date
 from backend import twin_store
 from backend.schemas import FinancialConstraint, Goal, OneTimeObligation
 
-TRANSFER = "obl_mystery_transfer"
+TRANSFER = "obl_online_transfer_to"
 GOAL = Goal(id="goal_car", name="Car repair", target_amount=600, deadline=date(2027, 1, 15))
 RESERVE = FinancialConstraint(
     id="con_reserve", type="minimum_reserve", amount=1200, description="Keep $1,200."
@@ -16,6 +16,7 @@ TUITION = OneTimeObligation(
     amount=1200,
     due_date=date(2027, 1, 15),
     account_id="acc_checking",
+    mandatory=True,
 )
 
 
