@@ -37,7 +37,8 @@
       "confidence": 0.99,
       "provenance": "observed",
       "category_candidates": [],
-      "declared_category": null
+      "declared_category": null,
+      "active": true
     },
     {
       "id": "obl_online_transfer_to",
@@ -61,7 +62,8 @@
           "probability": 0.15
         }
       ],
-      "declared_category": null
+      "declared_category": null,
+      "active": true
     },
     {
       "id": "obl_spotify_premium",
@@ -72,7 +74,8 @@
       "confidence": 0.99,
       "provenance": "observed",
       "category_candidates": [],
-      "declared_category": null
+      "declared_category": null,
+      "active": true
     },
     {
       "id": "obl_town_electric_utility",
@@ -83,7 +86,8 @@
       "confidence": 0.77,
       "provenance": "observed",
       "category_candidates": [],
-      "declared_category": null
+      "declared_category": null,
+      "active": true
     },
     {
       "id": "obl_verizon_wireless",
@@ -94,7 +98,8 @@
       "confidence": 0.99,
       "provenance": "observed",
       "category_candidates": [],
-      "declared_category": null
+      "declared_category": null,
+      "active": true
     }
   ],
   "variable_spending": [

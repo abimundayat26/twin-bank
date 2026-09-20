@@ -1,9 +1,48 @@
+import re
+from datetime import date
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
 from backend.fixtures import load_simulation, load_twin
 from backend.schemas import (
+    AddGoalProposal,
+    AddObligationProposal,
+    AssistantMessageRequest,
+    AssistantMessageResponse,
+    AssistantOpening,
+    AssistantQuestion,
+    CategoryOption,
     ClarificationResponseRequest,
+    ClassifyObligationProposal,
+    CommitPurchaseRequest,
+    CommitPurchaseResponse,
+    EarliestDateRequest,
+    EarliestDateResponse,
+    ForecastCallout,
+    ForecastPayload,
+    GoalChanges,
+    GoalDateChange,
+    ObligationsPayload,
+    OneTimeObligationChanges,
+    OneTimeObligationCreate,
+    OneTimeObligationRow,
+    OverviewAccount,
+    OverviewPayload,
+    ProposalBase,
+    ProposalDecisionRequest,
+    ProposalDecisionResponse,
+    RecurringObligationChanges,
+    RecurringObligationCreate,
+    RecurringObligationRow,
+    ReserveRequest,
+    SetConstraintProposal,
+    SimulatePrefill,
+    SpendingSlice,
+    UpcomingItem,
+    UpdateGoalProposal,
+    UpdateObligationProposal,
     DeclaredGoalsRequest,
     FinancialConstraint,
     FinancialObligation,
@@ -501,3 +540,367 @@ def test_a_twin_carrying_lineage_serializes_nothing_but_identifiers():
     )
     payload = twin.model_dump(mode="json")["lineage"]
     assert set(payload) == {"location", "status", "mlflow_run_id", "run_time"}
+
+
+# --- Contracts for the minimalist layout (frontend/SPEC.md section 4) ---------
+
+
+def test_obligation_without_active_defaults_true():
+    """4.1: a twin saved before `active` existed still validates, and is not paused."""
+    obligation = FinancialObligation.model_validate(
+        {
+            "id": "obl_rent",
+            "name": "Rent",
+            "expected_amount": 650.0,
+            "due_day": 1,
+            "confidence": 0.99,
+        }
+    )
+    assert obligation.active is True
+
+
+def test_every_obligation_on_the_fixture_twin_is_active():
+    assert all(obligation.active for obligation in load_twin().obligations)
+
+
+@pytest.mark.parametrize("amount", [float("nan"), float("inf"), float("-inf"), 1_000_000_001])
+def test_new_money_fields_reject_nan_infinity_and_over_a_billion(amount):
+    """API-4. Applied to the models this section adds, not to the older contracts."""
+    with pytest.raises(ValidationError):
+        ReserveRequest(amount=amount)
+
+
+@pytest.mark.parametrize("amount", [0, -1])
+def test_a_positive_money_field_rejects_zero_and_negatives(amount):
+    with pytest.raises(ValidationError):
+        SimulatePrefill(description="Laptop", amount=amount)
+
+
+def test_a_name_is_trimmed_and_its_inner_whitespace_collapsed():
+    """API-5, so a length check cannot be passed with padding."""
+    assert GoalChanges(name="  Spring   break \n").name == "Spring break"
+
+
+@pytest.mark.parametrize("name", ["", "   ", "x" * 81])
+def test_a_blank_or_over_long_name_is_rejected(name):
+    with pytest.raises(ValidationError):
+        RecurringObligationCreate(name=name, amount=10, due_day=1)
+
+
+@pytest.mark.parametrize(
+    "model", [GoalChanges, RecurringObligationChanges, OneTimeObligationChanges]
+)
+def test_a_changes_body_with_no_field_is_rejected(model):
+    """Section 6: a PUT or PATCH that changes nothing is a 422, not a no-op write."""
+    with pytest.raises(ValidationError):
+        model()
+
+
+def test_a_changes_body_accepts_an_explicit_null_it_was_given():
+    """`model_fields_set`, not None, decides: an omitted field differs from a sent one."""
+    assert RecurringObligationChanges(active=False).active is False
+
+
+def test_overview_holds_at_most_four_categories_plus_other():
+    slices = [SpendingSlice(label=str(i), monthly_amount=1) for i in range(6)]
+    with pytest.raises(ValidationError):
+        OverviewPayload(
+            user_id="alex",
+            as_of=date(2026, 9, 18),
+            total_balance=1,
+            monthly_net_cash_flow=1,
+            accounts=[],
+            spending=slices,
+            total_monthly_spending=1,
+        )
+
+
+def test_upcoming_items_must_be_ascending_by_date():
+    """OV-7. The page slices this list; it does not sort it (G-6)."""
+    items = [
+        UpcomingItem(name="Rent", amount=-650, date=date(2026, 10, 1), kind="recurring_bill"),
+        UpcomingItem(name="Pay", amount=900, date=date(2026, 9, 25), kind="income"),
+    ]
+    with pytest.raises(ValidationError):
+        OverviewPayload(
+            user_id="alex",
+            as_of=date(2026, 9, 18),
+            total_balance=1,
+            monthly_net_cash_flow=1,
+            accounts=[],
+            total_monthly_spending=1,
+            upcoming=items,
+        )
+
+
+def test_a_forecast_carries_at_most_four_callouts():
+    callout = {"date": "2026-10-01", "kind": "peak", "balance": 100.0, "label": "High point"}
+    bands = {"total": [], "checking": []}
+    with pytest.raises(ValidationError):
+        ForecastPayload(
+            user_id="alex",
+            horizon_end=date(2027, 6, 1),
+            bands=bands,
+            callouts=[callout] * 5,
+        )
+
+
+@pytest.mark.parametrize("count", [0, 2])
+def test_a_commit_carries_exactly_one_purchase(count):
+    """CM-3: one purchase in v1, so a client cannot smuggle a second one in."""
+    event = {
+        "type": "purchase",
+        "description": "Laptop",
+        "amount": 800.0,
+        "date": "2026-09-20",
+        "account_id": "acc_checking",
+    }
+    with pytest.raises(ValidationError):
+        CommitPurchaseRequest(events=[event] * count)
+
+
+# One well-formed proposal of each action type, as the message response carries them.
+PROPOSALS = {
+    "ADD_GOAL": {
+        "action_type": "ADD_GOAL",
+        "proposal_id": "prop_1",
+        "source_fragment": "save $2,000 for a trip",
+        "goal": {
+            "id": "goal_trip",
+            "name": "Trip",
+            "target_amount": 2000.0,
+            "deadline": "2027-06-01",
+        },
+    },
+    "UPDATE_GOAL": {
+        "action_type": "UPDATE_GOAL",
+        "proposal_id": "prop_2",
+        "source_fragment": "to $2,500",
+        "goal_id": "goal_summer_housing",
+        "goal_name": "Summer housing",
+        "changes": {"target_amount": 2500.0},
+    },
+    "ADD_OBLIGATION": {
+        "action_type": "ADD_OBLIGATION",
+        "proposal_id": "prop_3",
+        "source_fragment": "$1,200 tuition due Jan 15",
+        "obligation": {
+            "id": "one_tuition",
+            "name": "Tuition",
+            "amount": 1200.0,
+            "due_date": "2027-01-15",
+            "account_id": "acc_checking",
+            "mandatory": True,
+        },
+    },
+    "UPDATE_OBLIGATION": {
+        "action_type": "UPDATE_OBLIGATION",
+        "proposal_id": "prop_4",
+        "source_fragment": "rent went up to 1050",
+        "obligation_id": "obl_rent",
+        "obligation_name": "Rent",
+        "kind": "recurring",
+        "recurring_changes": {"amount": 1050.0},
+    },
+    "SET_CONSTRAINT": {
+        "action_type": "SET_CONSTRAINT",
+        "proposal_id": "prop_5",
+        "source_fragment": "keep at least $1,500",
+        "constraint": {
+            "id": "con_reserve",
+            "type": "minimum_reserve",
+            "amount": 1500.0,
+            "description": "Emergency reserve",
+        },
+    },
+    "CLASSIFY_OBLIGATION": {
+        "action_type": "CLASSIFY_OBLIGATION",
+        "proposal_id": "prop_6",
+        "source_fragment": "the $50 transfer is savings",
+        "classification": {
+            "obligation_id": "obl_online_transfer_to",
+            "obligation_name": "Online Transfer To",
+            "category": "savings_transfer",
+            "fragment": "the $50 transfer is savings",
+        },
+    },
+}
+
+
+def message_response(**overrides):
+    payload = {
+        "conversation_id": "conv_1",
+        "message_id": "msg_1",
+        "reply": "Here is what I understood. Nothing changes until you accept.",
+        "read_by": "rules",
+    }
+    return AssistantMessageResponse.model_validate({**payload, **overrides})
+
+
+@pytest.mark.parametrize("action_type", sorted(PROPOSALS))
+def test_a_proposal_is_read_back_as_its_own_action_type(action_type):
+    """4.7: the union is discriminated, so a card is never parsed as the wrong action."""
+    response = message_response(proposals=[PROPOSALS[action_type]])
+    proposal = response.proposals[0]
+    assert proposal.action_type == action_type
+    assert proposal.status == "pending"
+    assert proposal.requires_user_confirmation is True
+
+
+def test_every_proposal_survives_a_round_trip_through_json():
+    # Five at a time: a response carries at most five proposals (AS-17).
+    drafts = list(PROPOSALS.values())
+    for batch in (drafts[:5], drafts[5:]):
+        response = message_response(proposals=batch)
+        again = AssistantMessageResponse.model_validate(response.model_dump(mode="json"))
+        assert [p.action_type for p in again.proposals] == [d["action_type"] for d in batch]
+
+
+def test_a_proposal_must_quote_the_user():
+    """V1: the card shows the user's own words, so an empty quote is not a proposal."""
+    with pytest.raises(ValidationError):
+        message_response(proposals=[{**PROPOSALS["ADD_GOAL"], "source_fragment": ""}])
+
+
+def test_an_unknown_action_type_is_rejected():
+    with pytest.raises(ValidationError):
+        message_response(proposals=[{**PROPOSALS["ADD_GOAL"], "action_type": "DELETE_TWIN"}])
+
+
+def test_an_obligation_update_carries_the_changes_for_its_own_kind():
+    wrong_kind = {**PROPOSALS["UPDATE_OBLIGATION"], "kind": "one_time"}
+    with pytest.raises(ValidationError):
+        message_response(proposals=[wrong_kind])
+
+
+def test_an_obligation_update_may_not_carry_both_kinds_of_change():
+    both = {**PROPOSALS["UPDATE_OBLIGATION"], "one_time_changes": {"amount": 10.0}}
+    with pytest.raises(ValidationError):
+        message_response(proposals=[both])
+
+
+def test_a_response_carries_at_most_five_proposals():
+    """AS-17. A sixth is dropped by the Assistant before it gets here."""
+    six = [{**PROPOSALS["ADD_GOAL"], "proposal_id": f"prop_{i}"} for i in range(6)]
+    with pytest.raises(ValidationError):
+        message_response(proposals=six)
+
+
+QUESTION = {
+    "question_id": "q_1",
+    "text": "When do you need it by? Please give a date.",
+    "field": "deadline",
+    "fragment": "next summer",
+}
+
+
+def test_a_response_carries_at_most_three_questions():
+    with pytest.raises(ValidationError):
+        message_response(questions=[QUESTION] * 4)
+
+
+def test_the_opening_asks_at_most_two_questions():
+    """AS-9: the chat opens with a couple of questions, not an interrogation."""
+    AssistantOpening(questions=[QUESTION] * 2)
+    with pytest.raises(ValidationError):
+        AssistantOpening(questions=[QUESTION] * 3)
+
+
+@pytest.mark.parametrize("field", ["which_one", "category", "amount", "intent"])
+def test_a_question_may_be_about_a_target_or_a_missing_detail(field):
+    assert AssistantQuestion(**{**QUESTION, "field": field}).field == field
+
+
+@pytest.mark.parametrize("text", ["", " " * 0, "x" * 2001])
+def test_a_message_is_between_one_and_two_thousand_characters(text):
+    """AS-10 and the 2,001-character row of the acceptance corpus."""
+    with pytest.raises(ValidationError):
+        AssistantMessageRequest(user_id="alex", text=text)
+
+
+def test_a_two_thousand_character_message_is_accepted():
+    assert len(AssistantMessageRequest(user_id="alex", text="x" * 2000).text) == 2000
+
+
+def test_a_rejected_proposal_returns_no_twin():
+    decision = ProposalDecisionResponse(proposal_id="prop_1", status="rejected")
+    assert decision.twin is None
+
+
+# --- The TypeScript mirror ----------------------------------------------------
+
+TYPES_TS = Path(__file__).resolve().parents[2] / "frontend" / "lib" / "types.ts"
+
+# Every model this section adds, plus the one existing model it changes. Each must
+# appear in types.ts with all of its fields (CLAUDE.md, Shared Contracts).
+MIRRORED_MODELS = [
+    FinancialObligation,
+    OverviewAccount,
+    SpendingSlice,
+    UpcomingItem,
+    OverviewPayload,
+    CategoryOption,
+    RecurringObligationRow,
+    OneTimeObligationRow,
+    ObligationsPayload,
+    RecurringObligationCreate,
+    RecurringObligationChanges,
+    OneTimeObligationCreate,
+    OneTimeObligationChanges,
+    GoalChanges,
+    ReserveRequest,
+    ForecastCallout,
+    ForecastPayload,
+    GoalDateChange,
+    CommitPurchaseRequest,
+    CommitPurchaseResponse,
+    EarliestDateRequest,
+    EarliestDateResponse,
+    ProposalBase,
+    AddGoalProposal,
+    UpdateGoalProposal,
+    AddObligationProposal,
+    UpdateObligationProposal,
+    SetConstraintProposal,
+    ClassifyObligationProposal,
+    AssistantQuestion,
+    SimulatePrefill,
+    AssistantMessageRequest,
+    AssistantMessageResponse,
+    AssistantOpening,
+    ProposalDecisionRequest,
+    ProposalDecisionResponse,
+]
+
+
+def ts_interface_body(name: str) -> str:
+    """The text between `export interface <name> {` and its closing brace."""
+    source = TYPES_TS.read_text()
+    match = re.search(rf"^export interface {name}(?: extends \w+)? \{{$", source, re.MULTILINE)
+    assert match, f"{name} is missing from frontend/lib/types.ts"
+    end = source.index("\n}\n", match.end())
+    return source[match.end() : end]
+
+
+@pytest.mark.parametrize("model", MIRRORED_MODELS, ids=lambda m: m.__name__)
+def test_every_field_is_mirrored_in_types_ts(model):
+    """Catches the usual drift: a field added on one side of the contract only.
+
+    A text scan, not a type check -- it proves the name is there, not that the
+    TypeScript type matches. Reviewing the shape is still a human job.
+    """
+    inherited = set()
+    for parent in model.__mro__[1:]:
+        inherited |= set(getattr(parent, "model_fields", {}))
+    body = ts_interface_body(model.__name__)
+    for field in model.model_fields:
+        if field in inherited:
+            continue
+        assert re.search(rf"^  {field}\??:", body, re.MULTILINE), (
+            f"{model.__name__}.{field} is missing from frontend/lib/types.ts"
+        )
+
+
+@pytest.mark.parametrize("alias", ["AssistantAction", "Proposal"])
+def test_the_union_aliases_are_mirrored_too(alias):
+    assert re.search(rf"^export type {alias} =", TYPES_TS.read_text(), re.MULTILINE)

@@ -87,6 +87,11 @@ export interface FinancialObligation {
   category_candidates?: CategoryCandidate[];
   /** The user's answer to the category question. */
   declared_category?: ObligationCategory | null;
+  /**
+   * False means paused: the simulator and the overview ignore it. A twin saved
+   * before this field existed loads as active.
+   */
+  active?: boolean;
 }
 
 /**
@@ -486,3 +491,349 @@ export interface DeclaredGoalsRequest {
  * threshold applied server-side; never re-derive a low-balance verdict from this.
  */
 export const DEFAULT_LOW_BALANCE_THRESHOLD = 200;
+
+/*
+ * Everything below mirrors the contracts added for the minimalist layout
+ * (frontend/SPEC.md section 4). Section numbers in the comments refer to that
+ * document. Additive only: nothing above changed.
+ */
+
+// --- Overview ----------------------------------------------------------------
+
+/** An account as the Overview page lists it: no transactions, no history. */
+export interface OverviewAccount {
+  id: string;
+  name: string;
+  balance: number;
+}
+
+/**
+ * One wedge of the spending donut. `label` is a variable-spending category,
+ * "Fixed bills", or "Other": obligations carry no category of spend, so TwinBank
+ * groups them rather than guessing one.
+ */
+export interface SpendingSlice {
+  label: string;
+  monthly_amount: number;
+}
+
+export interface UpcomingItem {
+  name: string;
+  /** Signed: positive is income, negative is an outflow. */
+  amount: number;
+  date: IsoDate;
+  kind: "income" | "recurring_bill" | "one_time_bill";
+}
+
+/** GET /twin/{user_id}/overview (OV-1). */
+export interface OverviewPayload {
+  user_id: string;
+  as_of: IsoDate;
+  total_balance: number;
+  monthly_net_cash_flow: number;
+  /** 0-1. Null when the twin has no goals. */
+  goal_progress?: number | null;
+  accounts: OverviewAccount[];
+  /** At most four categories plus "Other" (OV-5). */
+  spending?: SpendingSlice[];
+  total_monthly_spending: number;
+  /** At most five, ascending by date (OV-7). */
+  upcoming?: UpcomingItem[];
+}
+
+// --- Obligations management --------------------------------------------------
+
+/**
+ * One answer the user may pick for an unclear obligation. Deliberately carries no
+ * probability: the page shows plain words in likelihood order, never a confidence
+ * number (G-5).
+ */
+export interface CategoryOption {
+  category: ObligationCategory;
+  label: string;
+}
+
+/** A recurring obligation as the Obligations page lists it (OB-1). */
+export interface RecurringObligationRow {
+  id: string;
+  name: string;
+  amount: number;
+  /** FinancialObligation is keyed on due_day only. */
+  frequency?: "monthly";
+  due_day: number;
+  active: boolean;
+  /** detected = rebuilt from transactions, so it can be paused but not deleted. */
+  origin: "detected" | "declared";
+  /** The declared category in words, null when undeclared. */
+  category_label?: string | null;
+  /** Candidates exist and the user has not declared one. */
+  needs_answer: boolean;
+  /** Most likely first, without probabilities. */
+  options?: CategoryOption[];
+}
+
+/** A one-off expense as the Obligations page lists it (OB-1). */
+export interface OneTimeObligationRow {
+  id: string;
+  name: string;
+  amount: number;
+  due_date: IsoDate;
+  account_id: string;
+  account_name: string;
+  mandatory: boolean;
+}
+
+export interface ObligationsPayload {
+  user_id: string;
+  as_of: IsoDate;
+  recurring?: RecurringObligationRow[];
+  /** Only those still ahead: due_date > as_of. */
+  one_time?: OneTimeObligationRow[];
+}
+
+/** POST body. Anything the user types is declared, never detected (PER-3). */
+export interface RecurringObligationCreate {
+  name: string;
+  amount: number;
+  due_day: number;
+  mandatory?: boolean;
+}
+
+/** PUT body. An omitted field is unchanged; at least one must be given. */
+export interface RecurringObligationChanges {
+  name?: string;
+  amount?: number;
+  due_day?: number;
+  active?: boolean;
+}
+
+/** POST body. The route additionally checks the date against the twin's as_of. */
+export interface OneTimeObligationCreate {
+  name: string;
+  amount: number;
+  due_date: IsoDate;
+  account_id: string;
+  mandatory?: boolean;
+}
+
+/** PUT body. An omitted field is unchanged; at least one must be given. */
+export interface OneTimeObligationChanges {
+  name?: string;
+  amount?: number;
+  due_date?: IsoDate;
+  account_id?: string;
+  mandatory?: boolean;
+}
+
+// --- Goal and limit edits ----------------------------------------------------
+
+/**
+ * PATCH body for one goal (PL-10). A partial edit, so a stale client cannot
+ * overwrite the user's other goals the way the replace-all PUT /goals would.
+ */
+export interface GoalChanges {
+  name?: string;
+  target_amount?: number;
+  deadline?: IsoDate;
+  current_amount?: number;
+}
+
+/** PUT /twin/{user_id}/reserve (PL-9). Zero removes the reserve. */
+export interface ReserveRequest {
+  amount: number;
+}
+
+// --- Forecast view -----------------------------------------------------------
+
+/**
+ * A high or low point worth naming on the Forecast page. `label` is built from a
+ * fixed template vocabulary and the twin's own content (FD-9); a model never
+ * writes it.
+ */
+export interface ForecastCallout {
+  date: IsoDate;
+  kind: "peak" | "trough";
+  balance: number;
+  label: string;
+}
+
+/** GET /twin/{user_id}/forecast (FD-6): the baseline /simulate cannot give. */
+export interface ForecastPayload {
+  user_id: string;
+  horizon_end: IsoDate;
+  bands: ScenarioBands;
+  callouts?: ForecastCallout[];
+  num_simulations?: number | null;
+  is_mock?: boolean;
+}
+
+// --- Committing a purchase ---------------------------------------------------
+
+/** Moving a goal's deadline as part of committing a purchase (CM-4). */
+export interface GoalDateChange {
+  goal_id: string;
+  /** The deadline the client saw. A mismatch is a 409, not an overwrite. */
+  from_deadline: IsoDate;
+  /** The new, later deadline. */
+  deadline: IsoDate;
+}
+
+/** POST /twin/{user_id}/purchases/commit (CM-3). One purchase in v1. */
+export interface CommitPurchaseRequest {
+  events: SimulationEvent[];
+  goal_updates?: GoalDateChange[];
+}
+
+export interface CommitPurchaseResponse {
+  twin: FinancialTwin;
+  /** The one-time obligation ids now on the twin. */
+  created_ids?: string[];
+  /** True when this exact purchase was already there (G-15). */
+  already_committed?: boolean;
+}
+
+/** POST /twin/{user_id}/goals/{goal_id}/earliest-date (CM-2). */
+export interface EarliestDateRequest {
+  events: SimulationEvent[];
+}
+
+export interface EarliestDateResponse {
+  goal_id: string;
+  original_deadline: IsoDate;
+  /** Null when no date inside the 730-day limit restores the chance. */
+  earliest_deadline?: IsoDate | null;
+  baseline_prob_goal_met?: number | null;
+  prob_goal_met_at_earliest?: number | null;
+  searched_until: IsoDate;
+}
+
+// --- Assistant ---------------------------------------------------------------
+//
+// The Assistant only ever drafts. Nothing here changes the twin: a proposal does
+// that through POST /assistant/proposals/{id}/decision with "accept" (AS-1, AS-15).
+
+export type AssistantAction =
+  | "ADD_GOAL"
+  | "UPDATE_GOAL"
+  | "ADD_OBLIGATION"
+  | "UPDATE_OBLIGATION"
+  | "SET_CONSTRAINT"
+  | "CLASSIFY_OBLIGATION";
+
+export interface ProposalBase {
+  proposal_id: string;
+  status?: "pending" | "accepted" | "rejected";
+  /**
+   * The user's own words this came from. A quote the frontend can check against
+   * the message, where a model's "reasoning" could not be (V1).
+   */
+  source_fragment: string;
+  requires_user_confirmation?: true;
+}
+
+export interface AddGoalProposal extends ProposalBase {
+  action_type: "ADD_GOAL";
+  goal: Goal;
+}
+
+export interface UpdateGoalProposal extends ProposalBase {
+  action_type: "UPDATE_GOAL";
+  goal_id: string;
+  /** As shown on the card, so the user can read it back. */
+  goal_name: string;
+  changes: GoalChanges;
+}
+
+/** One-time obligations only in v1. A recurring one is added on /obligations. */
+export interface AddObligationProposal extends ProposalBase {
+  action_type: "ADD_OBLIGATION";
+  obligation: OneTimeObligation;
+}
+
+export interface UpdateObligationProposal extends ProposalBase {
+  action_type: "UPDATE_OBLIGATION";
+  obligation_id: string;
+  obligation_name: string;
+  kind: "recurring" | "one_time";
+  recurring_changes?: RecurringObligationChanges | null;
+  one_time_changes?: OneTimeObligationChanges | null;
+}
+
+export interface SetConstraintProposal extends ProposalBase {
+  action_type: "SET_CONSTRAINT";
+  constraint: FinancialConstraint;
+}
+
+/** Answering "the $50 transfer is savings" about a detected obligation (AS-7). */
+export interface ClassifyObligationProposal extends ProposalBase {
+  action_type: "CLASSIFY_OBLIGATION";
+  classification: ObligationClassificationDraft;
+}
+
+/** Discriminated on `action_type`, exactly as the backend union is. */
+export type Proposal =
+  | AddGoalProposal
+  | UpdateGoalProposal
+  | AddObligationProposal
+  | UpdateObligationProposal
+  | SetConstraintProposal
+  | ClassifyObligationProposal;
+
+/** Asked instead of guessing. The text comes from a template (8.3), never a model. */
+export interface AssistantQuestion {
+  question_id: string;
+  text: string;
+  field: GoalClarificationField | "which_one" | "category";
+  /** Quick replies. Empty means free text. */
+  choices?: string[];
+  fragment: string;
+}
+
+/** A what-if, handed to the Purchase Simulator filled in but not run (AS-8). */
+export interface SimulatePrefill {
+  description: string;
+  amount: number;
+  date?: IsoDate | null;
+}
+
+export interface AssistantMessageRequest {
+  user_id: string;
+  text: string;
+  conversation_id?: string | null;
+  /**
+   * The message_id of the question being answered. Sent only when the user answers
+   * a specific question; the backend never guesses (AS-11).
+   */
+  in_reply_to?: string | null;
+}
+
+export interface AssistantMessageResponse {
+  conversation_id: string;
+  message_id: string;
+  /** Always from a template in 8.3, never a model's words (AS-3). */
+  reply: string;
+  /** Who read the user's words: compiler "rules" maps to "rules", "llm" to "model" (AS-4). */
+  read_by: "rules" | "model";
+  /** At most five (AS-17). */
+  proposals?: Proposal[];
+  /** At most three (AS-17). */
+  questions?: AssistantQuestion[];
+  simulate_prefill?: SimulatePrefill | null;
+  unparsed?: string[];
+}
+
+/** GET /assistant/opening/{user_id} (AS-9). Empty when nothing is unclassified. */
+export interface AssistantOpening {
+  questions?: AssistantQuestion[];
+}
+
+export interface ProposalDecisionRequest {
+  decision: "accept" | "reject";
+}
+
+export interface ProposalDecisionResponse {
+  proposal_id: string;
+  status: "accepted" | "rejected";
+  /** The updated twin on accept, null on reject. */
+  twin?: FinancialTwin | null;
+}
