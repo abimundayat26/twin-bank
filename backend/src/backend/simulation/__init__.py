@@ -13,6 +13,7 @@ from backend.schemas import (
 from backend.schemas import ScenarioBands as ScenarioBandsSchema
 from backend.simulation.engine import SimulationError
 from backend.simulation.explain import build_assumptions, build_drivers, build_summary
+from backend.simulation.impact import assess_impact
 from backend.simulation.monte_carlo import (
     DEFAULT_SIMULATIONS,
     BandSeries,
@@ -60,13 +61,14 @@ def run_simulation(
     seed: int | None = None,
 ) -> SimulationResponse:
     mc = run_monte_carlo(twin, request.events, request.horizon_end, n_simulations, seed, bands=True)
+    baseline, counterfactual = to_metrics(mc.baseline), to_metrics(mc.counterfactual)
     return SimulationResponse(
         simulation_id=f"sim_{uuid4().hex[:12]}",
         user_id=twin.user_id,
         request=request,
         horizon_end=mc.horizon_end,
-        baseline=to_metrics(mc.baseline),
-        counterfactual=to_metrics(mc.counterfactual),
+        baseline=baseline,
+        counterfactual=counterfactual,
         summary=build_summary(twin, request.events, mc),
         drivers=build_drivers(twin, request.events, mc),
         assumptions=build_assumptions(twin, mc),
@@ -76,4 +78,5 @@ def run_simulation(
             baseline=to_scenario_bands(mc.baseline_bands),
             counterfactual=to_scenario_bands(mc.counterfactual_bands),
         ),
+        impact=assess_impact(baseline, counterfactual),
     )
