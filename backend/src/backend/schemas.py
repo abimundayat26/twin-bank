@@ -484,7 +484,12 @@ class OptimizationResponse(BaseModel):
 
 # --- Goal compiler ------------------------------------------------------------
 
-GoalClarificationField = Literal["amount", "deadline", "name", "type"]
+# "type": a goal or a standing reserve. "account": which account pays a one-time
+# obligation. "intent": the text could be a goal or a declared obligation and the
+# Assistant must ask rather than choose (frontend/SPEC.md 3.2).
+GoalClarificationField = Literal[
+    "amount", "deadline", "name", "type", "account", "intent", "mandatory"
+]
 
 
 class GoalCompileRequest(BaseModel):
@@ -505,8 +510,14 @@ class GoalCompileResponse(BaseModel):
     text: str
     goals: list[Goal]
     constraints: list[FinancialConstraint]
+    one_time_obligations: list[OneTimeObligation] = Field(
+        default=[],
+        description="Drafted one-off expenses the user says they already owe, as opposed "
+        "to money they are saving toward.",
+    )
     clarifications: list[GoalClarification] = Field(
-        description="Asked instead of guessing. A goal missing a detail is not in goals."
+        description="Asked instead of guessing. A goal or obligation missing a detail is "
+        "not drafted at all."
     )
     unparsed: list[str] = Field(description="Parts of the text that matched nothing.")
     compiler: Literal["rules", "llm"]

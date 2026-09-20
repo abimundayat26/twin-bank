@@ -21,10 +21,17 @@ Rules, per clause:
 
 import calendar
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import date, timedelta
 
-from backend.schemas import FinancialConstraint, Goal, GoalClarification, GoalCompileResponse
+from backend.schemas import (
+    Account,
+    FinancialConstraint,
+    Goal,
+    GoalClarification,
+    GoalCompileResponse,
+    OneTimeObligation,
+)
 from backend.simulation.engine import MAX_HORIZON_DAYS
 
 RESERVE_ID = "con_emergency_reserve"
@@ -100,6 +107,53 @@ NAME = re.compile(
     rf"\bfor\s+(?P<phrase>(?:(?:a|an|the|my|some)\s+)?(?P<name>.+?))"
     rf"(?=\s+{DEADLINE_WORD}\b|\s+(?:in|within)\s+(?:\d+|a|an|one)\s|[,;]|$)",
     re.I,
+)
+
+# --- One-time obligations -----------------------------------------------------
+
+# An expense already owed, as opposed to money being saved toward something.
+# "pay" is deliberately in here although it is weak on its own: "I need to pay
+# $400" matches this *and* GOAL_WORDS, and an ambiguous clause must be asked
+# about rather than guessed (frontend/SPEC.md 3.2).
+OBLIGATION_WORDS = re.compile(
+    r"\b(?:owe|owes|owed|due|bill|bills|invoice|premium|tuition|pay|pays|paid)\b", re.I
+)
+
+MONTH_NAMES = "|".join(sorted(MONTHS, key=len, reverse=True))
+# "due 2027-01-15", "due on the 15th of January", "on October 1": timing words the
+# goal patterns do not know. Rewriting them to "by" reuses parse_deadline whole
+# instead of growing a second date parser. "on" counts only when a date plainly
+# follows, so "$200 on my credit card" is not read as timing.
+DUE_WORDS = re.compile(
+    r"\bdue(?:\s+(?:on|by))?\b"
+    rf"|\bon\b(?=\s+(?:the\s+)?(?:\d|{MONTH_NAMES}))",
+    re.I,
+)
+
+# Which account pays it. Matched on type, because that is all the user says.
+FUNDING = re.compile(
+    r"\b(?:from|out\s+of|using)\s+(?:my\s+|the\s+)?(?P<account>checking|savings)"
+    r"(?:\s+account)?\b",
+    re.I,
+)
+
+MANDATORY_STATUS = re.compile(
+    r"\b(?:mandatory|required|non[- ]negotiable|must\s+be\s+paid|cannot\s+be\s+skipped)\b",
+    re.I,
+)
+OPTIONAL_STATUS = re.compile(
+    r"\b(?:optional|not\s+mandatory|may\s+be\s+skipped|can\s+be\s+skipped)\b",
+    re.I,
+)
+STATUS_WORDS = re.compile(
+    rf"(?:{MANDATORY_STATUS.pattern})|(?:{OPTIONAL_STATUS.pattern})",
+    re.I,
+)
+
+# Filler in front of the thing itself: "I have to pay the dentist" -> "dentist".
+LEAD_WORDS = frozenset(
+    "i we my our a an the this that there is are was have has had need needs needed "
+    "must should to owe owes owed pay pays paying paid get got also still of for".split()
 )
 
 # A period ends a sentence, except after a month abbreviation followed by a day ("by Jan. 15").
@@ -239,6 +293,81 @@ def check_deadline(
     return None
 
 
+def obligation_name(clause: str, deadline_words: str | None) -> str | None:
+    """A short name for what is owed: "Tuition" from "$1,200 tuition due 2027-01-15".
+
+    `clause` must already have its timing words rewritten to "by" by DUE_WORDS, so
+    `deadline_words` is a substring of it.
+    """
+    named = goal_name(clause)
+    if named:  # "I owe $300 for a parking ticket by Nov 1"
+        return named[0]
+    rest = clause.replace(deadline_words, " ", 1) if deadline_words else clause
+    rest = STATUS_WORDS.sub(" ", AMOUNT.sub(" ", FUNDING.sub(" ", rest)))
+    words = [w for w in rest.split() if w]
+    while words and re.sub(r"[^a-z]", "", words[0].lower()) in LEAD_WORDS:
+        words.pop(0)
+    name = " ".join(words).strip(" ,.;:'\"")
+    return name[:1].upper() + name[1:] if name else None
+
+
+def funding_account(clause: str, accounts: Sequence[Account]) -> tuple[str | None, str | None]:
+    """(account id, the question to ask instead). Exactly one of the two is set.
+
+    Named accounts are matched on type, which is all the user says. With nothing
+    named, the compiler asks even when only one account exists: funding is a required
+    declaration, not something banking data can supply on the user's behalf.
+    """
+    match = FUNDING.search(clause)
+    if match:
+        wanted = match.group("account").lower()
+        same = [a for a in accounts if a.type == wanted]
+        if len(same) == 1:
+            return same[0].id, None
+        if not same:
+            return None, f"There is no {wanted} account on file. Which account pays this?"
+        listed = " or ".join(a.name for a in same)
+        return None, f"Which {wanted} account pays this, {listed}?"
+    if not accounts:
+        return None, "Which account is this paid from?"
+    listed = ", ".join(a.name for a in accounts)
+    return None, f"Which account is this paid from? You have {listed}."
+
+
+def obligation_status(clause: str) -> bool | None:
+    """Return the status the user stated, or None when it is absent or contradictory."""
+    mandatory = bool(MANDATORY_STATUS.search(clause))
+    optional = bool(OPTIONAL_STATUS.search(clause))
+    if mandatory == optional:
+        return None
+    return mandatory
+
+
+def check_due_date(due: date | None, due_words: str | None, what: str, as_of: date) -> str | None:
+    """The question to ask about a one-time obligation's due date, or None if it is usable.
+
+    Unlike a goal deadline this has no horizon limit: a commitment two years out is
+    still a real commitment, it simply falls outside what the simulator projects.
+    """
+    if due is None:
+        if due_words:
+            return f'When exactly is "{due_words}"? Give a date.'
+        return f"When is {what} due?"
+    if due <= as_of:
+        return f"{due} has already passed. When is {what} due?"
+    return None
+
+
+def unique_obligation_id(name: str, taken: set[str]) -> str:
+    """one_<slug>, with _2, _3, ... added when that id is already taken."""
+    obligation_id = f"one_{slug(name)}"
+    suffix = 2
+    while obligation_id in taken:
+        obligation_id = f"one_{slug(name)}_{suffix}"
+        suffix += 1
+    return obligation_id
+
+
 def unique_goal_id(name: str, taken: set[str]) -> str:
     """goal_<slug>, with _2, _3, ... added when that id is already taken."""
     goal_id = f"goal_{slug(name)}"
@@ -264,9 +393,69 @@ def dedupe_constraints(
     return constraints
 
 
-def compile_goals(user_id: str, text: str, as_of: date) -> GoalCompileResponse:
+def draft_obligation(
+    clause: str,
+    as_of: date,
+    accounts: Sequence[Account],
+    drafted: list[OneTimeObligation],
+    ask: Callable[[str, str, str], None],
+) -> None:
+    """Draft one one-time obligation from a clause, or ask for every part that is missing.
+
+    A missing part means nothing is drafted: an obligation reaches the twin only once
+    the user has confirmed a complete draft (frontend/SPEC.md 3.2).
+    """
+    normalized = DUE_WORDS.sub("by", clause)
+    amounts = [parse_amount(m) for m in AMOUNT.finditer(normalized)]
+    name = obligation_name(normalized, parse_deadline(normalized, as_of)[1])
+    what = f"the {name.lower()}" if name else "this"
+    missing = False
+
+    if not amounts:
+        ask("amount", f"How much is {what}?", clause)
+        missing = True
+    if name is None:
+        ask("name", f"What is {money(amounts[0]) if amounts else 'this'} for?", clause)
+        missing = True
+
+    due, due_words = parse_deadline(normalized, as_of)
+    question = check_due_date(due, due_words, what, as_of)
+    if question:
+        ask("deadline", question, clause)
+        missing = True
+
+    account_id, account_question = funding_account(normalized, accounts)
+    if account_question:
+        ask("account", account_question, clause)
+        missing = True
+
+    mandatory = obligation_status(clause)
+    if mandatory is None:
+        ask("mandatory", f"Is {what} mandatory or optional?", clause)
+        missing = True
+
+    if missing:
+        return
+    assert name is not None and due is not None and account_id is not None and mandatory is not None
+    drafted.append(
+        OneTimeObligation(
+            id=unique_obligation_id(name, {o.id for o in drafted}),
+            name=name,
+            amount=amounts[0],
+            due_date=due,
+            account_id=account_id,
+            mandatory=mandatory,
+        )
+    )
+
+
+def compile_goals(
+    user_id: str, text: str, as_of: date, accounts: Sequence[Account] = ()
+) -> GoalCompileResponse:
+    """Drafts only. `accounts` are the twin's, used to resolve which one pays an obligation."""
     goals: list[Goal] = []
     constraints: list[FinancialConstraint] = []
+    obligations: list[OneTimeObligation] = []
     clarifications: list[GoalClarification] = []
     unparsed: list[str] = []
     previous_is_floor = False
@@ -347,6 +536,19 @@ def compile_goals(user_id: str, text: str, as_of: date) -> GoalCompileResponse:
             )
             continue
 
+        if OBLIGATION_WORDS.search(clause):
+            if GOAL_WORDS.search(clause):
+                # "I need to pay $400": saving toward it and already owing it read the
+                # same. Ask, do not choose (frontend/SPEC.md 3.2).
+                ask(
+                    "intent",
+                    "Is this money you are saving toward, or an expense you already owe?",
+                    clause,
+                )
+            else:
+                draft_obligation(clause, as_of, accounts, obligations, ask)
+            continue
+
         named = goal_name(clause)
         deadline, deadline_words = parse_deadline(clause, as_of)
         # Only words that ask for money make a goal: "I have $500" is not one.
@@ -381,6 +583,7 @@ def compile_goals(user_id: str, text: str, as_of: date) -> GoalCompileResponse:
         text=text,
         goals=goals,
         constraints=constraints,
+        one_time_obligations=obligations,
         clarifications=clarifications,
         unparsed=unparsed,
         compiler="rules",
