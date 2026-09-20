@@ -424,6 +424,54 @@ def test_compile_endpoint_rejects_unknown_user_and_empty_text():
     assert compile_api("").status_code == 422
 
 
+def test_a_confirmed_obligation_reaches_the_twin_and_nothing_else_does():
+    drafts = compile_api(TUITION).json()
+    response = client.put(
+        "/twin/alex/goals",
+        json={
+            "goals": drafts["goals"],
+            "constraints": drafts["constraints"],
+            "one_time_obligations": drafts["one_time_obligations"],
+        },
+    )
+    assert response.status_code == 200
+    twin = get_twin()
+    assert [(o.name, o.amount, o.account_id) for o in twin.one_time_obligations] == [
+        ("Tuition", 1200.0, "acc_checking")
+    ]
+
+
+def test_an_obligation_paid_from_an_account_the_twin_does_not_have_is_reported():
+    """C3: reported at the moment it is declared, which is when the user can fix it."""
+    drafts = compile_api(TUITION).json()
+    owed = drafts["one_time_obligations"][0] | {"account_id": "acc_closed"}
+    response = client.put(
+        "/twin/alex/goals", json={"goals": [], "constraints": [], "one_time_obligations": [owed]}
+    )
+    assert response.status_code == 422
+    assert "acc_closed" in response.json()["detail"]
+    assert get_twin().one_time_obligations == []
+
+
+def test_an_obligation_already_past_is_refused():
+    drafts = compile_api(TUITION).json()
+    owed = drafts["one_time_obligations"][0] | {"due_date": "2020-01-15"}
+    response = client.put(
+        "/twin/alex/goals", json={"goals": [], "constraints": [], "one_time_obligations": [owed]}
+    )
+    assert response.status_code == 422
+
+
+def test_two_obligations_may_not_share_an_id():
+    drafts = compile_api(TUITION).json()
+    owed = drafts["one_time_obligations"][0]
+    response = client.put(
+        "/twin/alex/goals",
+        json={"goals": [], "constraints": [], "one_time_obligations": [owed, owed]},
+    )
+    assert response.status_code == 422
+
+
 def test_confirmed_goals_replace_the_twin_goals_and_drive_the_horizon():
     drafts = compile_api("I need $3,000 for a car by March and keep at least $1,000 for emergencies").json()
     response = client.put(
