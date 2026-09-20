@@ -23,7 +23,6 @@ import anthropic
 from pydantic import BaseModel, ValidationError
 
 from backend.goal_compiler import (
-    AMOUNT,
     CHECKING_FLOOR_ID,
     DUE_WORDS,
     RESERVE_ID,
@@ -32,6 +31,7 @@ from backend.goal_compiler import (
     compile_goals,
     dedupe_constraints,
     funding_account,
+    iter_amounts,
     money,
     obligation_status,
     parse_amount,
@@ -198,7 +198,7 @@ def validate_draft(
             ask(item.question_field or "type", item.question or "Can you say more about this?", fragment)
             continue
 
-        written = [parse_amount(m) for m in AMOUNT.finditer(fragment)]
+        written = [parse_amount(m) for m in iter_amounts(fragment)]
         name = (item.name or "").strip()
         what = f"for {name}" if name else "for this"
         if item.amount is None or item.amount <= 0 or item.amount not in written:
