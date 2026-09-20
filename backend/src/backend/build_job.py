@@ -116,11 +116,14 @@ def main(argv: list[str] | None = None) -> int:
 def cli() -> None:
     """Entry point for the installed wheel (`twin-build-job`).
 
-    Raises rather than returns the exit code, so a failed build fails whatever
-    runs it, including a Databricks wheel task, whether or not it checks a
-    return value.
+    Raises on failure rather than returning the exit code, so a failed build
+    fails whatever runs it, including a Databricks wheel task, whether or not it
+    checks a return value. Success returns normally: a Databricks wheel task
+    reports any SystemExit, even SystemExit(0), as a failed task.
     """
-    raise SystemExit(main())
+    code = main()
+    if code:
+        raise SystemExit(code)
 
 
 if __name__ == "__main__":

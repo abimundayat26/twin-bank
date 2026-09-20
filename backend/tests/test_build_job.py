@@ -110,6 +110,14 @@ def test_the_cli_entry_point_fails_the_process(tmp_path, monkeypatch):
     assert exit_info.value.code == 1
 
 
+def test_the_cli_entry_point_returns_normally_on_success(tmp_path, monkeypatch):
+    # Databricks reports SystemExit(0) as a failed task, so success must not raise.
+    out = tmp_path / "twin.json"
+    monkeypatch.setattr("sys.argv", ["twin-build-job", "--transactions", str(TRANSACTIONS), "--out", str(out)])
+    build_job.cli()
+    assert out.exists()
+
+
 # --- The Databricks bundle ----------------------------------------------------
 
 
