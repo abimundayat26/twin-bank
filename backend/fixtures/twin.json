@@ -42,7 +42,7 @@
     },
     {
       "id": "obl_online_transfer_to",
-      "name": "Online Transfer To",
+      "name": "Online Transfer To ***4471",
       "expected_amount": 71.82,
       "due_day": 5,
       "mandatory": false,

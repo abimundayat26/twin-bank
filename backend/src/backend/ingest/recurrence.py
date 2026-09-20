@@ -139,6 +139,25 @@ def slug(text: str) -> str:
     return re.sub(r"_+", "_", re.sub(r"[^a-z0-9]+", "_", text.lower())).strip("_")
 
 
+def display_name(group: list[Transaction]) -> str:
+    """What to call this merchant on screen: the statement line, title-cased.
+
+    The merchant *key* deliberately drops numbered tokens so that "KROGER #418"
+    and "KROGER #212" group together. Naming an obligation after that key loses
+    the only part some statement lines carry: "ONLINE TRANSFER TO ***4471"
+    becomes "Online Transfer To", which trails off mid-sentence and tells the
+    user less than their own bank did. So the group is identified by the key and
+    named after the line, and the two jobs stop fighting each other.
+
+    The most common line wins, because the account is the thing that repeats;
+    ties go to the first alphabetically, so a rebuild names it the same way
+    twice.
+    """
+    counts = Counter(" ".join(t.description.upper().split()) for t in group)
+    most = max(counts.values())
+    return min(line for line, count in counts.items() if count == most).title()
+
+
 def group_by_merchant(transactions: list[Transaction]) -> dict[str, list[Transaction]]:
     groups: dict[str, list[Transaction]] = defaultdict(list)
     for transaction in transactions:
@@ -338,7 +357,7 @@ def detect_obligations(
         obligations.append(
             FinancialObligation(
                 id=f"obl_{slug(key)}",
-                name=key.title(),
+                name=display_name(group),
                 expected_amount=expected,
                 due_day=monthly.due_day,
                 mandatory=category in MANDATORY_CATEGORIES,

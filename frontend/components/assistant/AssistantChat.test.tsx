@@ -31,10 +31,10 @@ const TWIN = mockTwin as unknown as FinancialTwin;
 
 const OPENING_QUESTION: AssistantQuestion = {
   question_id: "q_transfer",
-  text: "What is Online Transfer To ($50 a month)?",
+  text: "What is Online Transfer To ***4471 ($50 a month)?",
   field: "category",
   choices: ["Savings transfer", "Debt repayment"],
-  fragment: "Online Transfer To",
+  fragment: "Online Transfer To ***4471",
 };
 
 const GOAL_PROPOSAL: Proposal = {

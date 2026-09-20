@@ -198,10 +198,10 @@ describe("categoryForLabel", () => {
 describe("obligationForQuestion", () => {
   const question: AssistantQuestion = {
     question_id: "q1",
-    text: "What is Online Transfer To ($50 a month)?",
+    text: "What is Online Transfer To ***4471 ($50 a month)?",
     field: "category",
     choices: ["Savings transfer"],
-    fragment: "Online Transfer To",
+    fragment: "Online Transfer To ***4471",
   };
 
   it("resolves the obligation the opening question names", () => {
