@@ -2,14 +2,10 @@
  * The only module that talks to the backend.
  *
  * Phase 1: these functions already call the real endpoints
- * (`GET /twin/{user_id}` and `POST /simulate`). If the backend is unreachable
- * they fall back to the bundled fixtures in `lib/mock/`, so the demo still
- * runs from a fresh clone with nothing started. If the backend answers with an
- * error (for example a 422 for a purchase outside the horizon), they throw an
- * `ApiError` instead: a real error must never be replaced by fixture numbers.
- *
- * To drop the mocks later, delete the `catch` fallbacks below. No component
- * needs to change: they only ever see `FinancialTwin` / `SimulationResponse`.
+ * (`GET /twin/{user_id}` and `POST /simulate`). Only the initial twin load may
+ * use a bundled fixture. Results and writes always need the backend: returning
+ * a saved result or changing the twin only in browser memory would be false
+ * success (frontend SPEC G-10 and G-14).
  *
  * `lib/mock/*.json` are generated from the API payloads. If a backend fixture
  * changes, regenerate them with `cd backend && uv run python -m
@@ -17,13 +13,10 @@
  * drift apart. Do not hand-edit them.
  */
 
-import { money } from "./format";
-import mockSimulation from "./mock/simulation.json";
 import mockTwin from "./mock/twin.json";
 import type {
   ClarificationResponseRequest,
   DeclaredGoalsRequest,
-  FinancialConstraint,
   FinancialTwin,
   GoalCompileRequest,
   GoalCompileResponse,
@@ -42,7 +35,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
  * offline at least falls back to a fixture. Aborting turns a hang into that same
  * honest fallback.
  */
-const TIMEOUT_MS = 8000;
+const DEFAULT_TIMEOUT_MS = 10_000;
+const LONG_RESULT_TIMEOUT_MS = 30_000;
 
 /** Where a payload came from, so the UI can be honest about it. */
 export type DataSource = "api" | "fixture";
@@ -68,8 +62,15 @@ async function errorMessage(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as { detail?: unknown };
     if (typeof body.detail === "string") return body.detail;
-    if (Array.isArray(body.detail) && typeof body.detail[0]?.msg === "string") {
-      return body.detail[0].msg;
+    if (Array.isArray(body.detail)) {
+      const messages = body.detail
+        .map((item) =>
+          typeof item === "object" && item !== null && "msg" in item
+            ? (item as { msg?: unknown }).msg
+            : undefined,
+        )
+        .filter((message): message is string => typeof message === "string");
+      if (messages.length > 0) return messages.join("; ");
     }
   } catch {
     // Not JSON; fall through to the status line.
@@ -77,13 +78,17 @@ async function errorMessage(response: Response): Promise<string> {
   return `${response.status} ${response.statusText}`.trim();
 }
 
-async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
+async function getJson<T>(
+  path: string,
+  init?: RequestInit,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     cache: "no-store",
     headers: { "Content-Type": "application/json" },
     ...init,
     // After `...init` so no caller can accidentally drop the timeout.
-    signal: AbortSignal.timeout(TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
     throw new ApiError(await errorMessage(response), response.status);
@@ -91,16 +96,23 @@ async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-/** Only a backend that could not be reached falls back to fixtures. */
-function unlessApiError(error: unknown): void {
-  if (error instanceof ApiError) throw error;
+/** Only transport failures mean offline; bad payloads and backend errors stay visible. */
+function unlessBackendUnavailable(error: unknown): void {
+  if (error instanceof TypeError) return;
+  if (
+    error instanceof DOMException &&
+    (error.name === "AbortError" || error.name === "TimeoutError")
+  ) {
+    return;
+  }
+  throw error;
 }
 
 export async function getTwin(userId: string): Promise<Loaded<FinancialTwin>> {
   try {
     return { data: await getJson<FinancialTwin>(`/twin/${userId}`), source: "api" };
   } catch (error) {
-    unlessApiError(error);
+    unlessBackendUnavailable(error);
     console.warn("Falling back to the bundled twin fixture.", error);
     return { data: mockTwin as FinancialTwin, source: "fixture" };
   }
@@ -109,19 +121,12 @@ export async function getTwin(userId: string): Promise<Loaded<FinancialTwin>> {
 export async function runSimulation(
   request: SimulationRequest,
 ): Promise<Loaded<SimulationResponse>> {
-  try {
-    const data = await getJson<SimulationResponse>("/simulate", {
-      method: "POST",
-      body: JSON.stringify(request),
-    });
-    return { data, source: "api" };
-  } catch (error) {
-    unlessApiError(error);
-    console.warn("Falling back to the bundled simulation fixture.", error);
-    // Returned verbatim: the numbers do not respond to the request or to the
-    // user's answers. `is_mock` says so, and the page shows an offline notice.
-    return { data: mockSimulation as SimulationResponse, source: "fixture" };
-  }
+  const data = await getJson<SimulationResponse>(
+    "/simulate",
+    { method: "POST", body: JSON.stringify(request) },
+    LONG_RESULT_TIMEOUT_MS,
+  );
+  return { data, source: "api" };
 }
 
 /**
@@ -132,55 +137,39 @@ export async function runSimulation(
 export async function runOptimization(
   request: OptimizationRequest,
 ): Promise<Loaded<OptimizationResponse>> {
-  const data = await getJson<OptimizationResponse>("/optimize", {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
+  const data = await getJson<OptimizationResponse>(
+    "/optimize",
+    { method: "POST", body: JSON.stringify(request) },
+    LONG_RESULT_TIMEOUT_MS,
+  );
   return { data, source: "api" };
 }
 
 /**
  * Fetches a recent simulation again by id (`GET /explain/{simulation_id}`).
  * The backend keeps results in memory, so an id from before a restart is a 404.
- * Offline, only the bundled fixture's id can be answered.
+ * There is no offline result fallback (G-14).
  */
 export async function getExplanation(simulationId: string): Promise<Loaded<SimulationResponse>> {
-  try {
-    const data = await getJson<SimulationResponse>(
-      `/explain/${encodeURIComponent(simulationId)}`,
-    );
-    return { data, source: "api" };
-  } catch (error) {
-    unlessApiError(error);
-    const fixture = mockSimulation as SimulationResponse;
-    if (simulationId !== fixture.simulation_id) throw error;
-    console.warn("Falling back to the bundled simulation fixture.", error);
-    return { data: fixture, source: "fixture" };
-  }
+  const data = await getJson<SimulationResponse>(
+    `/explain/${encodeURIComponent(simulationId)}`,
+  );
+  return { data, source: "api" };
 }
 
 /**
  * Records Alex's answer to "What is this?" for an ambiguous obligation.
- * Offline, the answer is applied to the local twin so the UI still reflects it.
+ * Offline, this rejects; the UI disables the control before it can be called.
  */
 export async function respondToClarification(
-  twin: FinancialTwin,
+  _twin: FinancialTwin,
   request: ClarificationResponseRequest,
 ): Promise<Loaded<FinancialTwin>> {
-  try {
-    const data = await getJson<FinancialTwin>("/clarifications/respond", {
-      method: "POST",
-      body: JSON.stringify(request),
-    });
-    return { data, source: "api" };
-  } catch (error) {
-    unlessApiError(error);
-    console.warn("Backend unavailable; keeping the answer locally.", error);
-    const obligations = twin.obligations.map((o) =>
-      o.id === request.obligation_id ? { ...o, declared_category: request.category } : o,
-    );
-    return { data: { ...twin, obligations }, source: "fixture" };
-  }
+  const data = await getJson<FinancialTwin>("/clarifications/respond", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+  return { data, source: "api" };
 }
 
 /** Sets the checking balance Alex doesn't want to fall below (their low-balance line). */
@@ -188,27 +177,11 @@ export async function setMinimumBalance(
   twin: FinancialTwin,
   request: MinimumBalanceRequest,
 ): Promise<Loaded<FinancialTwin>> {
-  try {
-    const data = await getJson<FinancialTwin>(`/twin/${twin.user_id}/minimum-balance`, {
-      method: "PUT",
-      body: JSON.stringify(request),
-    });
-    return { data, source: "api" };
-  } catch (error) {
-    unlessApiError(error);
-    console.warn("Backend unavailable; keeping the minimum locally.", error);
-    const constraints = [
-      ...twin.constraints.filter((c) => c.type !== "minimum_checking_balance"),
-      {
-        id: "con_minimum_checking",
-        type: "minimum_checking_balance" as const,
-        amount: request.amount,
-        description: `Keep at least ${money(request.amount)} in checking.`,
-        provenance: "declared" as const,
-      },
-    ];
-    return { data: { ...twin, constraints }, source: "fixture" };
-  }
+  const data = await getJson<FinancialTwin>(`/twin/${twin.user_id}/minimum-balance`, {
+    method: "PUT",
+    body: JSON.stringify(request),
+  });
+  return { data, source: "api" };
 }
 
 /**
@@ -236,37 +209,15 @@ export async function compileGoal(
  * `request` must be the complete declared set: the endpoint replaces, it never
  * appends, so sending one freshly typed goal drops every other goal and the
  * emergency reserve with it. Build the set with `mergeGoals` / `mergeConstraints`
- * from `lib/goals`. Offline, the same set is applied to the local twin.
+ * from `lib/goals`. Offline, this rejects; no local write is reported as saved.
  */
 export async function saveGoals(
   twin: FinancialTwin,
   request: DeclaredGoalsRequest,
 ): Promise<Loaded<FinancialTwin>> {
-  try {
-    const data = await getJson<FinancialTwin>(`/twin/${twin.user_id}/goals`, {
-      method: "PUT",
-      body: JSON.stringify(request),
-    });
-    return { data, source: "api" };
-  } catch (error) {
-    unlessApiError(error);
-    console.warn("Backend unavailable; keeping the goals locally.", error);
-    const goals = request.goals;
-    return { data: { ...twin, goals, constraints: declared(twin, request) }, source: "fixture" };
-  }
-}
-
-/**
- * The constraints the backend would be left holding. It takes the reserve only
- * from the request, but a request carrying no minimum_checking_balance leaves
- * the saved one alone (`twin_store.set_goals`). Mirrored here so the offline
- * twin and the real one never disagree about the low-balance line.
- */
-function declared(twin: FinancialTwin, request: DeclaredGoalsRequest): FinancialConstraint[] {
-  const requested = request.constraints ?? [];
-  const reserve = requested.filter((c) => c.type === "minimum_reserve");
-  const floor =
-    requested.find((c) => c.type === "minimum_checking_balance") ??
-    twin.constraints.find((c) => c.type === "minimum_checking_balance");
-  return floor ? [...reserve, floor] : reserve;
+  const data = await getJson<FinancialTwin>(`/twin/${twin.user_id}/goals`, {
+    method: "PUT",
+    body: JSON.stringify(request),
+  });
+  return { data, source: "api" };
 }

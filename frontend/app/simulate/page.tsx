@@ -26,6 +26,7 @@ export default function SimulatePage() {
   const {
     twin,
     twinError,
+    isOffline,
     simulation,
     simulationSource,
     isSimulating,
@@ -92,6 +93,7 @@ export default function SimulatePage() {
           twin={twin}
           lastDate={goal?.deadline}
           isSimulating={isSimulating}
+          isOffline={isOffline}
           onSimulate={simulate}
         />
 

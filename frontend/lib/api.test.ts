@@ -3,13 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   compileGoal,
+  getExplanation,
   getTwin,
   runOptimization,
   runSimulation,
   saveGoals,
   setMinimumBalance,
 } from "./api";
-import mockSimulation from "./mock/simulation.json";
 import mockTwin from "./mock/twin.json";
 import type {
   FinancialConstraint,
@@ -79,6 +79,16 @@ describe("when the backend is reachable", () => {
     backendReplies(422, { detail: [{ msg: "amount must be positive" }] });
     await expect(runSimulation(request)).rejects.toThrow("amount must be positive");
   });
+
+  it("does not disguise a malformed success payload as an offline twin", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response("not json", { status: 200, headers: { "Content-Type": "application/json" } }),
+      ),
+    );
+    await expect(getTwin("alex")).rejects.toBeInstanceOf(SyntaxError);
+  });
 });
 
 describe("when the backend is unreachable", () => {
@@ -88,20 +98,16 @@ describe("when the backend is unreachable", () => {
     await expect(getTwin("alex")).resolves.toEqual({ data: mockTwin, source: "fixture" });
   });
 
-  it("falls back to the bundled simulation", async () => {
-    await expect(runSimulation(request)).resolves.toEqual({
-      data: mockSimulation,
-      source: "fixture",
-    });
+  it("does not fall back to a bundled simulation", async () => {
+    await expect(runSimulation(request)).rejects.toThrow("fetch failed");
   });
 
-  it("keeps a new minimum balance locally, replacing any earlier one", async () => {
-    const first = await setMinimumBalance(twin, { amount: 300 });
-    const second = await setMinimumBalance(first.data, { amount: 250 });
-    const minimums = second.data.constraints.filter((c) => c.type === "minimum_checking_balance");
-    expect(second.source).toBe("fixture");
-    expect(minimums).toHaveLength(1);
-    expect(minimums[0].amount).toBe(250);
+  it("does not fall back to a bundled explanation", async () => {
+    await expect(getExplanation("sim_fixture_alex_laptop")).rejects.toThrow("fetch failed");
+  });
+
+  it("does not pretend a write succeeded locally", async () => {
+    await expect(setMinimumBalance(twin, { amount: 300 })).rejects.toThrow("fetch failed");
   });
 });
 
@@ -221,27 +227,10 @@ describe("saveGoals", () => {
   describe("when the backend is unreachable", () => {
     beforeEach(backendDown);
 
-    it("applies the set locally, reserve and all", async () => {
-      const loaded = await saveGoals(twin, { goals: [housing], constraints: [reserve] });
-      expect(loaded.source).toBe("fixture");
-      expect(loaded.data.goals).toEqual([housing]);
-      expect(loaded.data.constraints).toEqual([reserve]);
-    });
-
-    it("drops a reserve the request leaves out, as the backend would", async () => {
-      const withReserve = { ...twin, constraints: [reserve] };
-      const loaded = await saveGoals(withReserve, { goals: [housing], constraints: [] });
-      expect(loaded.data.constraints).toEqual([]);
-    });
-
-    it("keeps the saved checking minimum when the request carries none", async () => {
-      const floor = await setMinimumBalance(twin, { amount: 300 });
-      const loaded = await saveGoals(floor.data, { goals: [housing], constraints: [reserve] });
-      const floors = loaded.data.constraints.filter(
-        (c) => c.type === "minimum_checking_balance",
-      );
-      expect(floors).toHaveLength(1);
-      expect(floors[0].amount).toBe(300);
+    it("rejects instead of applying the goals locally", async () => {
+      await expect(
+        saveGoals(twin, { goals: [housing], constraints: [reserve] }),
+      ).rejects.toThrow("fetch failed");
     });
   });
 });

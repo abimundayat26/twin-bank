@@ -1,9 +1,8 @@
 "use client";
 
 /**
- * The shell every page sits inside: the menu control, the product identity, the
- * current page's title, who the demo user is, and where the data came from
- * (SPEC section 2.2).
+ * The shell every page sits inside: primary navigation, product identity, the
+ * current page, the display name and the persistent offline state (G-10/G-25).
  *
  * This is the one place that reads the twin for the chrome, so each page can
  * stay about its own job. It is deliberately short: the shell must not take so
@@ -12,13 +11,14 @@
 
 import { usePathname } from "next/navigation";
 import { destinationFor } from "@/lib/navigation";
+import { OFFLINE_REASON } from "@/lib/offline";
 import { useTwin } from "@/lib/state/TwinProvider";
 import { Header } from "./Header";
 import { Nav } from "./Nav";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { twin, source, simulation } = useTwin();
+  const { twin, isOffline } = useTwin();
   const destination = destinationFor(pathname);
 
   return (
@@ -27,10 +27,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         nav={<Nav />}
         pageTitle={destination?.label}
         userName={twin?.display_name}
-        backend={source}
-        twinSource={twin?.source}
-        isMock={simulation?.is_mock}
       />
+      {isOffline ? (
+        <div
+          role="status"
+          className="border-b border-caution/40 bg-surface px-4 py-2 text-center text-sm font-medium text-caution sm:px-6"
+        >
+          {OFFLINE_REASON}
+        </div>
+      ) : null}
       {children}
     </>
   );
