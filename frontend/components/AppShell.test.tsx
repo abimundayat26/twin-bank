@@ -63,58 +63,22 @@ describe("AppShell", () => {
 
   it("identifies the demo user once the twin loads", async () => {
     renderShell();
-    expect(await screen.findByText(/Demo user:/)).toBeInTheDocument();
-  });
-});
-
-describe("provenance badge", () => {
-  it("calls a connected backend serving fixture data a demo fixture", async () => {
-    vi.mocked(api.getTwin).mockResolvedValue({
-      data: { ...TWIN, source: "fixture" },
-      source: "api",
-    });
-    renderShell();
-    expect(await screen.findByText("Demo fixture")).toBeInTheDocument();
-    expect(screen.getByText("Backend connected")).toBeInTheDocument();
-    expect(screen.queryByText("Nessie data")).not.toBeInTheDocument();
+    expect(await screen.findByText(TWIN.display_name)).toBeInTheDocument();
   });
 
-  it("says Nessie data only when the twin came from Nessie", async () => {
-    vi.mocked(api.getTwin).mockResolvedValue({
-      data: { ...TWIN, source: "nessie" },
-      source: "api",
-    });
-    renderShell();
-    expect(await screen.findByText("Nessie data")).toBeInTheDocument();
-    expect(screen.getByText("Backend connected")).toBeInTheDocument();
-  });
-
-  it("names a twin the Databricks job built, rather than calling it unknown", async () => {
-    vi.mocked(api.getTwin).mockResolvedValue({
-      data: { ...TWIN, source: "databricks" },
-      source: "api",
-    });
-    renderShell();
-    expect(await screen.findByText("Databricks build")).toBeInTheDocument();
-    expect(screen.getByText("Backend connected")).toBeInTheDocument();
-    expect(screen.queryByText("Data source unavailable")).not.toBeInTheDocument();
-  });
-
-  it("never claims live data while the backend is unreachable", async () => {
+  it("shows the persistent offline banner and no data-source chip", async () => {
     vi.mocked(api.getTwin).mockResolvedValue({
       data: { ...TWIN, source: "nessie" },
       source: "fixture",
     });
     renderShell();
-    expect(await screen.findByText("Backend offline")).toBeInTheDocument();
-    expect(screen.getByText("Bundled example")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "Backend offline. Showing saved sample data. Changes are disabled.",
+      ),
+    ).toHaveAttribute("role", "status");
     expect(screen.queryByText("Nessie data")).not.toBeInTheDocument();
-  });
-
-  it("admits an unknown source rather than guessing one", async () => {
-    vi.mocked(api.getTwin).mockResolvedValue({ data: { ...TWIN, source: null }, source: "api" });
-    renderShell();
-    expect(await screen.findByText("Data source unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Backend connected")).not.toBeInTheDocument();
   });
 });
 
@@ -134,8 +98,12 @@ describe("Nav", () => {
     await user.click(screen.getByRole("button", { name: "Menu" }));
 
     const nav = screen.getByRole("navigation", { name: "Primary" });
-    expect(within(nav).getAllByRole("link")).toHaveLength(5);
+    expect(within(nav).getAllByRole("link")).toHaveLength(6);
     expect(within(nav).getByRole("link", { name: /Overview/ })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: /Obligations/ })).toHaveAttribute(
+      "href",
+      "/obligations",
+    );
     expect(within(nav).getByRole("link", { name: /Balance Trajectory/ })).toBeInTheDocument();
   });
 

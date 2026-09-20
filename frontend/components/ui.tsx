@@ -3,6 +3,34 @@
 import type { ReactNode } from "react";
 import type { Provenance } from "@/lib/types";
 
+/** Shared responsive page width and gutters (G-20). */
+export function PageFrame({ children }: { children: ReactNode }) {
+  return (
+    <main className="mx-auto w-full min-w-0 max-w-6xl px-4 py-8 sm:px-6">
+      {children}
+    </main>
+  );
+}
+
+export function PageHeading({ title, children }: { title: string; children?: ReactNode }) {
+  return (
+    <header className="mb-6 min-w-0">
+      <h1 className="break-words text-lg font-semibold text-ink" title={title}>
+        {title}
+      </h1>
+      {children ? <div className="text-sm text-muted">{children}</div> : null}
+    </header>
+  );
+}
+
+/**
+ * A table wrapper whose CSS turns labelled cells into stacked rows below 640px.
+ * Consumers put the column name in each cell's `data-label` attribute (G-20).
+ */
+export function ResponsiveTable({ children }: { children: ReactNode }) {
+  return <div className="responsive-table overflow-x-auto">{children}</div>;
+}
+
 export function Card({
   title,
   subtitle,

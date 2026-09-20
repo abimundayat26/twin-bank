@@ -16,12 +16,14 @@ import type { ReactNode } from "react";
 export function ObligationsPanel({
   twin,
   isBusy = false,
+  isOffline = false,
   savingScope,
   onAnswer,
 }: {
   twin: FinancialTwin;
   /** A twin update is in flight somewhere on the page; no second one may start. */
   isBusy?: boolean;
+  isOffline?: boolean;
   /** Which control started it. Forwarded: each control knows its own scope. */
   savingScope?: string;
   onAnswer: (obligationId: string, category: ObligationCategory) => void;
@@ -35,6 +37,7 @@ export function ObligationsPanel({
           key={obligation.id}
           obligation={obligation}
           isBusy={isBusy}
+          isOffline={isOffline}
           savingScope={savingScope}
           onAnswer={(category) => onAnswer(obligation.id, category)}
         />

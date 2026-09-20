@@ -8,18 +8,21 @@
 import { useState, type FormEvent } from "react";
 import { money } from "@/lib/format";
 import { MINIMUM_BALANCE_SCOPE } from "@/lib/scopes";
+import { OFFLINE_REASON } from "@/lib/offline";
 import { DEFAULT_LOW_BALANCE_THRESHOLD, type FinancialConstraint } from "@/lib/types";
 import { Card, ProvenanceTag } from "./ui";
 
 export function MinimumBalanceCard({
   minimum,
   isBusy,
+  isOffline = false,
   savingScope,
   onSave,
 }: {
   minimum?: FinancialConstraint;
   /** A twin update is in flight somewhere on the page; no second one may start. */
   isBusy: boolean;
+  isOffline?: boolean;
   /** Which control started it, so only that one says "Saving…". */
   savingScope?: string;
   onSave: (amount: number) => void;
@@ -31,7 +34,7 @@ export function MinimumBalanceCard({
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (valid) onSave(amount);
+    if (valid && !isOffline) onSave(amount);
   }
 
   return (
@@ -63,7 +66,8 @@ export function MinimumBalanceCard({
         />
         <button
           type="submit"
-          disabled={!valid || isBusy}
+          disabled={!valid || isBusy || isOffline}
+          title={isOffline ? OFFLINE_REASON : undefined}
           className="shrink-0 rounded-lg bg-counter px-4 py-2 text-sm font-semibold text-canvas transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isSaving ? "Saving…" : minimum ? "Update" : "Set"}

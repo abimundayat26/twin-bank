@@ -35,6 +35,7 @@ function Probe() {
     <div>
       <span data-testid="twin">{t.twin ? t.twin.user_id : "none"}</span>
       <span data-testid="source">{t.source ?? "none"}</span>
+      <span data-testid="offline">{t.isOffline ? "yes" : "no"}</span>
       <span data-testid="error">{t.twinError ?? "none"}</span>
       <span data-testid="simulation">{t.simulation ? t.simulation.simulation_id : "none"}</span>
       <span data-testid="optimization">{t.optimization ? "some" : "none"}</span>
@@ -54,6 +55,7 @@ function renderProbe() {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.mocked(api.getTwin).mockResolvedValue({ data: TWIN, source: "api" });
   vi.mocked(api.runSimulation).mockResolvedValue({ data: SIMULATION, source: "api" });
   vi.mocked(api.runOptimization).mockResolvedValue({
@@ -82,6 +84,20 @@ describe("TwinProvider", () => {
     vi.mocked(api.getTwin).mockResolvedValue({ data: TWIN, source: "fixture" });
     renderProbe();
     await waitFor(() => expect(screen.getByTestId("source")).toHaveTextContent("fixture"));
+    expect(screen.getByTestId("offline")).toHaveTextContent("yes");
+  });
+
+  it("blocks result calls and writes when the loaded twin is offline", async () => {
+    vi.mocked(api.getTwin).mockResolvedValue({ data: TWIN, source: "fixture" });
+    const user = userEvent.setup();
+    renderProbe();
+    await waitFor(() => expect(screen.getByTestId("offline")).toHaveTextContent("yes"));
+
+    await user.click(screen.getByText("sim"));
+    await user.click(screen.getByText("min"));
+
+    expect(api.runSimulation).not.toHaveBeenCalled();
+    expect(api.setMinimumBalance).not.toHaveBeenCalled();
   });
 
   it("clears the simulation when a declared fact changes", async () => {

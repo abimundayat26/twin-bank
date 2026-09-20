@@ -1,5 +1,7 @@
 /** Display helpers. Formatting only — never derive a financial figure here. */
 
+import { createElement, type ReactElement } from "react";
+
 const MONEY = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -36,27 +38,71 @@ const LONG_DATE_TIME = new Intl.DateTimeFormat("en-US", {
   timeZoneName: "short",
 });
 
-export const money = (value: number) => MONEY.format(value);
+const TRUE_MINUS = "−";
 
-export const moneyExact = (value: number) => MONEY_EXACT.format(value);
+/** JavaScript's explicit form of the money rule: halves move away from zero. */
+export function roundHalfAwayFromZero(value: number): number {
+  if (!Number.isFinite(value)) return value;
+  const rounded = Math.floor(Math.abs(value) + 0.5);
+  return value < 0 ? -rounded : rounded;
+}
 
-/** Keeps the sign, e.g. "-$800" / "+$720". */
-export const signedMoney = (value: number) =>
-  `${value < 0 ? "-" : "+"}${MONEY.format(Math.abs(value))}`;
+function withTrueMinus(formatted: string): string {
+  return formatted.replace("-", TRUE_MINUS);
+}
 
-export const percent = (probability: number) => `${Math.round(probability * 100)}%`;
+export const money = (value: number) =>
+  withTrueMinus(MONEY.format(roundHalfAwayFromZero(value)));
+
+export const moneyExact = (value: number) => withTrueMinus(MONEY_EXACT.format(value));
+
+/** Keeps the sign, e.g. "−$800" / "+$720". */
+export const signedMoney = (value: number) => {
+  const rounded = roundHalfAwayFromZero(value);
+  const sign = rounded < 0 ? TRUE_MINUS : "+";
+  return `${sign}${MONEY.format(Math.abs(rounded))}`;
+};
+
+export const percent = (probability: number) =>
+  `${roundHalfAwayFromZero(probability * 100)}%`;
 
 /** Share of simulated futures; never rounds a rare outcome to 0% or a likely one to 100%. */
 export function chance(probability: number): string {
-  if (probability > 0 && probability < 0.01) return "<1%";
-  if (probability > 0.99 && probability < 1) return ">99%";
+  if (probability === 0) return "0%";
+  if (probability === 1) return "100%";
+  if (probability > 0 && probability < 0.005) return "<1%";
+  if (probability >= 0.995 && probability < 1) return ">99%";
   return percent(probability);
+}
+
+/** Threshold decisions receive the backend's raw value, never formatted text (G-4). */
+export function meetsThreshold(value: number, threshold: number): boolean {
+  return value >= threshold;
 }
 
 /** ISO dates are parsed as UTC so the rendered day never shifts by timezone. */
 export const longDate = (iso: string) => LONG_DATE.format(new Date(`${iso}T00:00:00Z`));
 
 export const shortDate = (iso: string) => SHORT_DATE.format(new Date(`${iso}T00:00:00Z`));
+
+/** Date display uses the twin's reference year rather than the wall clock (G-1). */
+export function twinDate(iso: string, asOf: string): string {
+  const formatter = iso.slice(0, 4) === asOf.slice(0, 4) ? SHORT_DATE : new Intl.DateTimeFormat(
+    "en-US",
+    { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" },
+  );
+  return formatter.format(new Date(`${iso}T00:00:00Z`));
+}
+
+/** Accessible date primitive: the full source date is available without sight (G-1). */
+export function DateText({ date, asOf }: { date: string; asOf: string }): ReactElement {
+  const display = twinDate(date, asOf);
+  return createElement(
+    "time",
+    { dateTime: date, title: date, "aria-label": `${display} (${date})` },
+    display,
+  );
+}
 
 /** A timestamp that already carries a zone, or is naive. */
 const ZONED = /(?:Z|[+-]\d{2}:?\d{2})$/i;

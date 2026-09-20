@@ -32,6 +32,7 @@ import {
   type Loaded,
 } from "@/lib/api";
 import { withoutGoal } from "@/lib/goals";
+import { OFFLINE_REASON } from "@/lib/offline";
 import { GOALS_SCOPE, MINIMUM_BALANCE_SCOPE } from "@/lib/scopes";
 import type {
   DeclaredGoalsRequest,
@@ -52,6 +53,7 @@ function errorText(error: unknown): string {
 export interface TwinState {
   twin: FinancialTwin | null;
   source: DataSource | undefined;
+  isOffline: boolean;
   twinError: string | undefined;
   isBusy: boolean;
   savingScope: string | undefined;
@@ -114,6 +116,7 @@ export function TwinProvider({ children }: { children: ReactNode }) {
   const [optimization, setOptimization] = useState<OptimizationResponse | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimizationError, setOptimizationError] = useState<string>();
+  const isOffline = source === "fixture";
 
   function clearOptimization() {
     setOptimization(null);
@@ -173,6 +176,10 @@ export function TwinProvider({ children }: { children: ReactNode }) {
 
   function answerClarification(obligationId: string, category: ObligationCategory) {
     if (!twin) return;
+    if (isOffline) {
+      setTwinUpdateError(OFFLINE_REASON);
+      return;
+    }
     void updateTwin(
       respondToClarification(twin, {
         user_id: twin.user_id,
@@ -185,12 +192,20 @@ export function TwinProvider({ children }: { children: ReactNode }) {
 
   function setMinimum(amount: number) {
     if (!twin) return;
+    if (isOffline) {
+      setTwinUpdateError(OFFLINE_REASON);
+      return;
+    }
     void updateTwin(setMinimumBalance(twin, { amount }), MINIMUM_BALANCE_SCOPE);
   }
 
   /** Drafts only. Nothing reaches the twin until `confirmGoals`. */
   async function compileGoalText(text: string) {
     if (!twin) return;
+    if (isOffline) {
+      setGoalCompileError(OFFLINE_REASON);
+      return;
+    }
     setIsCompilingGoal(true);
     setGoalCompileError(undefined);
     setGoalSaveError(undefined);
@@ -213,6 +228,10 @@ export function TwinProvider({ children }: { children: ReactNode }) {
    */
   async function confirmGoals(request: DeclaredGoalsRequest) {
     if (!twin) return;
+    if (isOffline) {
+      setGoalSaveError(OFFLINE_REASON);
+      return;
+    }
     if (await updateTwin(saveGoals(twin, request), GOALS_SCOPE, setGoalSaveError)) {
       setGoalDraft(null);
       setComposerKey((key) => key + 1);
@@ -221,6 +240,10 @@ export function TwinProvider({ children }: { children: ReactNode }) {
 
   function removeGoal(goalId: string) {
     if (!twin) return;
+    if (isOffline) {
+      setTwinUpdateError(OFFLINE_REASON);
+      return;
+    }
     void updateTwin(saveGoals(twin, withoutGoal(twin, goalId)), goalId);
   }
 
@@ -231,6 +254,10 @@ export function TwinProvider({ children }: { children: ReactNode }) {
 
   async function simulate(event: SimulationEvent) {
     if (!twin) return;
+    if (isOffline) {
+      setSimulationError(OFFLINE_REASON);
+      return;
+    }
     const request = ++latestRequest.current;
     setIsSimulating(true);
     setSimulationError(undefined);
@@ -253,6 +280,10 @@ export function TwinProvider({ children }: { children: ReactNode }) {
   /** On demand: /optimize runs a Monte Carlo per option, so Simulate stays fast. */
   async function optimize() {
     if (!simulation) return;
+    if (isOffline) {
+      setOptimizationError(OFFLINE_REASON);
+      return;
+    }
     const request = latestRequest.current;
     setIsOptimizing(true);
     setOptimizationError(undefined);
@@ -275,6 +306,7 @@ export function TwinProvider({ children }: { children: ReactNode }) {
   const value: TwinState = {
     twin,
     source,
+    isOffline,
     twinError,
     isBusy,
     savingScope,

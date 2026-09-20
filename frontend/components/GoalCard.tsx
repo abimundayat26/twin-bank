@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { money, longDate } from "@/lib/format";
+import { OFFLINE_REASON } from "@/lib/offline";
 import type { Goal } from "@/lib/types";
 import { Card, ProvenanceTag } from "./ui";
 
@@ -16,6 +17,7 @@ export function GoalCard({
   title = "Active savings goal",
   subtitle,
   isBusy = false,
+  isOffline = false,
   savingScope,
   onRemove,
 }: {
@@ -25,6 +27,7 @@ export function GoalCard({
   subtitle?: string;
   /** A twin update is in flight somewhere on the page; no second one may start. */
   isBusy?: boolean;
+  isOffline?: boolean;
   /** Which control started it. This card's scope is the goal's own id. */
   savingScope?: string;
   onRemove?: (goalId: string) => void;
@@ -76,7 +79,8 @@ export function GoalCard({
               <button
                 type="button"
                 onClick={() => onRemove(goal.id)}
-                disabled={isBusy}
+                disabled={isBusy || isOffline}
+                title={isOffline ? OFFLINE_REASON : undefined}
                 className="rounded-lg border border-bad/70 px-3 py-1.5 font-semibold text-bad transition hover:bg-bad/10 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSaving ? "Removing…" : "Remove"}
@@ -86,7 +90,8 @@ export function GoalCard({
             <button
               type="button"
               onClick={() => setConfirming(true)}
-              disabled={isBusy}
+              disabled={isBusy || isOffline}
+              title={isOffline ? OFFLINE_REASON : undefined}
               className="rounded-lg px-3 py-1.5 text-muted transition hover:text-bad disabled:opacity-50"
             >
               Remove goal

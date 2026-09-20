@@ -91,6 +91,32 @@ describe("Plans & Assistant", () => {
  * arguments. The controls themselves are tested beside their components.
  */
 describe("Plans wiring", () => {
+  it("disables existing writes offline with the shared reason", async () => {
+    vi.mocked(api.getTwin).mockResolvedValue({ data: TWIN, source: "fixture" });
+    const user = userEvent.setup();
+    renderPlans();
+    const composer = await screen.findByRole("textbox", { name: "Describe the goal" });
+    await user.type(composer, "Save $500 for books by May");
+
+    const reason = "Backend offline. Showing saved sample data. Changes are disabled.";
+    expect(screen.getByRole("button", { name: "Read this back to me" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Read this back to me" })).toHaveAttribute(
+      "title",
+      reason,
+    );
+    expect(screen.getByRole("button", { name: "Remove goal" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Remove goal" })).toHaveAttribute(
+      "title",
+      reason,
+    );
+    expect(screen.getByRole("button", { name: /Savings transfer/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Savings transfer/ })).toHaveAttribute(
+      "title",
+      reason,
+    );
+    expect(screen.getByRole("button", { name: "Set" })).toHaveAttribute("title", reason);
+  });
+
   it("counts the open questions before the panel that asks them", async () => {
     renderPlans();
     await waitFor(() =>

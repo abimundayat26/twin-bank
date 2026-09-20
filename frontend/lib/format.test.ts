@@ -1,22 +1,28 @@
 import { describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
 
 import {
+  DateText,
   chance,
   longDate,
   longDateTime,
+  meetsThreshold,
   money,
   ordinalDay,
   shortDate,
   signedMoney,
+  twinDate,
 } from "./format";
 
 describe("money", () => {
   it("rounds to whole dollars", () => {
     expect(money(1339.6)).toBe("$1,340");
+    expect(money(25.5)).toBe("$26");
+    expect(money(-25.5)).toBe("−$26");
   });
 
   it("keeps the sign", () => {
-    expect(signedMoney(-800)).toBe("-$800");
+    expect(signedMoney(-800)).toBe("−$800");
     expect(signedMoney(720)).toBe("+$720");
   });
 });
@@ -25,6 +31,8 @@ describe("chance", () => {
   it("never rounds a rare outcome to 0% or a likely one to 100%", () => {
     expect(chance(0.003)).toBe("<1%");
     expect(chance(0.997)).toBe(">99%");
+    expect(chance(0.005)).toBe("1%");
+    expect(chance(0.995)).toBe(">99%");
   });
 
   it("shows impossible and certain outcomes exactly", () => {
@@ -38,6 +46,24 @@ describe("dates", () => {
   it("does not shift the day by timezone", () => {
     expect(longDate("2026-09-20")).toBe("September 20, 2026");
     expect(shortDate("2026-10-01")).toBe("Oct 1");
+  });
+
+  it("uses the twin year and exposes the full ISO date accessibly", () => {
+    expect(twinDate("2026-10-15", "2026-09-18")).toBe("Oct 15");
+    expect(twinDate("2027-05-01", "2026-09-18")).toBe("May 1, 2027");
+
+    render(DateText({ date: "2026-10-15", asOf: "2026-09-18" }));
+    const date = screen.getByText("Oct 15");
+    expect(date).toHaveAttribute("title", "2026-10-15");
+    expect(date).toHaveAttribute("aria-label", "Oct 15 (2026-10-15)");
+  });
+});
+
+describe("thresholds", () => {
+  it("compares the raw value instead of its rounded display", () => {
+    expect(chance(0.499)).toBe("50%");
+    expect(meetsThreshold(0.499, 0.5)).toBe(false);
+    expect(meetsThreshold(0.5, 0.5)).toBe(true);
   });
 });
 

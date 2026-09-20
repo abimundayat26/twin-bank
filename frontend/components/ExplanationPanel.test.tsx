@@ -23,7 +23,7 @@ describe("ExplanationPanel", () => {
         { label: "Paychecks", impact_amount: 2880, direction: "positive", detail: "Biweekly." },
       ],
     });
-    expect(screen.getByText("-$800")).toBeInTheDocument();
+    expect(screen.getByText("−$800")).toBeInTheDocument();
     expect(screen.getByText("+$2,880")).toBeInTheDocument();
   });
 

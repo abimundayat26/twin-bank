@@ -129,6 +129,16 @@ describe("PurchaseSimulator", () => {
     expect(onSimulate).not.toHaveBeenCalled();
   });
 
+  it("disables simulation offline and explains why", () => {
+    const { onSimulate } = renderForm({ isOffline: true });
+    expect(submitButton()).toBeDisabled();
+    expect(submitButton()).toHaveAttribute(
+      "title",
+      "Backend offline. Showing saved sample data. Changes are disabled.",
+    );
+    expect(onSimulate).not.toHaveBeenCalled();
+  });
+
   // A twin with no accounts has nothing to spend from, and the engine would
   // reject the event with "Unknown account_id ''".
   it("cannot submit against a twin with no accounts", () => {

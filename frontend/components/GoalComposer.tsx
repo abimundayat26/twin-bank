@@ -27,6 +27,7 @@
 
 import { useState, type FormEvent } from "react";
 import { longDate, money } from "@/lib/format";
+import { OFFLINE_REASON } from "@/lib/offline";
 import { GOALS_SCOPE } from "@/lib/scopes";
 import {
   appendAnswers,
@@ -84,6 +85,7 @@ export function GoalComposer({
   draft,
   isCompiling,
   isBusy,
+  isOffline = false,
   savingScope,
   compileError,
   saveError,
@@ -102,6 +104,7 @@ export function GoalComposer({
   isCompiling: boolean;
   /** A twin update is in flight somewhere on the page; no second one may start. */
   isBusy: boolean;
+  isOffline?: boolean;
   /** Which control started it, so only that one says "Saving…". */
   savingScope?: string;
   compileError?: string;
@@ -111,7 +114,7 @@ export function GoalComposer({
   onDiscard: () => void;
 }) {
   const [text, setText] = useState("");
-  const canCompile = text.trim().length > 0 && !isCompiling;
+  const canCompile = text.trim().length > 0 && !isCompiling && !isOffline;
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -150,6 +153,7 @@ export function GoalComposer({
           <button
             type="submit"
             disabled={!canCompile}
+            title={isOffline ? OFFLINE_REASON : undefined}
             className="rounded-lg bg-counter px-4 py-2 text-sm font-semibold text-canvas transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isCompiling ? "Reading…" : draft ? "Read it again" : "Read this back to me"}
@@ -185,6 +189,7 @@ export function GoalComposer({
           draft={draft}
           isCompiling={isCompiling}
           isBusy={isBusy}
+          isOffline={isOffline}
           isSaving={savingScope === GOALS_SCOPE}
           saveError={saveError}
           onAnswer={answer}
@@ -202,6 +207,7 @@ function Review({
   draft,
   isCompiling,
   isBusy,
+  isOffline,
   isSaving,
   saveError,
   onAnswer,
@@ -213,6 +219,7 @@ function Review({
   draft: GoalCompileResponse;
   isCompiling: boolean;
   isBusy: boolean;
+  isOffline: boolean;
   isSaving: boolean;
   saveError?: string;
   onAnswer: (clarification: GoalClarification, said: string) => void;
@@ -369,6 +376,7 @@ function Review({
                 clarification={clarification}
                 index={index}
                 isCompiling={isCompiling}
+                isOffline={isOffline}
                 onAnswer={onAnswer}
               />
             ))}
@@ -396,7 +404,8 @@ function Review({
       <button
         type="button"
         onClick={() => onConfirm({ goals: editedGoals, constraints: mergedConstraints })}
-        disabled={parsedNothing || invalid || isBusy}
+        disabled={parsedNothing || invalid || isBusy || isOffline}
+        title={isOffline ? OFFLINE_REASON : undefined}
         className="rounded-lg bg-baseline px-4 py-2 text-sm font-semibold text-canvas transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isSaving ? "Saving…" : "Confirm and update my twin"}
@@ -413,16 +422,18 @@ function Clarification({
   clarification,
   index,
   isCompiling,
+  isOffline,
   onAnswer,
 }: {
   clarification: GoalClarification;
   index: number;
   isCompiling: boolean;
+  isOffline: boolean;
   onAnswer: (clarification: GoalClarification, said: string) => void;
 }) {
   const [said, setSaid] = useState("");
   const inputId = `clarification-${clarification.field}-${index}`;
-  const canAnswer = said.trim().length > 0 && !isCompiling;
+  const canAnswer = said.trim().length > 0 && !isCompiling && !isOffline;
 
   return (
     <li>
@@ -449,6 +460,7 @@ function Clarification({
         <button
           type="button"
           disabled={!canAnswer}
+          title={isOffline ? OFFLINE_REASON : undefined}
           onClick={() => onAnswer(clarification, said)}
           className="shrink-0 rounded-lg border border-counter px-3 py-2 text-sm font-medium text-counter transition hover:bg-counter/10 disabled:cursor-not-allowed disabled:opacity-50"
         >
