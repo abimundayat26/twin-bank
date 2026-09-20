@@ -66,6 +66,27 @@ def build_twin(request: TwinBuildRequest) -> FinancialTwin:
     The result is returned, not stored: `GET /twin/{user_id}` keeps serving the
     twin on file, so a detector that reads the history differently cannot break
     the demo.
+
+    **Intentionally backend-only. There is no UI entry point, and that is a
+    decision rather than an omission.**
+
+    `SPEC.md` section 9 notes this is the one endpoint the frontend does not use.
+    It stays that way because of the line above: a build returns a twin and
+    changes nothing. A "Rebuild" control would therefore either show the user a
+    twin the app is not using, or look like it refreshed something when it did
+    not, and `frontend/SPEC.md` section 3.5 rules that out directly -- refresh or
+    rebuild controls "may be added only after the backend exposes an
+    authenticated, well-defined operation", and until then the page "must not
+    simulate a refresh in local frontend state". This operation is neither
+    authenticated nor persistent.
+
+    What it is for is the pipeline: it is how `backend.ingest` is exercised over
+    real input, how a build gets logged to MLflow, and the seam the Databricks
+    job and the Nessie path build through. `README.md` shows the curl.
+
+    Giving it a UI needs two things first: somewhere for the result to go, and
+    something deciding who may ask for it. Until both exist, wiring it up would
+    be dishonest rather than merely premature.
     """
     twin = twin_for(request.user_id)
     # The seam Phase 3 replaces: the same transactions, fetched from Nessie.

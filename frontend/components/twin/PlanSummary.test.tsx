@@ -92,7 +92,7 @@ describe("ObligationsSummary", () => {
   it("surfaces the bill due soonest in the month", () => {
     render(<ObligationsSummary twin={TWIN} />);
     const row = screen.getByText("The next mandatory bill").closest("li")!;
-    expect(within(row).getByText("Rent")).toBeInTheDocument();
+    expect(within(row).getByText("Hokie Property Mgmt Rent")).toBeInTheDocument();
   });
 
   it("says so plainly when nothing is mandatory", () => {
@@ -113,7 +113,7 @@ describe("ObligationsSummary", () => {
 
   it("pluralises several open questions", () => {
     const twoQuestions = TWIN.obligations.map((o) =>
-      o.id === "obl_subscriptions"
+      o.id === "obl_spotify_premium"
         ? { ...o, category_candidates: [{ category: "bill" as const, probability: 0.5 }] }
         : o,
     );

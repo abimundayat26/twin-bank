@@ -15,6 +15,7 @@ from backend.schemas import (
     OneTimeObligation,
     OptimizationRequest,
     OptimizationResponse,
+    ProcessingLineage,
     ScenarioMetrics,
     SeasonalProfile,
     SimulationResponse,
@@ -98,7 +99,7 @@ def test_category_fields_default_to_unasked():
     assert obligation.category_candidates == []
     assert obligation.declared_category is None
     asked = [o.id for o in load_twin().obligations if o.category_candidates]
-    assert asked == ["obl_mystery_transfer"]
+    assert asked == ["obl_online_transfer_to"]
     assert all(o.declared_category is None for o in load_twin().obligations)
 
 
@@ -343,11 +344,14 @@ def test_flat_mean_forecast_needs_no_half_life():
     assert forecast.half_life_days is None
 
 
-def test_twin_forecast_is_optional_and_unset_on_the_fixture():
+def test_twin_forecast_is_optional_but_recorded_on_the_fixture():
+    """Optional in the schema, because a Nessie twin with a few months of history
+    may have nothing worth recording. Present on the demo fixture, because that
+    one was rebuilt from a year of transactions and can say how."""
     twin = load_twin()
-    assert twin.forecast is None
-    carried = twin.model_copy(update={"forecast": ForecastMetadata.model_validate(FORECAST)})
-    assert FinancialTwin.model_validate_json(carried.model_dump_json()) == carried
+    assert twin.forecast is not None
+    assert FinancialTwin.model_validate_json(twin.model_dump_json()) == twin
+    assert twin.model_copy(update={"forecast": None}).forecast is None
 
 
 @pytest.mark.parametrize("source", ["fixture", "nessie", "databricks", None])
@@ -370,6 +374,7 @@ TUITION = {
     "amount": 1200.0,
     "due_date": "2027-01-15",
     "account_id": "acc_checking",
+    "mandatory": True,
 }
 
 
@@ -384,6 +389,12 @@ def test_one_time_obligation_is_always_declared():
     """It comes from the user, so nothing may label it as read off banking data."""
     with pytest.raises(ValidationError):
         OneTimeObligation.model_validate({**TUITION, "provenance": "observed"})
+
+
+def test_one_time_obligation_requires_mandatory_status():
+    data = {key: value for key, value in TUITION.items() if key != "mandatory"}
+    with pytest.raises(ValidationError):
+        OneTimeObligation.model_validate(data)
 
 
 @pytest.mark.parametrize("amount", [0, -1])
@@ -411,3 +422,82 @@ def test_twin_keeps_one_time_obligations_in_order():
     twin = load_twin().model_copy(update={"one_time_obligations": declared})
     parsed = FinancialTwin.model_validate_json(twin.model_dump_json())
     assert [o.id for o in parsed.one_time_obligations] == ["one_tuition", "one_deposit"]
+
+
+# --- Processing lineage -------------------------------------------------------
+
+RUN_ID = "0123456789abcdef0123456789abcdef"  # MLflow's shape: 32 lowercase hex.
+
+LINEAGE = {
+    "location": "databricks",
+    "status": "succeeded",
+    "mlflow_run_id": RUN_ID,
+    "run_time": "2026-09-19T04:15:00Z",
+}
+
+
+def test_twin_lineage_is_optional_and_unset_on_the_fixture():
+    """Nothing records lineage yet, so the UI must show it as unavailable."""
+    twin = load_twin()
+    assert twin.lineage is None
+    carried = twin.model_copy(update={"lineage": ProcessingLineage.model_validate(LINEAGE)})
+    assert FinancialTwin.model_validate_json(carried.model_dump_json()) == carried
+
+
+def test_lineage_needs_only_a_location():
+    """A producer that knows where it ran and nothing else can still be honest."""
+    lineage = ProcessingLineage(location="local")
+    assert (lineage.status, lineage.mlflow_run_id, lineage.run_time) == ("unknown", None, None)
+
+
+@pytest.mark.parametrize("location", ["local", "databricks"])
+def test_lineage_accepts_every_known_location(location):
+    assert ProcessingLineage.model_validate({**LINEAGE, "location": location}).location == location
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [{"location": "my_laptop"}, {"status": "probably_fine"}, {"run_time": "last Tuesday"}],
+)
+def test_lineage_rejects_values_outside_its_closed_sets(bad):
+    with pytest.raises(ValidationError):
+        ProcessingLineage.model_validate({**LINEAGE, **bad})
+
+
+# Nothing here is real. These stand for the shapes a credential arrives in --
+# a bearer token, a connection string, an environment dump -- to prove each is
+# rejected by the schema rather than by a reviewer noticing it.
+CREDENTIAL_SHAPED = [
+    "Bearer abcdefghijklmnopqrstuvwxyz012345",
+    "https://workspace.example?token=abcdef",
+    "DATABRICKS_TOKEN=abcdef123456",
+    "0123456789ABCDEF0123456789ABCDEF",  # right length, wrong alphabet
+    RUN_ID + "extra",
+]
+
+
+@pytest.mark.parametrize("value", CREDENTIAL_SHAPED)
+@pytest.mark.parametrize("field", ["location", "status", "mlflow_run_id", "run_time"])
+def test_no_field_of_lineage_can_hold_a_credential(field, value):
+    """frontend/SPEC.md section 3.5: no secret can reach the browser.
+
+    Every field is a closed set of words, a fixed identifier shape or a
+    timestamp, so there is nowhere a token could be pasted in even by mistake.
+    """
+    with pytest.raises(ValidationError):
+        ProcessingLineage.model_validate({**LINEAGE, field: value})
+
+
+@pytest.mark.parametrize("name", ["token", "api_key", "password", "host", "connection_string"])
+def test_lineage_rejects_a_secret_smuggled_in_under_a_new_name(name):
+    """A field added without review must fail loudly, not serialize to the browser."""
+    with pytest.raises(ValidationError):
+        ProcessingLineage.model_validate({**LINEAGE, name: "secret-value"})
+
+
+def test_a_twin_carrying_lineage_serializes_nothing_but_identifiers():
+    twin = load_twin().model_copy(
+        update={"lineage": ProcessingLineage.model_validate(LINEAGE)}
+    )
+    payload = twin.model_dump(mode="json")["lineage"]
+    assert set(payload) == {"location", "status", "mlflow_run_id", "run_time"}

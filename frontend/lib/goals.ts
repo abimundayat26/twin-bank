@@ -162,6 +162,8 @@ export function answerSentence(clarification: GoalClarification, answer: string)
       return `${fragment} ${/^for\b/i.test(said) ? said : `for ${said}`}`;
     case "account":
       return `${fragment} ${/^(from|out of|using)\b/i.test(said) ? said : `from ${said}`}`;
+    case "mandatory":
+      return `${fragment}, ${said}`;
     // "type" and "intent" both ask which of two readings was meant. Only saying
     // that part again can settle it, so the answer replaces the fragment.
     case "type":

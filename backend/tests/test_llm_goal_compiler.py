@@ -16,7 +16,16 @@ AS_OF = date(2026, 9, 19)
 ALEX = "I need $1,600 for summer housing by May and want to keep at least $1,500 for emergencies"
 
 
-def item(kind="goal", fragment="", name=None, amount=None, deadline=None, question=None, question_field=None):
+def item(
+    kind="goal",
+    fragment="",
+    name=None,
+    amount=None,
+    deadline=None,
+    question=None,
+    question_field=None,
+    mandatory=None,
+):
     return LlmItem(
         kind=kind,
         fragment=fragment,
@@ -25,6 +34,7 @@ def item(kind="goal", fragment="", name=None, amount=None, deadline=None, questi
         deadline=deadline,
         question=question,
         question_field=question_field,
+        mandatory=mandatory,
     )
 
 
@@ -105,13 +115,20 @@ def test_bad_or_missing_deadline_is_asked_about(deadline):
     assert [c.field for c in result.clarifications] == ["deadline"]
 
 
-TUITION = "I have $1,200 tuition due 2027-01-15 from checking"
+TUITION = "I have $1,200 tuition due 2027-01-15 from checking, mandatory"
 
 
 def test_obligation_item_is_drafted_against_a_real_account():
     result = validate(
         TUITION,
-        item(kind="obligation", fragment=TUITION, name="Tuition", amount=1200, deadline="2027-01-15"),
+        item(
+            kind="obligation",
+            fragment=TUITION,
+            name="Tuition",
+            amount=1200,
+            deadline="2027-01-15",
+            mandatory=True,
+        ),
     )
     assert [(o.name, o.amount, o.account_id) for o in result.one_time_obligations] == [
         ("Tuition", 1200.0, "acc_checking")
@@ -120,19 +137,34 @@ def test_obligation_item_is_drafted_against_a_real_account():
 
 
 def test_obligation_item_missing_a_due_date_becomes_a_question():
-    text = "I have $1,200 tuition to pay from checking"
+    text = "I have $1,200 tuition to pay from checking, mandatory"
     result = validate(
-        text, item(kind="obligation", fragment=text, name="Tuition", amount=1200, deadline=None)
+        text,
+        item(
+            kind="obligation",
+            fragment=text,
+            name="Tuition",
+            amount=1200,
+            deadline=None,
+            mandatory=True,
+        ),
     )
     assert result.one_time_obligations == []
     assert [c.field for c in result.clarifications] == ["deadline"]
 
 
 def test_obligation_item_with_no_account_named_becomes_a_question():
-    text = "I have $1,200 tuition due 2027-01-15"
+    text = "I have $1,200 tuition due 2027-01-15, mandatory"
     result = validate(
         text,
-        item(kind="obligation", fragment=text, name="Tuition", amount=1200, deadline="2027-01-15"),
+        item(
+            kind="obligation",
+            fragment=text,
+            name="Tuition",
+            amount=1200,
+            deadline="2027-01-15",
+            mandatory=True,
+        ),
     )
     assert result.one_time_obligations == []
     assert [c.field for c in result.clarifications] == ["account"]
@@ -142,10 +174,34 @@ def test_obligation_amount_not_written_in_the_fragment_is_asked_about():
     """The model may not invent the number any more for an obligation than for a goal."""
     result = validate(
         TUITION,
-        item(kind="obligation", fragment=TUITION, name="Tuition", amount=9999, deadline="2027-01-15"),
+        item(
+            kind="obligation",
+            fragment=TUITION,
+            name="Tuition",
+            amount=9999,
+            deadline="2027-01-15",
+            mandatory=True,
+        ),
     )
     assert result.one_time_obligations == []
     assert [c.field for c in result.clarifications] == ["amount"]
+
+
+def test_obligation_status_not_written_in_the_fragment_is_asked_about():
+    text = "I have $1,200 tuition due 2027-01-15 from checking"
+    result = validate(
+        text,
+        item(
+            kind="obligation",
+            fragment=text,
+            name="Tuition",
+            amount=1200,
+            deadline="2027-01-15",
+            mandatory=True,
+        ),
+    )
+    assert result.one_time_obligations == []
+    assert [c.field for c in result.clarifications] == ["mandatory"]
 
 
 def test_unclear_item_passes_through_as_a_question():

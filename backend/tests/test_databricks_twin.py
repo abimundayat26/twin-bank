@@ -11,6 +11,7 @@ from backend.databricks_twin import (
     load_config,
 )
 from backend.fixtures import load_twin
+from backend.schemas import ProcessingLineage
 
 TOKEN = "test-token"
 CONFIG = DatabricksConfig(
@@ -116,6 +117,30 @@ def test_a_databricks_twin_is_served_and_labelled(monkeypatch, logged):
     twin = twin_source.load_source_twin()
     assert twin.source == "databricks"
     assert logged == [], "the job records its own builds"
+
+
+def test_nothing_invents_lineage_for_a_databricks_twin(monkeypatch, logged):
+    """The job does not record a run yet, and serving must not pretend it did."""
+    use_databricks(monkeypatch)
+    fetching(monkeypatch, built_twin_json())
+    assert twin_source.load_source_twin().lineage is None
+
+
+def test_lineage_the_job_wrote_survives_the_declared_data_overlay(monkeypatch, logged):
+    """Where the work ran is the job's to report, so serving must carry it through.
+
+    Goals and constraints are replaced from the fixture on the way out; lineage
+    describes the run that produced the observed half and must not be dropped
+    with them.
+    """
+    use_databricks(monkeypatch)
+    lineage = ProcessingLineage(
+        location="databricks",
+        status="succeeded",
+        mlflow_run_id="0123456789abcdef0123456789abcdef",
+    )
+    fetching(monkeypatch, built_twin_json(lineage=lineage))
+    assert twin_source.load_source_twin().lineage == lineage
 
 
 def test_declared_data_is_never_taken_from_databricks(monkeypatch, logged):

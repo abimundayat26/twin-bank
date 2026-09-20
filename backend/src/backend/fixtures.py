@@ -13,7 +13,25 @@ FIXTURES_DIR = Path(__file__).resolve().parents[2] / "fixtures"
 
 
 def load_twin() -> FinancialTwin:
+    """Alex's demo twin: what the app serves and what the frontend mocks mirror."""
     return FinancialTwin.model_validate_json((FIXTURES_DIR / "twin.json").read_text())
+
+
+def load_seed_twin() -> FinancialTwin:
+    """The hand-written twin the mock transaction feed is generated from.
+
+    Only two things read this: `ingest.generate_transactions`, which turns it
+    into a year of plausible statement rows, and the tests that check the
+    detector rediscovered what was put in.
+
+    It exists because the two fixtures used to be one, which made them circular:
+    the feed was generated from `twin.json` while a rebuild derived `twin.json`
+    from the feed. Splitting the roles gives each file one job. The seed is the
+    *input* — the structure a detector is supposed to find — and `twin.json` is
+    the *output*. Nothing the app serves should read the seed, or a test that
+    compares the two would be comparing a file with itself.
+    """
+    return FinancialTwin.model_validate_json((FIXTURES_DIR / "twin_seed.json").read_text())
 
 
 def load_simulation() -> SimulationResponse:
