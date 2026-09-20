@@ -13,6 +13,12 @@
 #   fixtures/twin.json          -> ${var.volume}/twin_on_file.json
 # The built twin is written to ${var.volume}/twin.json.
 #
+# The default volume lives in the `main` catalog. A workspace without one (a
+# free-tier workspace only has `workspace`) needs its own volume, passed to
+# deploy and run alike:
+#   databricks bundle deploy --var volume=/Volumes/workspace/twinbank/data
+#   databricks bundle run twin_build --var volume=/Volumes/workspace/twinbank/data
+#
 # Tracking stays off in the job (TRACK_TWIN_BUILDS is unset), the same default
 # as everywhere else.
 
@@ -50,7 +56,8 @@ resources:
       environments:
         - environment_key: backend
           spec:
-            environment_version: "2"
+            # Python 3.12; the wheel requires it. Version 2 is Python 3.11.
+            environment_version: "3"
             dependencies:
               - ./dist/*.whl
 
