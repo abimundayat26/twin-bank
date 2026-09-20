@@ -19,8 +19,8 @@ def reset_twin_store(tmp_path, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def no_real_llm(monkeypatch):
-    """A developer's shell may export a real key; tests must never call Claude."""
-    for name in ("GOAL_COMPILER", "ANTHROPIC_API_KEY", "LLM_MODEL"):
+    """A developer's shell may export a real key; tests must never call a model."""
+    for name in ("GOAL_COMPILER", "GEMINI_API_KEY", "GOOGLE_API_KEY", "LLM_MODEL"):
         monkeypatch.delenv(name, raising=False)
 
 

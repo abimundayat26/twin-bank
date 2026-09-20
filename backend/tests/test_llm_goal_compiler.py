@@ -1,11 +1,11 @@
-"""LLM goal compiler: code-side checks on Claude's draft, and the fallback to rules. No network."""
+"""LLM goal compiler: code-side checks on Gemini's draft, and the fallback to rules. No network."""
 
 from datetime import date
 
-import anthropic
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from google.genai import errors as genai_errors
 
 from backend.fixtures import load_twin
 from backend import llm_goal_compiler
@@ -51,7 +51,7 @@ def validate(text: str, *items: LlmItem, unparsed: list[str] | None = None, acco
 @pytest.fixture
 def llm_on(monkeypatch):
     monkeypatch.setenv("GOAL_COMPILER", "llm")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
 
 
 # --- validate_draft ---------------------------------------------------------------
@@ -246,7 +246,7 @@ def test_unparsed_keeps_only_words_from_the_text():
 
 def test_rules_without_a_key_never_call_the_llm(monkeypatch):
     monkeypatch.delenv("GOAL_COMPILER", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 
     def boom(text, as_of):
         raise AssertionError("LLM should not be called")
@@ -256,7 +256,7 @@ def test_rules_without_a_key_never_call_the_llm(monkeypatch):
 
 def test_llm_is_the_default_when_a_key_is_set(monkeypatch):
     monkeypatch.delenv("GOAL_COMPILER", raising=False)
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     draft = LlmDraft(items=[item(kind="reserve", fragment="keep at least $1,500 for emergencies", amount=1500)],
                      unparsed=[])
     assert compile_goals_auto("alex", ALEX, AS_OF, extract=lambda t, d: draft).compiler == "llm"
@@ -264,7 +264,7 @@ def test_llm_is_the_default_when_a_key_is_set(monkeypatch):
 
 def test_rules_can_be_forced_even_with_a_key(monkeypatch):
     monkeypatch.setenv("GOAL_COMPILER", "rules")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
 
     def boom(text, as_of):
         raise AssertionError("LLM should not be called")
@@ -274,7 +274,7 @@ def test_rules_can_be_forced_even_with_a_key(monkeypatch):
 
 def test_llm_needs_a_key(monkeypatch):
     monkeypatch.setenv("GOAL_COMPILER", "llm")
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     assert compile_goals_auto("alex", ALEX, AS_OF, extract=lambda t, d: None).compiler == "rules"
 
 
@@ -286,9 +286,24 @@ def test_llm_path_when_enabled(llm_on):
     assert [c.amount for c in result.constraints] == [1500]
 
 
+def test_the_real_client_is_never_constructed(monkeypatch, llm_on):
+    """Every path through compile_goals_auto with an injected extract, or no key, stays off the SDK."""
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("the Gemini client was constructed in a test")
+
+    monkeypatch.setattr(llm_goal_compiler.genai, "Client", refuse)
+    reserve = LlmDraft(items=[item(kind="reserve", fragment="keep at least $1,500 for emergencies", amount=1500)],
+                       unparsed=[])
+    for extract in (lambda t, d: reserve, lambda t, d: None):
+        compile_goals_auto("alex", ALEX, AS_OF, extract=extract)
+    monkeypatch.delenv("GEMINI_API_KEY")
+    assert compile_goals_auto("alex", ALEX, AS_OF).compiler == "rules"  # default extract, but no key
+
+
 def test_api_failure_falls_back_to_rules(llm_on):
     def down(text, as_of):
-        raise anthropic.APIConnectionError(request=httpx.Request("POST", "https://api.anthropic.com"))
+        raise genai_errors.ServerError(503, {"error": {"message": "unavailable", "status": "UNAVAILABLE"}})
 
     result = compile_goals_auto("alex", ALEX, AS_OF, extract=down)
     assert result.compiler == "rules"
@@ -315,30 +330,82 @@ def test_a_malformed_draft_falls_back_to_rules(llm_on):
 
 def test_a_timeout_falls_back_to_rules_and_says_so(llm_on):
     def slow(text, as_of):
-        raise anthropic.APITimeoutError(request=httpx.Request("POST", "https://api.anthropic.com"))
+        raise httpx.ReadTimeout("timed out", request=httpx.Request("POST", "https://example.invalid"))
 
     result = compile_goals_auto("alex", TUITION, AS_OF, extract=slow, accounts=load_twin().accounts)
     assert result.compiler == "rules"  # honest about which compiler actually answered
     assert [o.name for o in result.one_time_obligations] == ["Tuition"]
 
 
-def test_claude_call_uses_sonnet_5_with_thinking_off(monkeypatch):
-    calls = []
+def fake_gemini(monkeypatch, text: str | None):
+    """Swap the SDK client for a fake that records its construction and its one call."""
+    seen = {"clients": [], "calls": []}
 
-    class FakeMessages:
-        def parse(self, **kwargs):
-            calls.append(kwargs)
-            return type("Response", (), {"parsed_output": LlmDraft(items=[], unparsed=[])})()
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            seen["calls"].append(kwargs)
+            return type("Response", (), {"text": text})()
 
     class FakeClient:
         def __init__(self, **kwargs):
-            self.messages = FakeMessages()
+            seen["clients"].append(kwargs)
+            self.models = FakeModels()
 
-    monkeypatch.setattr(llm_goal_compiler.anthropic, "Anthropic", FakeClient)
-    llm_goal_compiler.extract_with_claude(ALEX, AS_OF)
-    [call] = calls
-    assert call["model"] == "claude-sonnet-5"
-    assert call["thinking"] == {"type": "disabled"}
+    monkeypatch.setattr(llm_goal_compiler.genai, "Client", FakeClient)
+    return seen
+
+
+def test_gemini_call_uses_flash_with_minimal_thinking_and_one_attempt(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    seen = fake_gemini(monkeypatch, '{"items": [], "unparsed": []}')
+    assert llm_goal_compiler.extract_with_gemini(ALEX, AS_OF) == LlmDraft(items=[], unparsed=[])
+
+    [client] = seen["clients"]
+    assert client["api_key"] == "test-key"
+    assert client["http_options"].timeout == 6000  # milliseconds, our own limit
+    # Gemini rejects a server deadline under 10 s, so it must not be the 6 s limit.
+    assert client["http_options"].headers == {"X-Server-Timeout": "10"}
+    assert client["http_options"].retry_options.attempts == 1
+
+    [call] = seen["calls"]
+    config = call["config"]
+    assert call["model"] == "gemini-3-flash-preview"
+    assert config.thinking_config.thinking_level == "MINIMAL"
+    assert config.automatic_function_calling.disable is True
+    assert config.response_mime_type == "application/json"
+    assert config.response_json_schema == LlmDraft.model_json_schema()
+    assert config.system_instruction == llm_goal_compiler.SYSTEM_PROMPT
+
+
+def test_llm_model_overrides_the_default(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_MODEL", "some-other-model")
+    seen = fake_gemini(monkeypatch, '{"items": [], "unparsed": []}')
+    llm_goal_compiler.extract_with_gemini(ALEX, AS_OF)
+    assert seen["calls"][0]["model"] == "some-other-model"
+
+
+@pytest.mark.parametrize("answer", [None, ""])
+def test_gemini_returning_no_text_gives_no_draft(monkeypatch, answer):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    fake_gemini(monkeypatch, answer)
+    assert llm_goal_compiler.extract_with_gemini(ALEX, AS_OF) is None
+
+
+def test_unparseable_gemini_text_falls_back_to_rules(monkeypatch):
+    """The real extract raises on bad JSON; compile_goals_auto must still answer."""
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    fake_gemini(monkeypatch, "not json at all")
+    result = compile_goals_auto("alex", ALEX, AS_OF, extract=llm_goal_compiler.extract_with_gemini)
+    assert result.compiler == "rules"
+    assert len(result.goals) == 1
+
+
+def test_a_google_key_alone_does_not_turn_the_llm_on(monkeypatch):
+    """llm_enabled() checks GEMINI_API_KEY, the one the client is given."""
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    assert compile_goals_auto("alex", ALEX, AS_OF, extract=lambda t, d: None).compiler == "rules"
 
 
 def test_empty_llm_answer_falls_back_to_rules(llm_on):
@@ -347,7 +414,7 @@ def test_empty_llm_answer_falls_back_to_rules(llm_on):
 
 def test_compile_endpoint_uses_rules_with_no_key(monkeypatch):
     monkeypatch.delenv("GOAL_COMPILER", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     response = TestClient(app).post("/goals/compile", json={"user_id": "alex", "text": ALEX})
     assert response.status_code == 200
     assert response.json()["compiler"] == "rules"

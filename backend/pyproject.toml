@@ -9,8 +9,8 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.0",
-    "anthropic>=1.7.0",
     "fastapi>=0.141.1",
+    "google-genai>=2.24.0",
     "httpx>=0.28.1",
     "mlflow-skinny>=3.16.1",
     "pydantic>=2.13.5",

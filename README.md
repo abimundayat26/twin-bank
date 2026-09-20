@@ -110,14 +110,14 @@ The user's answers (declared categories, minimum balance, goals, reserve and obl
 
 `SIMULATION_SEED` fixes the Monte Carlo seed, and `CORS_ORIGINS` (default `http://localhost:3000`) lists the frontend origins the backend accepts.
 
-### Drafting goals with Claude (optional)
+### Drafting goals with Gemini (optional)
 
-`POST /goals/compile` has Claude draft goals from the text whenever `ANTHROPIC_API_KEY` is set, and uses the rule-based compiler when it is not, so no key is needed to run the demo. Set the key in `.env`:
+`POST /goals/compile` has Gemini draft goals from the text whenever `GEMINI_API_KEY` is set, and uses the rule-based compiler when it is not, so no key is needed to run the demo. Set the key in `.env` and start the backend with `uv run --env-file ../.env uvicorn backend.main:app --reload --port 8000` (the backend does not read `.env` by itself):
 
 ```sh
-ANTHROPIC_API_KEY=sk-ant-...
-GOAL_COMPILER=llm           # the default; set rules to force the rule-based compiler
-LLM_MODEL=claude-sonnet-5   # optional; this is the default
+GEMINI_API_KEY=...
+GOAL_COMPILER=llm                  # the default; set rules to force the rule-based compiler
+LLM_MODEL=gemini-3-flash-preview   # optional; this is the default
 ```
 
 The LLM only extracts draft items. Deterministic code checks each one: the fragment must appear in the text, the amount must appear in the fragment, and the deadline goes through the same checks as the rules compiler. Anything that fails a check becomes a clarification question. If the key is missing or the call fails or takes over 6 seconds, the endpoint falls back to the rules compiler. The response's `compiler` field says which one ran.
