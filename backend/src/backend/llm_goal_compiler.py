@@ -33,6 +33,7 @@ from backend.goal_compiler import (
     dedupe_constraints,
     funding_account,
     money,
+    obligation_status,
     parse_amount,
     parse_deadline,
     unique_goal_id,
@@ -64,6 +65,7 @@ class LlmItem(BaseModel):
     deadline: str | None
     question: str | None
     question_field: GoalClarificationField | None
+    mandatory: bool | None = None
 
 
 class LlmDraft(BaseModel):
@@ -84,7 +86,7 @@ For each thing the user asks for, add one item:
   question_field "intent".
 - kind "unclear": the user wants something but a detail is missing or ambiguous. Set question
   (one short question to the user) and question_field (amount, deadline, name, type,
-  account or intent).
+  account, intent or mandatory).
 Fields:
 - fragment: the exact words from the text this item comes from, copied character for character.
 - name: a short name for a goal ("Summer housing"), else null.
@@ -92,6 +94,8 @@ Fields:
 - deadline: YYYY-MM-DD only if the text names a specific date or month; resolve it relative to
   today's date given below (the next such date after today). For vague timing ("next summer",
   "soon", "someday") set deadline to null and make the item "unclear" with question_field "deadline".
+- mandatory: true or false only if the fragment explicitly says mandatory or optional; otherwise
+  set it to null and make the item "unclear" with question_field "mandatory".
 Put parts of the text that ask for nothing in unparsed, copied exactly."""
 
 
@@ -148,6 +152,11 @@ def draft_llm_obligation(
         ask("account", account_question, fragment)
         return
 
+    mandatory = obligation_status(fragment)
+    if mandatory is None or item.mandatory is not mandatory:
+        ask("mandatory", f"Is {what} mandatory or optional?", fragment)
+        return
+
     assert due is not None and account_id is not None
     drafted.append(
         OneTimeObligation(
@@ -156,6 +165,7 @@ def draft_llm_obligation(
             amount=item.amount,
             due_date=due,
             account_id=account_id,
+            mandatory=mandatory,
         )
     )
 

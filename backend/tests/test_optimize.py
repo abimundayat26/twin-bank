@@ -124,7 +124,7 @@ def test_spending_cut_scales_only_that_category(twin):
 
 def with_discretionary_profile(twin, factors: dict[int, float] | None):
     """Pin discretionary to $110 per 14 days with this profile, whatever the fixture holds."""
-    assert twin.as_of == date(2026, 9, 19)  # the horizons below are written against this date
+    assert twin.as_of == date(2026, 9, 18)  # the horizons below are written against this date
     profile = SeasonalProfile(factors=factors) if factors is not None else None
     spending = [
         v.model_copy(update={"mean_14d": 110.0, "seasonal": profile})

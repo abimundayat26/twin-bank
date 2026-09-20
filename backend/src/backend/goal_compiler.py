@@ -50,28 +50,41 @@ AMOUNT = re.compile(
 )
 
 DEADLINE_WORD = r"(?:by|before|until|no later than)"
+# "by next June" is the same date as "by June": next_occurrence already rolls past as_of,
+# so the qualifier only has to stop the month patterns failing to match at all.
+MONTH_QUALIFIER = r"(?:(?:next|this|coming)\s+)?"
 DEADLINE_PATTERNS = [
     ("iso", re.compile(rf"\b{DEADLINE_WORD}\s+(?P<iso>\d{{4}}-\d{{2}}-\d{{2}})\b", re.I)),
     (
         "end_of_month",
-        re.compile(rf"\b{DEADLINE_WORD}\s+(?:the\s+)?end\s+of\s+{MONTH}(?:\s+(?P<year>\d{{4}}))?\b", re.I),
+        re.compile(
+            rf"\b{DEADLINE_WORD}\s+(?:the\s+)?end\s+of\s+{MONTH_QUALIFIER}{MONTH}"
+            rf"(?:\s+(?P<year>\d{{4}}))?\b",
+            re.I,
+        ),
     ),
     (
         "month_day",
         re.compile(
-            rf"\b{DEADLINE_WORD}\s+{MONTH}\s+(?P<day>\d{{1,2}})(?:st|nd|rd|th)?\b(?:,?\s+(?P<year>\d{{4}}))?",
+            rf"\b{DEADLINE_WORD}\s+{MONTH_QUALIFIER}{MONTH}\s+(?P<day>\d{{1,2}})(?:st|nd|rd|th)?\b"
+            rf"(?:,?\s+(?P<year>\d{{4}}))?",
             re.I,
         ),
     ),
     (
         "day_month",
         re.compile(
-            rf"\b{DEADLINE_WORD}\s+(?:the\s+)?(?P<day>\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?{MONTH}"
+            rf"\b{DEADLINE_WORD}\s+(?:the\s+)?(?P<day>\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?"
+            rf"{MONTH_QUALIFIER}{MONTH}"
             rf"(?:,?\s+(?P<year>\d{{4}}))?",
             re.I,
         ),
     ),
-    ("month", re.compile(rf"\b{DEADLINE_WORD}\s+{MONTH}(?:\s+(?P<year>\d{{4}}))?\b", re.I)),
+    ("month", re.compile(rf"\b{DEADLINE_WORD}\s+{MONTH_QUALIFIER}{MONTH}(?:\s+(?P<year>\d{{4}}))?\b", re.I)),
+    (
+        "month_offset",
+        re.compile(rf"\b{DEADLINE_WORD}\s+(?P<offset>next|this|coming)\s+month\b", re.I),
+    ),
     (
         "relative",
         re.compile(r"\b(?:in|within)\s+(?P<n>\d+|a|an|one)\s+(?P<unit>week|month|year)s?\b", re.I),
@@ -121,6 +134,19 @@ DUE_WORDS = re.compile(
 FUNDING = re.compile(
     r"\b(?:from|out\s+of|using)\s+(?:my\s+|the\s+)?(?P<account>checking|savings)"
     r"(?:\s+account)?\b",
+    re.I,
+)
+
+MANDATORY_STATUS = re.compile(
+    r"\b(?:mandatory|required|non[- ]negotiable|must\s+be\s+paid|cannot\s+be\s+skipped)\b",
+    re.I,
+)
+OPTIONAL_STATUS = re.compile(
+    r"\b(?:optional|not\s+mandatory|may\s+be\s+skipped|can\s+be\s+skipped)\b",
+    re.I,
+)
+STATUS_WORDS = re.compile(
+    rf"(?:{MANDATORY_STATUS.pattern})|(?:{OPTIONAL_STATUS.pattern})",
     re.I,
 )
 
@@ -200,6 +226,13 @@ def deadline_from_match(kind: str, m: re.Match[str], as_of: date) -> date | None
         if unit == "week":
             return as_of + timedelta(weeks=n)
         return add_months(as_of, n * (12 if unit == "year" else 1))
+    if kind == "month_offset":
+        # "by next month", like "by June", means by the time that month starts. "by this
+        # month" can only mean the end of the month we are already partway through.
+        this_month = m.group("offset").lower() == "this"
+        target = as_of if this_month else add_months(as_of, 1)
+        day = calendar.monthrange(target.year, target.month)[1] if this_month else 1
+        return date(target.year, target.month, day)
     month = MONTHS[m.group("month").lower()]
     year = int(m.group("year")) if m.group("year") else None
     day = -1 if kind == "end_of_month" else int(m.group("day")) if "day" in m.groupdict() else None
@@ -270,7 +303,7 @@ def obligation_name(clause: str, deadline_words: str | None) -> str | None:
     if named:  # "I owe $300 for a parking ticket by Nov 1"
         return named[0]
     rest = clause.replace(deadline_words, " ", 1) if deadline_words else clause
-    rest = AMOUNT.sub(" ", FUNDING.sub(" ", rest))
+    rest = STATUS_WORDS.sub(" ", AMOUNT.sub(" ", FUNDING.sub(" ", rest)))
     words = [w for w in rest.split() if w]
     while words and re.sub(r"[^a-z]", "", words[0].lower()) in LEAD_WORDS:
         words.pop(0)
@@ -282,8 +315,8 @@ def funding_account(clause: str, accounts: Sequence[Account]) -> tuple[str | Non
     """(account id, the question to ask instead). Exactly one of the two is set.
 
     Named accounts are matched on type, which is all the user says. With nothing
-    named and exactly one account on file, that account is the only answer there
-    is; with several, the compiler asks rather than picking one (SPEC section 2).
+    named, the compiler asks even when only one account exists: funding is a required
+    declaration, not something banking data can supply on the user's behalf.
     """
     match = FUNDING.search(clause)
     if match:
@@ -295,12 +328,19 @@ def funding_account(clause: str, accounts: Sequence[Account]) -> tuple[str | Non
             return None, f"There is no {wanted} account on file. Which account pays this?"
         listed = " or ".join(a.name for a in same)
         return None, f"Which {wanted} account pays this, {listed}?"
-    if len(accounts) == 1:
-        return accounts[0].id, None
     if not accounts:
         return None, "Which account is this paid from?"
     listed = ", ".join(a.name for a in accounts)
     return None, f"Which account is this paid from? You have {listed}."
+
+
+def obligation_status(clause: str) -> bool | None:
+    """Return the status the user stated, or None when it is absent or contradictory."""
+    mandatory = bool(MANDATORY_STATUS.search(clause))
+    optional = bool(OPTIONAL_STATUS.search(clause))
+    if mandatory == optional:
+        return None
+    return mandatory
 
 
 def check_due_date(due: date | None, due_words: str | None, what: str, as_of: date) -> str | None:
@@ -389,9 +429,14 @@ def draft_obligation(
         ask("account", account_question, clause)
         missing = True
 
+    mandatory = obligation_status(clause)
+    if mandatory is None:
+        ask("mandatory", f"Is {what} mandatory or optional?", clause)
+        missing = True
+
     if missing:
         return
-    assert name is not None and due is not None and account_id is not None
+    assert name is not None and due is not None and account_id is not None and mandatory is not None
     drafted.append(
         OneTimeObligation(
             id=unique_obligation_id(name, {o.id for o in drafted}),
@@ -399,6 +444,7 @@ def draft_obligation(
             amount=amounts[0],
             due_date=due,
             account_id=account_id,
+            mandatory=mandatory,
         )
     )
 

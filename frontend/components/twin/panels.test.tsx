@@ -37,7 +37,7 @@ describe("AccountsPanel", () => {
 
   it("dates the balance so it is never read as live", () => {
     render(<AccountsPanel twin={TWIN} />);
-    expect(screen.getByText("As of September 19, 2026")).toBeInTheDocument();
+    expect(screen.getByText("As of September 18, 2026")).toBeInTheDocument();
   });
 
   // SPEC 3.1: the total is not spendable money.
@@ -155,11 +155,11 @@ describe("ObligationsPanel", () => {
     render(<ObligationsPanel twin={TWIN} onAnswer={onAnswer} />);
     const mandatory = screen.getByRole("heading", { name: "Upcoming obligations" })
       .closest("section")!;
-    expect(within(mandatory).getByText("Rent")).toBeInTheDocument();
+    expect(within(mandatory).getByText("Hokie Property Mgmt Rent")).toBeInTheDocument();
 
     const recurring = screen.getByRole("heading", { name: "Recurring expenses" })
       .closest("section")!;
-    expect(within(recurring).getByText("Streaming subscriptions")).toBeInTheDocument();
+    expect(within(recurring).getByText("Spotify Premium")).toBeInTheDocument();
   });
 
   it("asks its open question inline, next to the obligation it is about", () => {
@@ -172,7 +172,7 @@ describe("ObligationsPanel", () => {
     const user = userEvent.setup();
     render(<ObligationsPanel twin={TWIN} onAnswer={answer} />);
     await user.click(screen.getByRole("button", { name: /Savings transfer/ }));
-    expect(answer).toHaveBeenCalledWith("obl_mystery_transfer", "savings_transfer");
+    expect(answer).toHaveBeenCalledWith("obl_online_transfer_to", "savings_transfer");
   });
 
   it("hides the excluded section until something is declared not recurring", () => {
@@ -182,31 +182,31 @@ describe("ObligationsPanel", () => {
 
   it("shows what Alex declared out of the projection", () => {
     const excluded = TWIN.obligations.map((o) =>
-      o.id === "obl_subscriptions"
+      o.id === "obl_spotify_premium"
         ? { ...o, declared_category: "not_recurring" as const, category_candidates: [] }
         : o,
     );
     render(<ObligationsPanel twin={twinWith({ obligations: excluded })} onAnswer={onAnswer} />);
     const section = screen.getByRole("heading", { name: "Left out of the projection" })
       .closest("section")!;
-    expect(within(section).getByText("Streaming subscriptions")).toBeInTheDocument();
+    expect(within(section).getByText("Spotify Premium")).toBeInTheDocument();
   });
 
   // A declared category overrides the bank's observed mandatory flag.
   it("moves an obligation Alex called optional out of the mandatory list", () => {
     const declared = TWIN.obligations.map((o) =>
-      o.id === "obl_phone"
+      o.id === "obl_verizon_wireless"
         ? { ...o, declared_category: "optional_spending" as const, category_candidates: [] }
         : o,
     );
     render(<ObligationsPanel twin={twinWith({ obligations: declared })} onAnswer={onAnswer} />);
     const mandatory = screen.getByRole("heading", { name: "Upcoming obligations" })
       .closest("section")!;
-    expect(within(mandatory).queryByText("Phone plan")).not.toBeInTheDocument();
+    expect(within(mandatory).queryByText("Verizon Wireless")).not.toBeInTheDocument();
 
     const recurring = screen.getByRole("heading", { name: "Recurring expenses" })
       .closest("section")!;
-    expect(within(recurring).getByText("Phone plan")).toBeInTheDocument();
+    expect(within(recurring).getByText("Verizon Wireless")).toBeInTheDocument();
   });
 
   it("renders both sections for a twin with no obligations at all", () => {
