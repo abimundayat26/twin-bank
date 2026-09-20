@@ -77,9 +77,14 @@ def chances_at(
     Read per goal rather than from `prob_goal_met`, which is "every goal due in the
     horizon": moving this deadline later pulls other goals into the window, and their
     misses are not this goal's answer.
+
+    The run lasts until the goal's deadline or the latest purchase, whichever is later:
+    the engine rejects an event past its horizon, and a purchase dated after the
+    deadline simply cannot cost the goal anything.
     """
+    horizon = max([deadline, *(e.date for e in events)])
     mc = run_monte_carlo(
-        moved(twin, goal_id, deadline), events, deadline, n_simulations, seed
+        moved(twin, goal_id, deadline), events, horizon, n_simulations, seed
     )
 
     def prob(aggregate) -> float | None:

@@ -11,8 +11,10 @@ from backend.simulation.engine import (
     compare,
     evaluate_goals,
     monthly_due_dates,
+    resolve_horizon_end,
     simulate_scenario,
 )
+from backend.simulation.monte_carlo import run_monte_carlo
 
 HORIZON = date(2027, 5, 1)
 
@@ -494,6 +496,60 @@ def test_event_before_as_of_is_rejected(twin):
 def test_horizon_before_as_of_is_rejected(twin):
     with pytest.raises(SimulationError):
         compare(twin, [purchase(800)], date(2026, 9, 1))
+
+
+# --- Horizon with no goals ----------------------------------------------------
+
+
+@pytest.fixture
+def goalless(twin):
+    return twin.model_copy(update={"goals": []})
+
+
+def test_a_goalless_twin_defaults_to_180_days_without_events(goalless):
+    assert resolve_horizon_end(goalless, None) == goalless.as_of + timedelta(days=180)
+    assert resolve_horizon_end(goalless, None, []) == goalless.as_of + timedelta(days=180)
+
+
+def test_a_goalless_twin_stretches_its_horizon_to_a_purchase_200_days_out(goalless):
+    on = goalless.as_of + timedelta(days=200)
+    result = compare(goalless, [purchase(800, on=on.isoformat())])
+    assert result.horizon_end == on
+    assert result.baseline.ending_balance - result.counterfactual.ending_balance == 800
+
+
+def test_monte_carlo_on_a_goalless_twin_simulates_a_purchase_200_days_out(goalless):
+    on = goalless.as_of + timedelta(days=200)
+    result = run_monte_carlo(goalless, [purchase(800, on=on.isoformat())], n_simulations=20, seed=1)
+    assert result.horizon_end == on
+    assert result.n_simulations == 20
+
+
+def test_a_goalless_twin_keeps_180_days_when_the_purchase_is_earlier(goalless):
+    assert compare(goalless, [purchase(800)]).horizon_end == goalless.as_of + timedelta(days=180)
+
+
+def test_a_goalless_twin_accepts_a_purchase_on_the_last_allowed_day(goalless):
+    on = goalless.as_of + timedelta(days=MAX_HORIZON_DAYS)
+    assert compare(goalless, [purchase(800, on=on.isoformat())]).horizon_end == on
+
+
+def test_a_goalless_twin_still_rejects_a_purchase_past_the_cap(goalless):
+    on = goalless.as_of + timedelta(days=MAX_HORIZON_DAYS + 1)
+    with pytest.raises(SimulationError):
+        compare(goalless, [purchase(800, on=on.isoformat())])
+
+
+def test_an_explicit_horizon_is_never_stretched_by_events(goalless):
+    end = goalless.as_of + timedelta(days=90)
+    on = goalless.as_of + timedelta(days=200)
+    with pytest.raises(SimulationError):
+        compare(goalless, [purchase(800, on=on.isoformat())], end)
+
+
+def test_a_twin_with_goals_still_stops_at_its_earliest_deadline(twin):
+    on = twin.as_of + timedelta(days=200)
+    assert resolve_horizon_end(twin, None, [purchase(800, on=on.isoformat())]) == HORIZON
 
 
 def test_horizon_at_the_cap_is_allowed(twin):
