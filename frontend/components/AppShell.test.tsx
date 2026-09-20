@@ -155,6 +155,51 @@ describe("Nav", () => {
     expect(button).toHaveFocus();
   });
 
+  // The scrim covers the page while the drawer is open, so a control behind it
+  // can be focused but neither seen nor clicked. Tab must not walk out there.
+  it("keeps Tab inside the open drawer instead of stranding focus behind the scrim", async () => {
+    const user = userEvent.setup();
+    render(
+      <TwinProvider>
+        <AppShell>
+          <main>
+            <button type="button">Behind the scrim</button>
+          </main>
+        </AppShell>
+      </TwinProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+    const panel = document.getElementById("primary-menu");
+    expect(panel).not.toBeNull();
+
+    // One full lap past the last destination and back round again.
+    for (let i = 0; i < 8; i += 1) {
+      await user.tab();
+      expect(panel!.contains(document.activeElement)).toBe(true);
+    }
+    expect(screen.getByRole("button", { name: "Behind the scrim" })).not.toHaveFocus();
+  });
+
+  it("wraps Shift+Tab from the drawer's first control to its last", async () => {
+    const user = userEvent.setup();
+    render(
+      <TwinProvider>
+        <AppShell>
+          <main>
+            <button type="button">Behind the scrim</button>
+          </main>
+        </AppShell>
+      </TwinProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: "Menu" }));
+    const panel = document.getElementById("primary-menu")!;
+
+    for (let i = 0; i < 8; i += 1) {
+      await user.tab({ shift: true });
+      expect(panel.contains(document.activeElement)).toBe(true);
+    }
+  });
+
   it("is reachable by keyboard alone", async () => {
     const user = userEvent.setup();
     renderShell();

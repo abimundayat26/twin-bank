@@ -23,12 +23,33 @@ export function Nav() {
 
   // Escape closes, and focus goes back to the control that opened it, so a
   // keyboard user is never left with focus on a hidden panel.
+  //
+  // Tab wraps inside the drawer for the same reason. The scrim covers the page,
+  // so a control behind it can be focused but neither seen nor clicked; letting
+  // Tab walk out of the drawer strands a keyboard user there (SPEC section 7:
+  // drawers stay fully reachable, and focused controls stay visible).
   useEffect(() => {
     if (!isOpen) return;
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setIsOpen(false);
         buttonRef.current?.focus();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusable = panel.querySelectorAll<HTMLElement>(
+        "a[href], button:not([disabled])",
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      const outside = !(active instanceof Node) || !panel.contains(active);
+      if (event.shiftKey ? active === first || outside : active === last || outside) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
       }
     }
     document.addEventListener("keydown", onKeyDown);
