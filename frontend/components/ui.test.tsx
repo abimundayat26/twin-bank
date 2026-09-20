@@ -82,4 +82,30 @@ describe("Row", () => {
     );
     expect(screen.getByText("Observed")).toBeInTheDocument();
   });
+
+  // SPEC 7.1: these rows carry account, obligation and goal names. Clipping one
+  // to an ellipsis loses information a sighted user cannot get back.
+  it("wraps a long financial label instead of clipping it", () => {
+    const long = "Everyday Checking \u2014 Joint Household Operating Account (Primary)";
+    render(
+      <ul>
+        <Row label={long} value="$1,340.00" />
+      </ul>,
+    );
+    const label = screen.getByText(long);
+    expect(label).not.toHaveClass("truncate");
+    expect(label).toHaveClass("break-words");
+  });
+
+  it("stacks the label above the value on a narrow viewport", () => {
+    render(
+      <ul>
+        <Row label="Rent" value="$1,200" />
+      </ul>,
+    );
+    const row = screen.getByText("Rent").closest("li");
+    // Column by default, side by side only from the `sm` breakpoint up.
+    expect(row).toHaveClass("flex-col");
+    expect(row).toHaveClass("sm:flex-row");
+  });
 });
