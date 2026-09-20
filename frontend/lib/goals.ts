@@ -221,8 +221,13 @@ export type GoalEditErrors = { [K in keyof GoalEdit]?: string };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Dollars from what was typed: `$1,200` and `1200` are the same number. */
-function parseMoney(raw: string): number | null {
+/**
+ * Dollars from what was typed: `$1,200` and `1200` are the same number.
+ *
+ * Exported for `lib/oneTimeObligations`, whose review rows sit in the same
+ * composer and must read a typed amount exactly the way these ones do.
+ */
+export function parseMoney(raw: string): number | null {
   const cleaned = raw.replace(/[$,\s]/g, "");
   if (cleaned === "") return null;
   const value = Number(cleaned);
@@ -230,7 +235,7 @@ function parseMoney(raw: string): number | null {
 }
 
 /** A real calendar day, not just ISO-shaped: 2026-02-31 is neither. */
-function isRealDate(value: string): boolean {
+export function isRealDate(value: string): boolean {
   if (!ISO_DATE.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;

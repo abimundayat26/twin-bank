@@ -28,6 +28,7 @@ import type {
   GoalCompileRequest,
   GoalCompileResponse,
   MinimumBalanceRequest,
+  OneTimeObligation,
   OptimizationRequest,
   OptimizationResponse,
   SimulationRequest,
@@ -252,8 +253,26 @@ export async function saveGoals(
     unlessApiError(error);
     console.warn("Backend unavailable; keeping the goals locally.", error);
     const goals = request.goals;
-    return { data: { ...twin, goals, constraints: declared(twin, request) }, source: "fixture" };
+    return {
+      data: {
+        ...twin,
+        goals,
+        constraints: declared(twin, request),
+        one_time_obligations: owed(twin, request),
+      },
+      source: "fixture",
+    };
   }
+}
+
+/**
+ * The one-time obligations the backend would be left holding. An omitted field
+ * keeps the ones already confirmed and an empty list clears them
+ * (`twin_store.set_goals`), so the offline twin cannot disagree with the real
+ * one about what is owed.
+ */
+function owed(twin: FinancialTwin, request: DeclaredGoalsRequest): OneTimeObligation[] {
+  return request.one_time_obligations ?? twin.one_time_obligations ?? [];
 }
 
 /**

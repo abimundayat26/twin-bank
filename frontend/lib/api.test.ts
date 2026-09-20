@@ -16,6 +16,7 @@ import type {
   FinancialTwin,
   Goal,
   GoalCompileResponse,
+  OneTimeObligation,
   OptimizationResponse,
   SimulationRequest,
 } from "./types";
@@ -200,6 +201,16 @@ describe("saveGoals", () => {
     provenance: "declared",
   };
 
+  const insurance: OneTimeObligation = {
+    id: "one_car_insurance",
+    name: "Car insurance",
+    amount: 450,
+    due_date: "2026-10-15",
+    account_id: "acc_checking",
+    mandatory: true,
+    provenance: "declared",
+  };
+
   it("puts the whole declared set to the twin's goals endpoint", async () => {
     const saved = { ...twin, goals: [housing], constraints: [reserve] };
     backendReplies(200, saved);
@@ -242,6 +253,33 @@ describe("saveGoals", () => {
       );
       expect(floors).toHaveLength(1);
       expect(floors[0].amount).toBe(300);
+    });
+
+    // `twin_store.set_goals`: an omitted field keeps what was confirmed, an
+    // empty list clears it. Mirrored so the offline demo cannot disagree with
+    // the real one about what is owed.
+    it("applies the one-time obligations the request carries", async () => {
+      const loaded = await saveGoals(twin, { goals: [housing], one_time_obligations: [insurance] });
+      expect(loaded.data.one_time_obligations).toEqual([insurance]);
+    });
+
+    it("keeps the confirmed obligations when the request omits the field", async () => {
+      const owing = { ...twin, one_time_obligations: [insurance] };
+      const loaded = await saveGoals(owing, { goals: [housing] });
+      expect(loaded.data.one_time_obligations).toEqual([insurance]);
+    });
+
+    it("clears them for an empty list, as the backend does", async () => {
+      const owing = { ...twin, one_time_obligations: [insurance] };
+      const loaded = await saveGoals(owing, { goals: [housing], one_time_obligations: [] });
+      expect(loaded.data.one_time_obligations).toEqual([]);
+    });
+
+    it("holds none for a twin that predates the field", async () => {
+      const older: FinancialTwin = { ...twin };
+      delete older.one_time_obligations;
+      const loaded = await saveGoals(older, { goals: [housing] });
+      expect(loaded.data.one_time_obligations).toEqual([]);
     });
   });
 });
