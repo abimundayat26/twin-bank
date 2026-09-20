@@ -69,159 +69,187 @@ Open <http://localhost:3000>. Before presenting, confirm the two facts separatel
 
 1. `curl --fail http://127.0.0.1:8000/health` returns `{"status":"ok"}`. This proves only that
    the backend is reachable.
-2. The header says **Backend connected · Demo fixture**. This says both that the backend answered
-   and that Alex's observed data came from the fixture. Connected does not mean live bank data.
+2. No **Backend offline** banner sits under the header, and **Forecast & Data** shows a **Data
+   source** card reading **Sample data**. The header carries no data-source chip by design; that
+   one card is the only place the origin is named. Reachable does not mean live bank data.
 
 The percentages may vary if a presenter deliberately removes `SIMULATION_SEED=1`. Present the
 direction and tradeoffs below rather than memorizing exact percentages.
 
 ## Scripted walkthrough
 
+Six steps, following the nav order. Every number below was produced by the seeded command above;
+the presenter reads the direction and the tradeoff, never a verdict.
+
 ### 1. Introduce Alex on Overview
 
 Start on **Overview**.
 
-- Point to **Alex's Financial Twin** and explain that the twin combines facts observed in banking
-  activity with facts Alex explicitly declared.
-- In **Current balance**, introduce **Everyday Checking**, **Savings**, and the total. Emphasize
-  the note that the total is not all free to spend because goals and the reserve are commitments
-  against it.
-- Point to the source badge again: this rehearsal is a connected backend serving **Demo fixture**
-  data, not a live account.
+- The three tiles are **Total net balance**, **Income minus fixed bills** (captioned *Variable
+  spending excluded*, so nobody reads it as spare cash) and **Goal progress**.
+- **Accounts** lists **Everyday Checking** and **Savings**. Say that the total is not all free to
+  spend: the goal and the reserve are commitments against it.
+- **Spending** is a donut of Alex's variable categories plus one **Fixed bills** slice. Say why
+  the bills are one slice: the twin records no spend category for them, and TwinBank does not
+  guess one.
+- **Upcoming activity** lists the next items within 30 days, income positive and bills negative.
+- Explain the split the product rests on: balances, cadences and recurring bills are *observed*;
+  goals and limits are *declared*. Nothing on this page was inferred about Alex's intentions.
 
-### 2. Review plans and an ambiguous payment
+### 2. Let the Assistant read a sentence
 
 Open the top-left **Menu**, then **Plans & Assistant**.
 
-- Review the declared **Summer housing** goal and its deadline.
-- Review the **Minimum emergency reserve** and explain that it applies across checking plus
-  savings, while the housing goal must be met on top of it.
-- Leave **Minimum checking balance** unset. Point out that the simulator transparently uses its
-  displayed $200 default; this keeps the seeded demo story unchanged.
-- Under obligations, find the recurring transfer with an unclear purpose. Point out **What is
-  this?**, the candidate labels, and their probabilities. Do not answer it during the canonical
-  run. The choices are possibilities from observed activity, not facts until Alex declares one.
+The chat opens with the question TwinBank genuinely cannot answer by itself:
 
-### 3. Demonstrate clarification instead of invention
+> What is Online Transfer To ($71.82 a month)?
 
-In **Add or change a goal**, enter:
+- Point out the quick replies — **Savings transfer**, **Debt repayment**, **Optional spending** —
+  and that they carry no probabilities. These are possibilities from observed activity, not facts
+  until Alex declares one. Answer it with **Savings transfer**, or leave it for step 3.
+- Type: `I want to save $2,000 for a trip by next June`
+- The reply is **Here is what I understood. Nothing changes until you accept.** with a card
+  reading **Add goal: Trip, $2,000 by Jun 1, 2027** and the quoted words it came from. The bubble
+  is labelled **Read by rules** — no model is configured, and the label never claims otherwise.
+- Press **Accept**. The card becomes **Added** and the goal appears in the **Goals & Limits**
+  panel beside the chat, where its target, date and saved-so-far can be corrected in place.
+- Now show the refusal to guess. Type: `I want to save for a trip`
+- The reply is **I need a bit more before I can draft this.**, with two questions — *How much do
+  you need for a trip?* and *When do you need the money for a trip?* — and **no card**. Missing
+  financial facts stay missing.
 
-```text
-I want to save for a trip
-```
+In the **Goals & Limits** panel, point out **Emergency reserve $1,500** ("checking plus savings")
+and **Minimum checking balance $200 (default)** ("checking only"). Leave the default in place;
+the seeded numbers below assume it.
 
-Choose **Read this back to me**.
+### 3. Correct the plan on Obligations
 
-Expected result:
+**Menu → Obligations**. Everything here is deterministic — no model, no explanations.
 
-- The review says **Read by rules**.
-- **TwinBank will not guess these** asks how much is needed and when it is needed.
-- Nothing is complete enough to save, and no new goal appears in the Financial Twin.
+- **Recurring expenses** lists each detected bill with its category, amount and due day. If the
+  transfer is still unclassified, its Category cell offers **What is this?** with the same
+  choices, and no default selection.
+- Toggle one bill to **Paused** and say what it means: every simulation from now on leaves it
+  out. The row stays visible and dimmed.
+- Add an item under **Upcoming obligations** to show one-off commitments entering the baseline.
+- Un-pause the bill before continuing, so the seeded figures in step 4 hold.
 
-Choose **Discard**. Do not answer or confirm this sample; the purpose is to show that missing
-financial facts remain missing.
+Detected bills can be paused and edited but not deleted: the next rebuild from transactions
+would simply bring them back.
 
 ### 4. Run the $800 laptop counterfactual
 
-Use **Menu → Purchase Simulator**. The form opens with the canonical scenario:
+**Menu → Purchase Simulator**. Fill the single row:
 
 - **What:** Laptop
-- **Amount (USD):** 800
-- **When:** the twin's current as-of date
-- **Paid from:** Everyday Checking
+- **Amount:** 800
+- **Date:** the default, the day after the twin's as-of date
+- **Pay from:** Everyday Checking
 
-Choose **Simulate** once. While it runs, the action changes to **Simulating…** and cannot submit a
-second request.
+Choose **Simulate** once. The button disables while the request is in flight.
 
-Expected qualitative result in **Baseline vs. this purchase**:
+The comparison is two columns, **No Purchase** against **Purchase**, under the caption **Through
+May 1, 2027** — the date every figure covers. Seeded, expect:
 
-- The counterfactual median ending balance is lower by the purchase amount.
-- The chance of a low checking balance rises sharply.
-- The chance of dipping into the emergency reserve rises.
-- The chance of meeting **Summer housing** falls and the median future shows a goal shortfall.
-- Mandatory obligations remain covered in the seeded result, while the chance of paying a bill
-  out of savings rises. Explain both facts; “covered” does not mean “without consequence.”
+| Row | No Purchase | Purchase |
+| --- | --- | --- |
+| Predicted balance | $3,396 | $2,596 |
+| Chance of low balance | 2% | 97% |
+| Chance of dipping into your reserve | 0% | 18% |
+| Chance of paying a bill out of savings | 0% | 51% |
+| Chance your goal is met | 77% | 10% (short by $504) |
+| Upcoming bills | Covered | Covered |
 
-Do not turn these metrics into a yes/no affordability verdict. The decision remains Alex's.
+- The **High impact** badge sits above the comparison. Its tooltip lists the reasons the backend
+  computed: low balance up 95 points, reserve up 18, goal met down 67. The level is never an
+  unexplained number, and the frontend never computes it.
+- Dwell on the last two rows together. Bills stay **Covered**, yet a bill is paid out of savings
+  in about half of futures and the housing goal all but collapses. Covered does not mean without
+  consequence, and this is exactly why TwinBank does not answer "can I afford it".
+- Open **Balance over the next 90 days**. The caption says the chart shows 90 days while the
+  figures above cover the full horizon; the **Full horizon** toggle switches it.
 
-### 5. Compare alternatives
+Do not turn these metrics into a yes/no verdict. The decision stays Alex's.
 
-In **Other ways to do this**:
+### 5. Compare alternatives, then decide
 
-- Wait for the comparison to finish.
-- Find at least one option labelled **Keeps your declared limits**. In the seeded fixture run,
-  reducing discretionary spending produces such an option.
-- Contrast it with one option labelled **Breaks a declared limit** and read the stated violation.
-- Present these as scored tradeoffs, not a recommendation. The choice remains Alex's.
+In **Other ways to do this**, up to three rows appear, each with predicted balance, chance of low
+balance, chance the goal is met and **Keeps your limits**:
 
-### 6. Open Balance Trajectory
+- **Buy as planned** repeats the Purchase column exactly, so one screen never shows two numbers
+  for one thing.
+- The best alternative in the seeded run is cutting discretionary spending by half, and it is the
+  only lever that keeps every limit.
+- Every delay option still breaks one: *Checking plus savings dips below the $1,500 emergency
+  reserve in 16% of futures.* Read that violation aloud — waiting alone does not fix this
+  purchase, which is a more honest answer than "buy it later".
 
-Choose **See the balance trajectory**.
+Under **Decide**, show the three commitments and that each asks for confirmation first:
 
-- The solid baseline line is the future without the laptop; the dashed counterfactual line is the
-  future with it. Line style, labels, and color all distinguish them.
-- The shaded fans span **p10 to p90**, the middle 80% of simulated futures. The line in each fan
-  is the median. A wider fan means more uncertainty, not a worse outcome by itself.
-- Point out the **Laptop** purchase marker and the **Summer housing** goal-deadline marker.
-- In the default **Total** view, point out the emergency-reserve reference line.
-- Switch to **Checking** and point out the default low-balance reference line. It is labelled as a
-  simulator default because Alex did not declare a minimum checking balance.
-- Confirm the chart's visually hidden data table exposes the plotted values to assistive
-  technology.
+- **Proceed** adds the laptop to the plan as a one-off, non-mandatory obligation.
+- **Sacrifice Summer housing** asks the backend for the earliest deadline that restores the
+  goal's chances, rather than guessing a date.
+- **Apply Compromise** is disabled here, with the tooltip *Spending cuts can't be saved yet* —
+  the twin has nowhere to persist a spending target. A disabled control that says why.
 
-### 7. Explain Forecast & Data
+Choose **Proceed** and confirm. The comparison is marked out of date, because the plan it
+described has changed. Go to **Obligations**, find **Laptop** under upcoming obligations, and
+delete it. That deletion is the undo.
 
-Use **Menu → Forecast & Data**.
+### 6. Balance Trajectory, then Forecast & Data
 
-- **Data source:** repeat **Backend connected · Demo fixture**, the as-of date, account count, and
-  the fact that the fixture is not a real account.
-- **Observation window and forecast method:** the hand-written fixture does not record forecast
-  metadata, so these are correctly shown as unavailable rather than invented. A twin rebuilt
-  from transactions would name its fitted window and method here.
-- **Detected structure:** review the paycheck cadence, mandatory and optional recurring counts,
-  and the unresolved transfer.
-- **Forecast:** explain the seasonal factors that the fixture does carry. A factor above 1.0 is a
-  busier-than-average fortnight for that category; below 1.0 is quieter. The twelve factors
-  average to 1.0 and describe history, not a guarantee about a future month.
-- **Processing:** the fixture path is built by the local pipeline; no Databricks job is implied.
-- **Limitations:** call out the missing forecast metadata, the unresolved classification, the
-  lack of exposed MLflow lineage, and the fact that the browser receives summaries rather than
-  transactions or connection settings.
+**Menu → Balance Trajectory** shows the projection behind the latest simulation.
+
+- Two medians with their **p10 to p90** bands: without the purchase, and with it. A wider band
+  means more uncertainty, not a worse outcome.
+- Point out the purchase marker, the goal-deadline marker and the dashed reserve line.
+- Switch **Total** to **Checking**. Confirm the chart's visually hidden table exposes the same
+  values to assistive technology.
+
+**Menu → Forecast & Data** closes the loop on provenance.
+
+- **Linked accounts & sources**: one card per account, and the **Data source** card reading
+  **Sample data**. This is the only place in the UI that names the origin.
+- **Financial structure**: income cadence, the fixed-bill schedule, and **Seasonal trends** —
+  which month each category runs busiest and quietest, fitted from the transaction history.
+- The **forecast chart** draws the baseline median and band across the horizon, with up to four
+  callouts. Read one aloud and note that its reason is built only from what the twin contains —
+  a bill that is due, a paycheck, heavy spending in a category. TwinBank will not name a cause
+  its data does not hold.
 
 ## Presenter rehearsal checklist
 
 Before the live presentation, complete these checks on the exact commit being shown:
 
-- Run the full story above with the keyboard only: open and close Menu, move through every field,
-  submit the incomplete goal, discard it, submit the laptop, switch the chart view, and navigate
-  to Forecast & Data. Focus must remain visible throughout; Escape must close Menu and return
+- Run the whole story with the keyboard only: open and close Menu, move through every field,
+  accept a card, edit a goal in the panel (Enter saves, Escape cancels), submit the laptop,
+  toggle the chart view. Focus must stay visible throughout; Escape must close Menu and return
   focus to its button.
-- At browser widths 320, 375, 768, 1024, and 1440 px, visit all six routes and check the header,
-  menu drawer, long ambiguous-transfer label, comparison grid, alternative cards, chart labels,
-  seasonal factor grid, and every primary action. There must be no document-level horizontal
-  scroll, clipped controls, or overlapping labels.
-- Confirm that **Observed**, **You declared**, **Baseline**, **Counterfactual**, **Current page**,
-  **Keeps your declared limits**, and **Breaks a declared limit** remain understandable without
-  relying on color alone.
-- Confirm the chart data is also available in its visually hidden table.
-- Trigger one rejected request in a non-demo rehearsal if practical and confirm **Simulation
-  failed** shows the backend message instead of unrelated fixture results.
+- At 320, 375, 768, 1024 and 1440 px, visit all six routes in light and dark. Check the KPI
+  tiles, the collapsed **Goals & limits** toggle and its count, the obligations tables as stacked
+  cards, the two-column comparison, and the chart labels. There must be no document-level
+  horizontal scroll, clipped control or overlapping label.
+- Confirm that **Covered / At risk / Not covered**, **Low / Moderate / High impact**, **Paused**,
+  and **Keeps your limits** all read without relying on colour.
+- Confirm each chart's visually hidden table carries its plotted values.
+- Trigger one rejected request in a non-demo rehearsal if practical, and confirm the form shows
+  the backend's own message and **no numbers**.
 
 ## Fixture and offline recovery
 
 The canonical run uses a live local backend serving fixture data. If the backend stops:
 
 1. Leave the frontend running and reload the page.
-2. Confirm the header changes to **Backend offline · Bundled example**. This is a transport state
-   and a bundled data origin; it must never be called live bank data.
-3. Overview and Forecast & Data remain available from the bundled twin.
-4. A simulation shows the saved $800 laptop example with a **Backend offline** warning. It does
-   not respond to edited purchase fields or saved answers.
-5. Goal compilation and optimization require the backend; the UI must say they are unavailable
-   rather than inventing a draft or alternative.
+2. A banner reads **Backend offline. Showing saved sample data. Changes are disabled.** This is a
+   transport state over bundled data; it must never be called live bank data.
+3. Overview and Forecast & Data still render, from the bundled twin and the bundled forecast.
+4. Every control that would write — Accept, Save, Add, Delete, the toggles, Simulate, Proceed —
+   is disabled, and says why in its tooltip. Nothing pretends to succeed locally.
+5. Simulation, optimization and the Assistant need the backend. They say so rather than showing a
+   saved result as if it answered the question just asked.
 
 Restart terminal 1 with the deterministic command above, reload the frontend, and confirm the
-header returns to **Backend connected · Demo fixture** before continuing the canonical story.
+banner is gone before continuing the canonical story.
 
 ## Optional Nessie presenter smoke check
 
@@ -231,8 +259,8 @@ has their own private Nessie configuration should perform it.
 - Keep the backend local and keep credentials out of the screen recording, shell history, logs,
   and browser.
 - Start the backend using the repository's existing private configuration, with mocks disabled.
-- Confirm the header says **Backend connected · Nessie data** and that Forecast & Data says the
-  accounts and transaction history were read from the Nessie sandbox.
+- Confirm the **Data source** card on Forecast & Data reads **Capital One Nessie** instead of
+  **Sample data**.
 - If the external service is unavailable, return to the fixture command. Do not delay or weaken
   the canonical demo; a real-service rehearsal is intentionally not an automated gate.
 
@@ -251,18 +279,18 @@ and choose matching ports. For example, run the backend on 8001 and start the fr
 `NEXT_PUBLIC_API_URL=http://localhost:8001 npm run dev`. If the frontend must use 3001, start the
 backend with `CORS_ORIGINS=http://localhost:3001` and run `npm run dev -- --port 3001`.
 
-### The header says Backend offline
+### The offline banner appears
 
 - Check terminal 1 for a running backend and confirm the health URL responds.
 - Confirm the frontend's `NEXT_PUBLIC_API_URL` points to the same local backend port.
 - Restart the frontend after changing its API URL.
-- While offline, describe the UI as the bundled example and use the recovery steps above.
+- While offline, describe the UI as bundled sample data and use the recovery steps above.
 
 ### A request is rejected
 
 A backend rejection is intentionally not replaced with fixture numbers. Read the error shown by
 the form, correct the invalid amount, account, date, or declaration, and submit again. For the
-canonical laptop story, restore the defaults listed in step 5. If the backend itself is no longer
+canonical laptop story, restore the values listed in step 4. If the backend itself is no longer
 reachable, use the clearly labelled offline recovery path instead of presenting the saved example
 as a response to new input.
 
