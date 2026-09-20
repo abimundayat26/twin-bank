@@ -33,11 +33,12 @@ import {
   makeScaleX,
   makeScaleY,
   monthTickPositions,
+  niceTicks,
   positionOfDate,
   toTrack,
   yDomain,
 } from "@/lib/chart";
-import { longDate, money, moneyExact, shortDate, signedMoney } from "@/lib/format";
+import { longDate, money, moneyExact, twinDate, signedMoney } from "@/lib/format";
 import type { BalanceBands, IsoDate } from "@/lib/types";
 import { Card } from "./ui";
 
@@ -63,6 +64,7 @@ export function BalanceTrajectoryChart({
   simulations,
   markers = [],
   counterfactualLabel = "With the purchase",
+  asOf,
 }: {
   bands?: BalanceBands | null;
   reserve?: number;
@@ -74,6 +76,12 @@ export function BalanceTrajectoryChart({
   simulations?: number | null;
   markers?: ChartMarker[];
   counterfactualLabel?: string;
+  /**
+   * `twin.as_of`, the reference year for G-1. Defaults to the first plotted
+   * day, which is where the engine starts a horizon, so a caller that has no
+   * twin to hand still labels the axis the same way.
+   */
+  asOf?: IsoDate;
 }) {
   const [metric, setMetric] = useState<Metric>("total");
   const [hover, setHover] = useState<number | null>(null);
@@ -135,18 +143,17 @@ export function BalanceTrajectoryChart({
   const scaleX = makeScaleX(kept.length, PAD.left, PLOT_W);
   const scaleY = makeScaleY(domain, PAD.top, PLOT_H);
 
-  const candidateTicks = [domain.lo, (domain.lo + domain.hi) / 2, domain.hi];
-  // Zero earns its own line whenever the plot straddles it.
-  if (domain.lo < 0 && domain.hi > 0) candidateTicks.push(0);
-  // Two ticks can round to the same label, which would draw the gridline twice.
-  const seenTickLabels = new Set<string>();
-  const yTicks = candidateTicks.filter((value) => {
-    const text = money(value);
-    if (seenTickLabels.has(text)) return false;
-    seenTickLabels.add(text);
-    return true;
-  });
+  // TR-3: round money on a nice step, not whatever the extremes happened to be.
+  // Zero falls on a tick by itself whenever the plot straddles it, because it is
+  // a multiple of every step.
+  const yTicks = niceTicks(domain);
   const monthTicks = monthTickPositions(dates, kept);
+  // G-1's reference year. The horizon starts at `as_of`, so the first plotted
+  // day stands in when no twin was passed.
+  const yearReference = asOf ?? dates[0];
+  // The rows of the text equivalent: the same months the axis labels, plus both
+  // ends. A row per day would be 730 rows of table for a screen reader to walk.
+  const tableRows = [...new Set([0, ...monthTicks, kept.length - 1])].sort((a, b) => a - b);
 
   const endBaseline = base.median[count - 1];
   const endCounterfactual = counter.median[count - 1];
@@ -165,9 +172,10 @@ export function BalanceTrajectoryChart({
   return (
     <Card
       title="Balance trajectory"
-      subtitle={`Median end-of-day projection, ${shortDate(dates[0])} through ${shortDate(
-        dates[count - 1],
-      )}`}
+      subtitle={`Median end-of-day projection, ${twinDate(
+        dates[0],
+        asOf ?? dates[0],
+      )} through ${twinDate(dates[count - 1], asOf ?? dates[0])}`}
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-4 text-xs">
@@ -206,7 +214,12 @@ export function BalanceTrajectoryChart({
         </div>
       </div>
 
-      <div className="relative">
+      {/* TR-7: below 640 px the chart scrolls inside its own card. The minimum
+          width keeps the axis legible instead of squeezing eight months of days
+          into a phone's width, and the scroll stays here so the page itself
+          never scrolls sideways (G-20). */}
+      <div className="overflow-x-auto">
+        <div className="relative min-w-[520px]">
         <svg
           viewBox={`0 0 ${W} ${H}`}
           className="h-auto w-full touch-none"
@@ -246,7 +259,7 @@ export function BalanceTrajectoryChart({
               className="fill-faint text-[10px]"
               aria-hidden="true"
             >
-              {shortDate(keptDates[position])}
+              {twinDate(keptDates[position], yearReference)}
             </text>
           ))}
 
@@ -399,19 +412,50 @@ export function BalanceTrajectoryChart({
             </p>
           </div>
         ) : null}
+        </div>
       </div>
 
-      <p className="mt-3 text-xs text-muted">
-        {identical ? (
-          <>
-            This purchase does not change the projected median {metric} balance on any day in the
-            horizon, so the two paths coincide.{" "}
-          </>
-        ) : null}
-        Lines are the median across {runs}; shaded areas cover the 10th to 90th percentile. The
-        lowest balance in the comparison below is measured mid-day and will sit under these
-        end-of-day lines.
-      </p>
+      {/* Not a narrative footer (TR-6): a purchase that moves nothing is a state
+          the chart cannot show, because the two paths lie on top of each other. */}
+      {identical ? (
+        <p className="mt-3 text-xs text-muted">
+          This purchase does not change the projected median {metric} balance on any day in the
+          horizon, so the two paths coincide.
+        </p>
+      ) : null}
+
+      {/* G-19: the plotted values as text, sampled at the same months the x-axis
+          labels, so a screen reader gets the shape and not just the endpoints. */}
+      <table className="sr-only">
+        <caption>
+          {`Projected ${metric} balance, sampled monthly from the plotted series. Baseline and `}
+          {counterfactualLabel.toLowerCase()}, medians with the 10th to 90th percentile range.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Baseline median</th>
+            <th scope="col">Baseline 10th to 90th percentile</th>
+            <th scope="col">{counterfactualLabel} median</th>
+            <th scope="col">{counterfactualLabel} 10th to 90th percentile</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tableRows.map((position) => (
+            <tr key={`row-${keptDates[position]}`}>
+              <th scope="row">{longDate(keptDates[position])}</th>
+              <td>{money(baseMedian[position])}</td>
+              <td>
+                {money(baseLo[position])} to {money(baseHi[position])}
+              </td>
+              <td>{money(counterMedian[position])}</td>
+              <td>
+                {money(counterLo[position])} to {money(counterHi[position])}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </Card>
   );
 }
