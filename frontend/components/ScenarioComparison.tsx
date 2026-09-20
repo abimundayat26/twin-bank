@@ -1,208 +1,198 @@
 /**
- * Baseline vs counterfactual, side by side.
+ * No Purchase against Purchase, side by side (SM-4).
  *
- * Every number here comes straight from `ScenarioMetrics`. The only arithmetic
- * is the counterfactual-minus-baseline delta shown next to a value, which is a
- * presentation of two figures the backend already produced — no simulation,
- * no thresholds, no invented risk values.
+ * Every figure comes straight from `ScenarioMetrics`; the mapping from row to
+ * field is fixed in SPEC section 7.1 so no page invents its own. Nothing here
+ * computes a probability, a balance or a score (G-6) — the one comparison it
+ * makes is whether the goal's chance fell far enough to bold, and that reads
+ * the unrounded values the backend sent (G-4).
+ *
+ * A metric the backend did not compute shows "-" rather than a zero: a missing
+ * probability is not the same as no risk (E-5).
  */
 
-import { chance, money, moneyExact, longDate, signedMoney } from "@/lib/format";
-import type {
-  FinancialConstraint,
-  Goal,
-  ScenarioMetrics,
-  SimulationResponse,
-} from "@/lib/types";
+import type { ReactNode } from "react";
+import { chance, money, twinDate } from "@/lib/format";
+import type { FinancialTwin, ScenarioMetrics, SimulationResponse } from "@/lib/types";
+import { ImpactBadge } from "./ImpactBadge";
 import { Badge, Card } from "./ui";
 
-type Tone = "good" | "caution" | "neutral";
+/** 7.1: a probability is bold once it is at least even odds. */
+const LIKELY = 0.5;
 
-interface MetricRow {
+/** 7.1, Goals row: bold when the purchase costs the goal this much or more. */
+const GOAL_DROP = 0.25;
+
+interface Row {
+  id: string;
   label: string;
-  caption?: string;
-  /** Rendered value per scenario. */
-  render: (metrics: ScenarioMetrics) => string;
-  /** Delta text for the counterfactual column, if the metric has one. */
-  delta?: (baseline: ScenarioMetrics, counterfactual: ScenarioMetrics) => string | null;
-  /** Is the counterfactual worse than the baseline on this metric? */
-  worse: (baseline: ScenarioMetrics, counterfactual: ScenarioMetrics) => boolean;
+  cell: (metrics: ScenarioMetrics) => ReactNode;
+  /** Bold applies to one column at a time, so it takes the column's own metrics. */
+  bold?: (metrics: ScenarioMetrics) => boolean;
+  note?: (metrics: ScenarioMetrics) => string | null;
 }
 
-/** Percentage-point change, e.g. "+59 pts". */
-function pointsDelta(baseline: number, counterfactual: number): string {
-  const points = Math.round((counterfactual - baseline) * 100);
-  return `${points > 0 ? "+" : ""}${points} pts`;
+/** G-3, with "-" for a figure this result does not carry. */
+function probability(value: number | null | undefined): string {
+  return value == null ? "-" : chance(value);
 }
 
-function buildRows(
-  simulations: number | null | undefined,
-  horizonEnd: string,
-  reserve?: FinancialConstraint,
-  goal?: Goal,
-): MetricRow[] {
-  // ISO dates compare correctly as strings.
-  const goalAfterHorizon = goal != null && goal.deadline > horizonEnd;
-  // Monte Carlo results report balances as medians; mock results omit the count.
-  return [
+/**
+ * The Upcoming bills badge (7.2).
+ *
+ * `prob_obligations_uncovered` wins whenever it exists: `obligations_covered`
+ * describes the single expected-value path and can disagree with the Monte
+ * Carlo figure (at $2,500 for Alex it says covered while 37% of futures are
+ * not).
+ */
+export function billsBadge(metrics: ScenarioMetrics): { text: string; tone: "good" | "caution" | "bad"; title?: string } {
+  const p = metrics.prob_obligations_uncovered;
+  if (p == null) {
+    return metrics.obligations_covered
+      ? { text: "Covered", tone: "good" }
+      : { text: "Not covered", tone: "bad" };
+  }
+  const title = `A bill goes uncovered in ${chance(p)} of futures`;
+  if (p === 0) return { text: "Covered", tone: "good", title };
+  if (p < LIKELY) return { text: "At risk", tone: "caution", title };
+  return { text: "Not covered", tone: "bad", title };
+}
+
+function buildRows(twin: FinancialTwin, baseline: ScenarioMetrics): Row[] {
+  const hasReserve = twin.constraints.some((c) => c.type === "minimum_reserve");
+  const showGoals = twin.goals.length > 0 && baseline.prob_goal_met != null;
+
+  const rows: Row[] = [
     {
-      label: simulations ? "Median ending balance" : "Ending balance",
-      caption: simulations
-        ? `At the end of the horizon, across ${simulations.toLocaleString("en-US")} simulated futures`
-        : "At the end of the horizon",
-      render: (m) => moneyExact(m.ending_balance),
-      delta: (b, c) => signedMoney(c.ending_balance - b.ending_balance),
-      worse: (b, c) => c.ending_balance < b.ending_balance,
+      id: "balance",
+      label: "Predicted balance",
+      cell: (m) => money(m.ending_balance),
     },
     {
-      label: simulations ? "Median lowest balance along the way" : "Lowest balance along the way",
-      caption: reserve ? `Emergency reserve is ${money(reserve.amount)}` : undefined,
-      render: (m) => moneyExact(m.min_balance),
-      delta: (b, c) => signedMoney(c.min_balance - b.min_balance),
-      worse: (b, c) => c.min_balance < b.min_balance,
-    },
-    {
-      label: "Chance of a low balance",
-      render: (m) => chance(m.prob_low_balance),
-      delta: (b, c) => pointsDelta(b.prob_low_balance, c.prob_low_balance),
-      worse: (b, c) => c.prob_low_balance > b.prob_low_balance,
-    },
-    {
-      label: "Chance of dipping into the emergency reserve",
-      caption: reserve?.description,
-      render: (m) => chance(m.prob_below_reserve),
-      delta: (b, c) => pointsDelta(b.prob_below_reserve, c.prob_below_reserve),
-      worse: (b, c) => c.prob_below_reserve > b.prob_below_reserve,
-    },
-    {
-      label: goal ? `${goal.name} goal` : "Savings goal",
-      caption: goal ? `${money(goal.target_amount)} by ${longDate(goal.deadline)}` : undefined,
-      render: (m) =>
-        m.prob_goal_met != null
-          ? `Met in ${chance(m.prob_goal_met)} of futures`
-          : goalAfterHorizon
-            ? "Not evaluated (deadline after horizon)"
-            : m.goal_shortfall === 0
-              ? "On track"
-              : `${money(m.goal_shortfall)} short`,
-      delta: (b, c) =>
-        b.prob_goal_met != null && c.prob_goal_met != null
-          ? pointsDelta(b.prob_goal_met, c.prob_goal_met)
-          : null,
-      worse: (b, c) =>
-        b.prob_goal_met != null && c.prob_goal_met != null
-          ? c.prob_goal_met < b.prob_goal_met
-          : c.goal_shortfall > b.goal_shortfall,
-    },
-    {
-      label: "Upcoming obligations covered",
-      caption: "Every mandatory bill in the horizon",
-      render: (m) => {
-        const missed = m.prob_obligations_uncovered;
-        const status = m.obligations_covered ? "Yes" : "No";
-        if (missed == null) return status;
-        return missed === 0
-          ? `${status} · covered in every future`
-          : `${status} · covered in ${chance(1 - missed)} of futures`;
-      },
-      worse: (b, c) =>
-        b.prob_obligations_uncovered != null && c.prob_obligations_uncovered != null
-          ? c.prob_obligations_uncovered > b.prob_obligations_uncovered
-          : b.obligations_covered && !c.obligations_covered,
-    },
-    {
-      // A bill the simulator paid, but only by reaching into savings. Covered above
-      // says the bill was paid; this says what it cost to pay it.
-      label: "Chance of paying a bill out of savings",
-      caption: "Checking alone would not cover a mandatory bill",
-      render: (m) =>
-        m.prob_savings_sweep != null
-          ? m.prob_savings_sweep === 0
-            ? "Never"
-            : `In ${chance(m.prob_savings_sweep)} of futures`
-          : "Not calculated",
-      delta: (b, c) =>
-        b.prob_savings_sweep != null && c.prob_savings_sweep != null
-          ? pointsDelta(b.prob_savings_sweep, c.prob_savings_sweep)
-          : null,
-      worse: (b, c) =>
-        b.prob_savings_sweep != null &&
-        c.prob_savings_sweep != null &&
-        c.prob_savings_sweep > b.prob_savings_sweep,
+      id: "low-balance",
+      label: "Chance of low balance",
+      cell: (m) => probability(m.prob_low_balance),
+      bold: (m) => m.prob_low_balance >= LIKELY,
     },
   ];
+
+  // E-4: a twin that has declared no reserve has no reserve to dip into.
+  if (hasReserve) {
+    rows.push({
+      id: "reserve",
+      label: "Chance of dipping into your reserve",
+      cell: (m) => probability(m.prob_below_reserve),
+      bold: (m) => m.prob_below_reserve >= LIKELY,
+    });
+  }
+
+  rows.push({
+    id: "sweep",
+    label: "Chance of paying a bill out of savings",
+    cell: (m) => probability(m.prob_savings_sweep),
+    bold: (m) => m.prob_savings_sweep != null && m.prob_savings_sweep >= LIKELY,
+  });
+
+  if (showGoals) {
+    rows.push({
+      id: "goals",
+      label: twin.goals.length > 1 ? "Chance every goal is met" : "Chance your goal is met",
+      cell: (m) => probability(m.prob_goal_met),
+      bold: (m) =>
+        baseline.prob_goal_met != null &&
+        m.prob_goal_met != null &&
+        baseline.prob_goal_met - m.prob_goal_met >= GOAL_DROP,
+      note: (m) => (m.goal_shortfall > 0 ? `Short by ${money(m.goal_shortfall)}` : null),
+    });
+  }
+
+  rows.push({
+    id: "bills",
+    label: "Upcoming bills",
+    cell: (m) => {
+      const badge = billsBadge(m);
+      return (
+        <span title={badge.title}>
+          <Badge tone={badge.tone}>{badge.text}</Badge>
+        </span>
+      );
+    },
+  });
+
+  return rows;
 }
 
-function Value({ text, tone = "neutral" }: { text: string; tone?: Tone }) {
-  const tones = { good: "text-ink", caution: "text-caution", neutral: "text-ink" } as const;
-  return <span className={`tnum text-base font-medium ${tones[tone]}`}>{text}</span>;
+function Cell({ row, metrics }: { row: Row; metrics: ScenarioMetrics }) {
+  const note = row.note?.(metrics) ?? null;
+  return (
+    <div className="bg-raised px-3 py-3 sm:px-4">
+      <span
+        className={`tnum text-sm text-ink ${row.bold?.(metrics) ? "font-bold" : "font-medium"}`}
+      >
+        {row.cell(metrics)}
+      </span>
+      {note ? <p className="tnum mt-0.5 text-xs text-caution">{note}</p> : null}
+    </div>
+  );
 }
 
 export function ScenarioComparison({
+  twin,
   simulation,
-  reserve,
-  goal,
 }: {
+  twin: FinancialTwin;
   simulation: SimulationResponse;
-  reserve?: FinancialConstraint;
-  goal?: Goal;
 }) {
-  const { baseline, counterfactual } = simulation;
+  const { baseline, counterfactual, impact } = simulation;
   const purchase = simulation.request.events[0];
-  const rows = buildRows(simulation.num_simulations, simulation.horizon_end, reserve, goal);
+  const rows = buildRows(twin, baseline);
 
   return (
-    <Card
-      title="Baseline vs. this purchase"
-      subtitle={`Horizon: today through ${longDate(simulation.horizon_end)}`}
-    >
-      <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-[1.4fr_1fr_1fr]">
-        <div className="bg-surface px-4 py-3 text-xs font-semibold uppercase tracking-wider text-faint">
-          Metric
+    <Card>
+      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">
+          Two futures
+        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* G-13: the numbers are a saved example, and the page says so. */}
+          {simulation.is_mock ? <Badge tone="neutral">Sample figures</Badge> : null}
+          {impact ? <ImpactBadge impact={impact} /> : null}
         </div>
-        <div className="bg-surface px-4 py-3">
+      </header>
+
+      {/* Two columns at every width (SM-4, E-21); the label moves above them
+          below the `sm` breakpoint instead of squeezing a third column in. */}
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-[1.4fr_1fr_1fr]">
+        <div className="col-span-2 bg-surface px-3 py-3 sm:col-span-1 sm:px-4">
+          <p className="text-xs text-faint" title={simulation.horizon_end}>
+            Through {twinDate(simulation.horizon_end, twin.as_of)}
+          </p>
+        </div>
+        <div className="bg-surface px-3 py-3 text-center sm:px-4 sm:text-left">
           <p className="text-xs font-semibold uppercase tracking-wider text-baseline">
-            Baseline
+            No Purchase
           </p>
-          <p className="text-xs text-faint">No purchase</p>
         </div>
-        <div className="bg-surface px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-counter">
-            Counterfactual
-          </p>
-          {/* Wraps: this column is the narrowest of the three, and SPEC 7.1
-              requires a long purchase name to stay readable. */}
-          <p className="break-words text-xs text-faint">
-            {purchase.description} · {money(purchase.amount)}
-          </p>
+        <div className="bg-surface px-3 py-3 text-center sm:px-4 sm:text-left">
+          <p className="text-xs font-semibold uppercase tracking-wider text-counter">Purchase</p>
+          {/* G-2, and it wraps: this column is the narrowest, and a long
+              purchase name has to stay readable rather than overlap (G-20). */}
+          {purchase ? (
+            <p className="break-words text-xs text-faint">
+              {purchase.description} · {money(purchase.amount)}
+            </p>
+          ) : null}
         </div>
 
-        {rows.map((row) => {
-          const isWorse = row.worse(baseline, counterfactual);
-          const delta = row.delta?.(baseline, counterfactual) ?? null;
-          return (
-            <div key={row.label} className="contents">
-              <div className="bg-raised px-4 py-4">
-                <p className="text-sm text-ink">{row.label}</p>
-                {row.caption ? (
-                  <p className="mt-0.5 text-xs text-faint">{row.caption}</p>
-                ) : null}
-              </div>
-              <div className="flex items-center bg-raised px-4 py-4">
-                <Value text={row.render(baseline)} />
-              </div>
-              <div className="flex flex-wrap items-center gap-2 bg-raised px-4 py-4">
-                <Value text={row.render(counterfactual)} tone={isWorse ? "caution" : "neutral"} />
-                {delta ? (
-                  <span className={`tnum text-xs ${isWorse ? "text-caution" : "text-muted"}`}>
-                    {delta}
-                  </span>
-                ) : null}
-                {!delta && isWorse ? <Badge tone="caution">Worse</Badge> : null}
-              </div>
+        {rows.map((row) => (
+          <div key={row.id} className="contents">
+            <div className="col-span-2 bg-raised px-3 pt-3 text-xs text-muted sm:col-span-1 sm:px-4 sm:py-3 sm:text-sm sm:text-ink">
+              {row.label}
             </div>
-          );
-        })}
+            <Cell row={row} metrics={baseline} />
+            <Cell row={row} metrics={counterfactual} />
+          </div>
+        ))}
       </div>
     </Card>
   );
