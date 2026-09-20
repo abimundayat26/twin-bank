@@ -73,7 +73,7 @@ Alex has:
 
 Alex declares:
 
-> I need $2,000 for summer housing by May and want to keep at least $1,500 for emergencies.
+> I need $1,600 for summer housing by May and want to keep at least $1,500 for emergencies.
 
 Alex later asks:
 
@@ -183,17 +183,17 @@ Phases describe what the demo on `main` does. Workstreams (Section 10) may build
 | 1. Mocked end-to-end demo | Done |
 | 2. Deterministic calculations | Done |
 | 3. Nessie data | Done. Alex is seeded in the live sandbox, and `USE_MOCKS=false` plus a key builds the twin from Nessie. Read back from the live sandbox on 2026-09-19, Alex is recognisable (`backend.nessie.readback`, #65); Nessie stores amounts in whole dollars (#68). The demo stays on fixtures by default. |
-| 4. Monte Carlo | Done, including a fan chart in the UI |
-| 5. Goal compilation and optimization | Done. Goal entry and the alternatives panel are in the UI. The rule-based compiler is the default; an LLM compiler sits behind `GOAL_COMPILER=llm` and falls back to rules. |
-| 6. Databricks and MLflow | Done, behind flags. The twin build job runs in Databricks from `backend/databricks.yml`, `TWIN_SOURCE=databricks` serves the twin that job wrote, and `TRACK_TWIN_BUILDS=true` logs each build to MLflow, locally or to a Databricks workspace. All off by default; the demo stays on fixtures. |
-| 7. Demo polish | In progress. The minimalist layout in `frontend/SPEC.md` is built across all six routes, and `docs/demo-walkthrough.md` matches the shipped UI. |
-
-The demo twin now carries the fitted seasonal profiles the simulator, explanations and optimizer read (#72, #75), so the forecast is visible in the demo.
+| 4. Monte Carlo | Done. The Balance Trajectory page shows the projection behind the last simulation with its bands and assumptions, and the Forecast & Data page shows the forecast. Alex's demo twin now carries its fitted seasonal profiles and forecast metadata (`backend/fixtures/twin.json`), so the whole demo runs on the forecast. |
+| 5. Goal compilation and optimization | Done. The Plans & Assistant page has a Goals & Limits panel (goals, emergency reserve, minimum balance) and an Assistant chat that drafts goals, constraints, one-time obligations and answers about detected recurring bills; nothing reaches the twin until the user accepts a draft (`/assistant/*`). The Obligations page and one-time obligations feed the simulator and optimizer. The Purchase Simulator shows an impact level with reasons, ranked alternatives, a commit action and the earliest date a goal can still be met. `GOAL_COMPILER` defaults to `llm`, which only takes effect where `ANTHROPIC_API_KEY` is set; with no key, with `GOAL_COMPILER=rules`, or when a call fails, the rule-based compiler runs. |
+| 6. Databricks and MLflow | Built behind flags, off by default. `backend/databricks.yml` deploys `backend.build_job`, which builds a twin from a transactions file; `DATABRICKS_TWIN_PATH` with `USE_MOCKS=false`, `DATABRICKS_HOST` and `DATABRICKS_TOKEN` serves that twin; `TRACK_TWIN_BUILDS=true` records each twin build as an MLflow run. The default demo uses none of it, and this update did not run it against a live workspace. |
+| 7. Demo polish | In progress. A minimalist multi-page UI (Overview, Plans & Assistant, Obligations, Purchase Simulator, Balance Trajectory, Forecast & Data) laid out as `frontend/SPEC.md` describes, a scripted walkthrough (`docs/demo-walkthrough.md`) and a pre-demo checklist (`DEMO_CHECKLIST.md`) are in. |
 
 Main gaps, in priority order:
 
-1. The minimalist frontend spec's definition of done is not finished: the 320 to 1440 px light and dark pass over the six routes is still a manual check, and seven comments (six in `backend/`, one in `README.md`) still cite a `frontend/SPEC.md` section 3.5 that the rewrite removed; they mean Section 12, Security.
-2. The LLM goal compiler is off by default and explanations are template-based (Section 13). Simulate no longer shows a written explanation at all (`frontend/SPEC.md` D1); the backend still returns one.
+1. The minimalist frontend spec's definition of done is not finished: the 320 to 1440 px light and dark pass over the six routes is still a manual check, and several comments in `backend/` and `README.md` still cite a `frontend/SPEC.md` section 3.5 that the rewrite removed; they mean Section 12, Security.
+2. Databricks and MLflow are built but not part of the default demo, and have not been run against a live workspace since they were built.
+3. Explanations are template-based (Section 13), and Simulate no longer shows a written explanation at all (`frontend/SPEC.md` D1); the backend still returns one.
+4. `POST /twin/build` has no UI, on purpose: it returns a twin without storing it, so a "Rebuild" control would have nothing to show (see `README.md`).
 
 ---
 
@@ -267,6 +267,11 @@ Optimization:
 LLM:
 
 * Anthropic (Claude Sonnet 5, `claude-sonnet-5`; see Section 13).
+
+This list is the plan. In the repo today:
+
+* Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS, Vitest. React Flow is not a dependency, and there is no Financial Intent Graph.
+* Backend: FastAPI, Pydantic, httpx, the Anthropic SDK, `mlflow-skinny`, pytest. pandas, NumPy and scikit-learn are not dependencies; the forecast and the Monte Carlo simulation are plain Python.
 
 ---
 
@@ -343,26 +348,46 @@ Conventions for all shared data:
 
 ## 9. Core API
 
-Expected API surface:
+API surface (from `backend/src/backend/main.py`):
 
 ```text
-GET  /health
-GET  /twin/{user_id}
-PUT  /twin/{user_id}/minimum-balance
-PUT  /twin/{user_id}/goals
-POST /twin/build
-POST /goals/compile
-POST /simulate
-POST /optimize
-GET  /explain/{simulation_id}
-POST /clarifications/respond
-```
+GET    /health
 
-Do not build all endpoints immediately.
+GET    /twin/{user_id}
+GET    /twin/{user_id}/overview
+GET    /twin/{user_id}/forecast
+GET    /twin/{user_id}/obligations
+POST   /twin/build
+
+PUT    /twin/{user_id}/minimum-balance
+POST   /clarifications/respond
+PUT    /twin/{user_id}/goals
+PATCH  /twin/{user_id}/goals/{goal_id}
+DELETE /twin/{user_id}/goals/{goal_id}
+PUT    /twin/{user_id}/reserve
+
+POST   /twin/{user_id}/obligations/recurring
+PUT    /twin/{user_id}/obligations/recurring/{obligation_id}
+DELETE /twin/{user_id}/obligations/recurring/{obligation_id}
+POST   /twin/{user_id}/obligations/one-time
+PUT    /twin/{user_id}/obligations/one-time/{obligation_id}
+DELETE /twin/{user_id}/obligations/one-time/{obligation_id}
+
+POST   /goals/compile
+POST   /simulate
+GET    /explain/{simulation_id}
+POST   /optimize
+POST   /twin/{user_id}/goals/{goal_id}/earliest-date
+POST   /twin/{user_id}/purchases/commit
+
+GET    /assistant/opening/{user_id}
+POST   /assistant/message
+POST   /assistant/proposals/{proposal_id}/decision
+```
 
 Build only what the current phase requires.
 
-All of these endpoints now exist, and the frontend uses all of them except `POST /twin/build`. Wire existing endpoints into the UI before adding new ones.
+All of these endpoints exist, and the frontend calls all of them except `GET /health` and `POST /twin/build`. Wire existing endpoints into the UI before adding new ones.
 
 ---
 
@@ -376,34 +401,34 @@ Ownership is by subsystem. It is not a split by layer, and it is not who writes 
 
 Owns Nessie, transaction normalization, recurrence detection, forecasting, Databricks and Financial Twin generation.
 
-Built: normalization, recurrence detection, twin building, the Nessie client, the sandbox seeder, the switch that decides whether a twin comes from the fixture or from Nessie, and the read-back check that Alex comes out of the live sandbox recognisable (#65). The mock feed now carries a known seasonal signal (`SEASONAL_WEIGHTS` in `ingest/generate_transactions.py`), and recurrence detection fits a recency-weighted mean and a per-month seasonal profile per category, recorded on the twin as forecast metadata (#59). The demo twin was rebalanced to carry those fitted profiles while keeping its story (#72, #75), and the twin build job now runs in Databricks from an asset bundle, with `TWIN_SOURCE=databricks` serving what it wrote and `TRACK_TWIN_BUILDS` logging each build to MLflow (#79, #83, #90, #92, #93, #129).
+Built: normalization, recurrence detection, twin building, the Nessie client, the sandbox seeder, the switch that decides whether a twin comes from the fixture, Nessie or Databricks, and the read-back check that Alex comes out of the live sandbox recognisable (#65). The mock feed carries a known seasonal signal (`SEASONAL_WEIGHTS` in `ingest/generate_transactions.py`), and recurrence detection fits a recency-weighted mean and a per-month seasonal profile per category, recorded on the twin as forecast metadata (#59). Alex's demo twin (`fixtures/twin.json`) carries those profiles and that forecast, and it is now separate from the hand-written seed twin (`fixtures/twin_seed.json`) that the mock transaction feed is generated from, so the two can no longer feed each other. The Databricks build job (`build_job.py`, `databricks.yml`), the read-back of the twin it writes (`databricks_twin.py`) and MLflow tracking of twin builds (`tracking.py`) are in, behind flags.
 
 Focus:
 
 1. Keep the demo fixture's story true if the twin is rebalanced again: the laptop clearly risky, with at least one alternative that keeps every limit.
-2. Keep the Databricks and MLflow paths off by default. Fixtures remain the demo source (`frontend/SPEC.md` Q6).
+2. Run the Databricks build job and MLflow tracking against a real workspace and record the result here. Until then they are built but unverified live (Section 5). Keep both off by default; fixtures remain the demo source (`frontend/SPEC.md` Q6).
 
 ### Workstream 2: Simulation / Intelligence (abimundayat26)
 
 Owns the simulator, Monte Carlo, the goal compiler, counterfactual simulation, explainability and optimization. It also owns the alternatives UI.
 
-Built: the deterministic and Monte Carlo simulation, explanations, optimization, the rule-based goal compiler, the LLM goal compiler behind a flag with rules as the fallback, the alternatives panel, and user answers kept across a server restart. Both simulators apply a twin's per-month seasonal spending profile, and a twin without one simulates flat as before (#63). Explanations describe the forecast and a busy or quiet spending stretch after a purchase (#64, #69), and when no single alternative keeps every limit, the optimizer also tries waiting combined with a spending cut (#70). Added since: the Assistant, which drafts a goal, bill, limit or what-if from a sentence and writes nothing until the user accepts it (#131, #133); the Impact Score (#136, #137); and committing a purchase, with the search for the deadline that pays for it (#139).
+Built: the deterministic and Monte Carlo simulation, explanations, optimization, the rule-based goal compiler, the LLM goal compiler (on wherever a key is set, with rules as the fallback), the alternatives panel, and user answers kept across a server restart. Both simulators apply a twin's per-month seasonal spending profile, and a twin without one simulates flat (#63). Explanations describe the forecast and a busy or quiet spending stretch after a purchase (#64, #69), and when no single alternative keeps every limit, the optimizer also tries waiting combined with a spending cut (#70). Also built: one-time obligations in the baseline and the optimizer, the Assistant backend (an intent router that separates goals, constraints, one-time obligations and answers about detected bills; drafts that only an explicit accept applies), the impact score, the earliest-date search, commit-a-purchase, and the overview, forecast and obligations read routes.
 
 Focus:
 
-1. Keep explanations and alternatives useful as the demo fixture changes.
+1. Keep explanations and alternatives useful as the demo twin and obligations change.
 2. Optionally, and only if the team reverses the Section 13 decision, have the LLM write explanations, rephrasing only the computed results.
 
 ### Workstream 3: Frontend / Integration (mkrishiv)
 
 Owns the Next.js frontend, the app shell and shared components, Twin visualization, the scenario UI, charts, API integration and demo polish.
 
-Built: the app shell and the six routes of the minimalist layout (`frontend/SPEC.md`) — Overview, Plans & Assistant with the Goals & Limits panel, Obligations, Purchase Simulator, Balance Trajectory, and Forecast & Data with the Sources card that says where the twin's data came from. Also the fan chart, the scenario comparison, goal entry through the Assistant, and handling of an offline backend. The Financial Intent Graph and the written explanation on Simulate were removed by that spec (D1, D2), and the header's data-source chip gave way to the Sources card (D3).
+Built: a minimalist multi-page app (Overview, Plans & Assistant, Obligations, Purchase Simulator, Balance Trajectory, Forecast & Data) with a shared shell, the Goals & Limits panel, the Assistant chat with proposal cards, the scenario comparison with alternatives and commit actions, the balance trajectory chart, the forecast and processing-lineage panels on Forecast & Data (where the twin's data came from, separately from whether the backend is reachable), and handling of an offline backend. Frontend requirements live in `frontend/SPEC.md`. The earlier single-screen frontend and its Financial Intent Graph were removed.
 
 Focus:
 
 1. Finish the definition of done in `frontend/SPEC.md` Section 18: the 320 to 1440 px light and dark pass, and the comments that still cite a section 3.5 that no longer exists.
-2. Demo polish from a fresh clone (Phase 7), keeping `docs/demo-walkthrough.md` and `DEMO_CHECKLIST.md` matched to the shipped UI.
+2. Demo polish and a rehearsal from a fresh clone (Phase 7), following `docs/demo-walkthrough.md` and keeping it and `DEMO_CHECKLIST.md` matched to the shipped UI.
 
 Ownership means responsibility, not exclusive permission to modify code.
 
@@ -453,7 +478,7 @@ Decided:
 | What balance counts as "low balance"? | Checking below the user's own minimum checking balance, which they set in the app (`PUT /twin/{user_id}/minimum-balance`); $200 until they set one |
 | Does the emergency reserve count checking only, or checking plus savings? | Checking plus savings |
 | What is the simulation horizon? | Through the earliest goal deadline (2027-05-01 for Alex); 180 days when there are no goals; at most 730 days |
-| Which LLM provider do we use? | Anthropic, Claude Sonnet 5 (`claude-sonnet-5`), off by default behind `GOAL_COMPILER=llm`; explanations stay template-based. Changed from Haiku 4.5 by the group lead on 2026-09-19. |
+| Which LLM provider do we use? | Anthropic, Claude Sonnet 5 (`claude-sonnet-5`). The goal compiler defaults to `GOAL_COMPILER=llm`, but only takes effect where `ANTHROPIC_API_KEY` is set (the group lead's machine); with no key, with `GOAL_COMPILER=rules`, or when a call fails, the rule-based compiler runs, so a fresh clone works with no credentials. Explanations stay template-based. Changed from Haiku 4.5 by the group lead on 2026-09-19; made the default by the group lead on 2026-09-20. |
 | Does the housing goal draw from the same money as the emergency reserve? | No; the goal must be met on top of the reserve |
 
 Open:
