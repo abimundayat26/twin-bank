@@ -260,6 +260,17 @@ describe("answerSentence", () => {
     );
   });
 
+  it("adds the mandatory status without rewriting the declaration", () => {
+    const asked = clarification(
+      "mandatory",
+      "Is this mandatory or optional?",
+      "I have $1,200 tuition due 2027-01-15 from checking",
+    );
+    expect(answerSentence(asked, "mandatory")).toBe(
+      "I have $1,200 tuition due 2027-01-15 from checking, mandatory",
+    );
+  });
+
   it("replaces the fragment when the question is which reading was meant", () => {
     // "intent" and "type" both ask the user to choose, so only their own words settle it.
     const asked = clarification("intent", "Saving toward, or already owed?", "I need to pay $400");
