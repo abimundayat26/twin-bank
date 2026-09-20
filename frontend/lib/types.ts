@@ -153,6 +153,33 @@ export interface ForecastMetadata {
   half_life_days?: number | null;
 }
 
+/**
+ * Where and when the pipeline that produced this twin ran.
+ *
+ * Identifiers and status only. SPEC section 3.5 forbids any secret, token,
+ * private connection value or raw environment configuration reaching the
+ * browser, so the backend model has no free-text field a credential could be
+ * pasted into and rejects unknown keys. A host, workspace URL, volume path or
+ * experiment name is deliberately absent: the user is told where the work ran,
+ * not how to reach it.
+ */
+export interface ProcessingLineage {
+  /** Where the pipeline ran. "local" is the backend process itself. */
+  location: "local" | "databricks";
+  /**
+   * How the run that produced this twin finished. "unknown" when the producer
+   * cannot tell — a served twin whose job status was never read.
+   */
+  status: "succeeded" | "failed" | "unknown";
+  /**
+   * MLflow run that recorded this build: 32 lowercase hex characters, MLflow's
+   * own format. Absent/null when tracking was off.
+   */
+  mlflow_run_id?: string | null;
+  /** ISO 8601 timestamp of that run. Absent/null when it was not recorded. */
+  run_time?: string | null;
+}
+
 export interface FinancialTwin {
   user_id: string;
   display_name: string;
@@ -170,6 +197,13 @@ export interface FinancialTwin {
    * load from a source, and on the offline mock.
    */
   source?: "fixture" | "nessie" | "databricks" | null;
+  /**
+   * How the twin was produced, as opposed to where its data came from: the two
+   * are separate facts and a twin can carry either without the other.
+   * Absent/null when nothing recorded it, which the UI must show as unavailable
+   * rather than guessing (SPEC section 3.5).
+   */
+  lineage?: ProcessingLineage | null;
   /** Computed server-side; present in the JSON payload. */
   total_balance: number;
 }
