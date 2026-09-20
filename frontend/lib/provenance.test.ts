@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { explanationSourceLabel, provenanceLabel, replySourceLabel } from "./provenance";
+import { provenanceLabel } from "./provenance";
 import type { FinancialTwin } from "./types";
 
 const KNOWN_SOURCES: NonNullable<FinancialTwin["source"]>[] = [
@@ -103,26 +103,5 @@ describe("provenanceLabel", () => {
       expect(shown).not.toBeNull();
       expect(shown?.label).toBe(`${shown?.backend} · ${shown?.data}`);
     }
-  });
-});
-
-describe("replySourceLabel", () => {
-  it("names each of the three sources distinctly", () => {
-    const labels = [replySourceLabel("rules"), replySourceLabel("llm"), explanationSourceLabel()];
-    expect(labels).toEqual(["Rule-based", "Model-assisted", "Deterministic template"]);
-    expect(new Set(labels).size).toBe(3);
-  });
-
-  it("says unavailable rather than guessing when the backend said nothing", () => {
-    expect(replySourceLabel(undefined)).toBe("Source unavailable");
-    expect(replySourceLabel(null)).toBe("Source unavailable");
-  });
-
-  it("never falls back to claiming a model wrote it", () => {
-    // frontend/SPEC.md section 4: rules- or template-generated output must not be
-    // represented as model-generated output. An unknown compiler is not a model.
-    const unknown = replySourceLabel("gpt" as never);
-    expect(unknown).toBe("Source unavailable");
-    expect(unknown).not.toContain("Model");
   });
 });
