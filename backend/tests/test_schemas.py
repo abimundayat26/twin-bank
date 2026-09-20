@@ -98,7 +98,7 @@ def test_category_fields_default_to_unasked():
     assert obligation.category_candidates == []
     assert obligation.declared_category is None
     asked = [o.id for o in load_twin().obligations if o.category_candidates]
-    assert asked == ["obl_mystery_transfer"]
+    assert asked == ["obl_online_transfer_to"]
     assert all(o.declared_category is None for o in load_twin().obligations)
 
 
@@ -343,11 +343,14 @@ def test_flat_mean_forecast_needs_no_half_life():
     assert forecast.half_life_days is None
 
 
-def test_twin_forecast_is_optional_and_unset_on_the_fixture():
+def test_twin_forecast_is_optional_but_recorded_on_the_fixture():
+    """Optional in the schema, because a Nessie twin with a few months of history
+    may have nothing worth recording. Present on the demo fixture, because that
+    one was rebuilt from a year of transactions and can say how."""
     twin = load_twin()
-    assert twin.forecast is None
-    carried = twin.model_copy(update={"forecast": ForecastMetadata.model_validate(FORECAST)})
-    assert FinancialTwin.model_validate_json(carried.model_dump_json()) == carried
+    assert twin.forecast is not None
+    assert FinancialTwin.model_validate_json(twin.model_dump_json()) == twin
+    assert twin.model_copy(update={"forecast": None}).forecast is None
 
 
 @pytest.mark.parametrize("source", ["fixture", "nessie", "databricks", None])

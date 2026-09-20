@@ -25,16 +25,21 @@ def test_twin_has_income_with_uncertainty():
 
 def test_twin_has_required_obligations():
     obligations = {o.id: o for o in load_twin().obligations}
-    assert "obl_rent" in obligations
-    assert obligations["obl_rent"].mandatory is True
-    assert obligations["obl_rent"].provenance == "observed"
+    assert "obl_hokie_property_mgmt_rent" in obligations
+    assert obligations["obl_hokie_property_mgmt_rent"].mandatory is True
+    assert obligations["obl_hokie_property_mgmt_rent"].provenance == "observed"
 
 
 def test_twin_flags_ambiguous_recurring_transfer():
-    """The recurring transfer of unclear purpose should read as soft, not a hard bill."""
+    """The recurring transfer of unclear purpose should read as soft, not a hard bill.
+
+    The amount is what the detector measured across the feed, not the round
+    number the seed planted: the generator varies it, so recovering it exactly
+    would mean the detector had ignored the data.
+    """
     obligations = {o.id: o for o in load_twin().obligations}
-    transfer = obligations["obl_mystery_transfer"]
-    assert transfer.expected_amount == 75.0
+    transfer = obligations["obl_online_transfer_to"]
+    assert transfer.expected_amount == 71.82
     assert transfer.mandatory is False
     assert transfer.confidence < 0.7
     assert transfer.provenance == "observed"
