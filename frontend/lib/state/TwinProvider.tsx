@@ -21,7 +21,10 @@
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  ApiError,
+  commitPurchase,
   compileGoal,
+  findEarliestDate,
   getTwin,
   respondToClarification,
   runOptimization,
@@ -36,8 +39,10 @@ import { OFFLINE_REASON } from "@/lib/offline";
 import { GOALS_SCOPE, MINIMUM_BALANCE_SCOPE } from "@/lib/scopes";
 import type {
   DeclaredGoalsRequest,
+  EarliestDateResponse,
   FinancialTwin,
   GoalCompileResponse,
+  GoalDateChange,
   ObligationCategory,
   OptimizationResponse,
   SimulationEvent,
@@ -74,6 +79,15 @@ export interface TwinState {
   isOptimizing: boolean;
   optimizationError: string | undefined;
 
+  /**
+   * A commit has changed the plan the comparison on screen was built from, so
+   * the comparison is stale until it is run again (CM-6).
+   */
+  planChanged: boolean;
+  commitResult: string | undefined;
+  isCommitting: boolean;
+  commitError: string | undefined;
+
   answerClarification: (obligationId: string, category: ObligationCategory) => void;
   /** Replaces the twin with one the backend has already saved (see `applyTwin`). */
   applyTwin: (next: FinancialTwin) => void;
@@ -86,6 +100,8 @@ export interface TwinState {
   discardGoalDraft: () => void;
   simulate: (event: SimulationEvent) => Promise<void>;
   optimize: () => Promise<void>;
+  commit: (events: SimulationEvent[], goalUpdates?: GoalDateChange[]) => Promise<boolean>;
+  earliestDate: (goalId: string, events: SimulationEvent[]) => Promise<EarliestDateResponse>;
 }
 
 const TwinContext = createContext<TwinState | null>(null);
@@ -121,6 +137,14 @@ export function TwinProvider({ children }: { children: ReactNode }) {
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimizationError, setOptimizationError] = useState<string>();
   const isOffline = source === "fixture";
+
+  // A committed decision. The comparison stays on screen and is marked stale
+  // rather than cleared (CM-6): the reader just acted on those numbers, and
+  // blanking them would take away what they were looking at.
+  const [planChanged, setPlanChanged] = useState(false);
+  const [commitResult, setCommitResult] = useState<string>();
+  const [isCommitting, setIsCommitting] = useState(false);
+  const [commitError, setCommitError] = useState<string>();
 
   function clearOptimization() {
     setOptimization(null);
@@ -292,6 +316,11 @@ export function TwinProvider({ children }: { children: ReactNode }) {
     setIsSimulating(true);
     setSimulationError(undefined);
     clearOptimization();
+    // The new run is against the plan as it now stands, so the stale mark and
+    // the previous commit notice both go with it (CM-6).
+    setPlanChanged(false);
+    setCommitResult(undefined);
+    setCommitError(undefined);
     try {
       // No horizon_end: the backend defaults to the earliest goal deadline.
       const loaded = await runSimulation({ user_id: twin.user_id, events: [event] });
@@ -333,6 +362,61 @@ export function TwinProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  /**
+   * Adds a decided purchase to the plan, with an optional deadline move in the
+   * same call (section 10, CM-3 to CM-6).
+   *
+   * The response carries the whole twin (API-2), so that is what the twin is
+   * replaced with; a second read would only be a slower way to learn the same
+   * thing. The simulation is deliberately left standing and marked stale.
+   *
+   * G-16: a 404 or 409 means the thing being written against moved under the
+   * reader, so the twin is re-read and they are asked to look again.
+   */
+  async function commit(
+    events: SimulationEvent[],
+    goalUpdates?: GoalDateChange[],
+  ): Promise<boolean> {
+    if (!twin || isCommitting) return false;
+    setIsCommitting(true);
+    setCommitError(undefined);
+    try {
+      const response = await commitPurchase(twin.user_id, {
+        events,
+        goal_updates: goalUpdates,
+      });
+      setTwin(response.twin);
+      setSource("api");
+      setPlanChanged(true);
+      setCommitResult(
+        response.already_committed
+          ? "That purchase was already in your plan."
+          : "Added to your plan. It is in Obligations, where you can delete it.",
+      );
+      return true;
+    } catch (error: unknown) {
+      if (error instanceof ApiError && (error.status === 404 || error.status === 409)) {
+        setCommitError("That changed. Please review and try again.");
+        const loaded = await getTwin(DEMO_USER_ID).catch(() => null);
+        if (loaded?.source === "api") setTwin(loaded.data);
+      } else {
+        setCommitError(errorText(error));
+      }
+      return false;
+    } finally {
+      setIsCommitting(false);
+    }
+  }
+
+  /** CM-2. Throws on 404 and 422 so the caller can show the backend's words. */
+  async function earliestDate(
+    goalId: string,
+    events: SimulationEvent[],
+  ): Promise<EarliestDateResponse> {
+    if (!twin) throw new Error("No twin loaded.");
+    return findEarliestDate(twin.user_id, goalId, { events });
+  }
+
   const value: TwinState = {
     twin,
     source,
@@ -353,6 +437,10 @@ export function TwinProvider({ children }: { children: ReactNode }) {
     optimization,
     isOptimizing,
     optimizationError,
+    planChanged,
+    commitResult,
+    isCommitting,
+    commitError,
     answerClarification,
     applyTwin,
     refreshTwin,
@@ -363,6 +451,8 @@ export function TwinProvider({ children }: { children: ReactNode }) {
     discardGoalDraft,
     simulate,
     optimize,
+    commit,
+    earliestDate,
   };
 
   return <TwinContext.Provider value={value}>{children}</TwinContext.Provider>;

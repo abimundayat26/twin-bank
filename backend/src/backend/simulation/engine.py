@@ -423,7 +423,8 @@ def evaluate_goals(
     for goal in sorted(twin.goals, key=lambda g: g.deadline):
         if goal.deadline not in total_on or goal.deadline == twin.as_of:
             continue
-        available = total_on[goal.deadline] - reserve - earmarked
+        available = max(0.0, total_on[goal.deadline] - reserve - earmarked)
+        funded = min(goal.target_amount, available)
         outcomes.append(
             GoalOutcome(
                 goal_id=goal.id,
@@ -431,11 +432,13 @@ def evaluate_goals(
                 target_amount=goal.target_amount,
                 deadline=goal.deadline,
                 available=round(available, 2),
-                shortfall=round(max(0.0, goal.target_amount - available), 2),
+                shortfall=round(goal.target_amount - funded, 2),
                 surplus=round(max(0.0, available - goal.target_amount), 2),
             )
         )
-        earmarked += goal.target_amount
+        # A missed goal cannot reserve money that was not there at its deadline.
+        # Only the amount actually funded stays unavailable to later goals.
+        earmarked += funded
     return outcomes
 
 

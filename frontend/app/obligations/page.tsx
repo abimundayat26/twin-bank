@@ -21,6 +21,7 @@ import {
   updateRecurringObligation,
   type Loaded,
 } from "@/lib/api";
+import { addDays } from "@/lib/dates";
 import { DateText, money, ordinalDay } from "@/lib/format";
 import { OFFLINE_REASON } from "@/lib/offline";
 import { offlineObligations } from "@/lib/obligations";
@@ -68,12 +69,6 @@ function validateDueDay(value: string): string | undefined {
   if (!Number.isInteger(day) || day < 1 || day > 31) {
     return "Due day must be a whole number from 1 to 31.";
   }
-}
-
-function addDays(iso: string, days: number): string {
-  const date = new Date(`${iso}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
 }
 
 function validateDate(value: string, asOf: string): string | undefined {

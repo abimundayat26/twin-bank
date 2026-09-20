@@ -13,14 +13,20 @@
  * drift apart. Do not hand-edit them.
  */
 
+import mockForecast from "./mock/forecast.json";
 import mockTwin from "./mock/twin.json";
 import type {
   AssistantMessageRequest,
   AssistantMessageResponse,
   AssistantOpening,
   ClarificationResponseRequest,
+  CommitPurchaseRequest,
+  CommitPurchaseResponse,
   DeclaredGoalsRequest,
+  EarliestDateRequest,
+  EarliestDateResponse,
   FinancialTwin,
+  ForecastPayload,
   GoalCompileRequest,
   GoalCompileResponse,
   MinimumBalanceRequest,
@@ -47,6 +53,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
  * honest fallback.
  */
 const DEFAULT_TIMEOUT_MS = 10_000;
+// G-7: simulate, optimize, commit and earliest-date each run Monte Carlo, some
+// of them several times over, so they are given far longer than a read.
 const LONG_RESULT_TIMEOUT_MS = 30_000;
 
 /** Where a payload came from, so the UI can be honest about it. */
@@ -126,6 +134,20 @@ export async function getTwin(userId: string): Promise<Loaded<FinancialTwin>> {
     unlessBackendUnavailable(error);
     console.warn("Falling back to the bundled twin fixture.", error);
     return { data: mockTwin as FinancialTwin, source: "fixture" };
+  }
+}
+
+/** Baseline projection for Forecast & Data, with a generated offline copy (FD-10). */
+export async function getForecast(userId: string): Promise<Loaded<ForecastPayload>> {
+  try {
+    return {
+      data: await getJson<ForecastPayload>(`/twin/${encodeURIComponent(userId)}/forecast`),
+      source: "api",
+    };
+  } catch (error) {
+    unlessBackendUnavailable(error);
+    console.warn("Falling back to the bundled forecast fixture.", error);
+    return { data: mockForecast as ForecastPayload, source: "fixture" };
   }
 }
 
@@ -361,5 +383,47 @@ export async function decideProposal(
   return getJson<ProposalDecisionResponse>(
     `/assistant/proposals/${encodeURIComponent(proposalId)}/decision`,
     { method: "POST", body: JSON.stringify(request) },
+  );
+}
+
+/**
+ * Adds a decided purchase to the plan (`POST /twin/{user_id}/purchases/commit`).
+ *
+ * It moves no money: the backend records the purchase as one non-mandatory
+ * one-time obligation, and `goal_updates` moves a deadline in the same atomic
+ * call (CM-3, CM-4). Posting the same purchase twice records it once and says
+ * so in `already_committed` (G-15).
+ *
+ * The whole twin comes back (API-2), so the caller replaces its twin from the
+ * response rather than firing a second read. There is no fixture fallback: a
+ * write that did not reach the backend did not happen (G-14).
+ */
+export async function commitPurchase(
+  userId: string,
+  request: CommitPurchaseRequest,
+): Promise<CommitPurchaseResponse> {
+  return getJson<CommitPurchaseResponse>(
+    `/twin/${encodeURIComponent(userId)}/purchases/commit`,
+    { method: "POST", body: JSON.stringify(request) },
+    LONG_RESULT_TIMEOUT_MS,
+  );
+}
+
+/**
+ * The first deadline at which the purchase stops costing the goal
+ * (`POST /twin/{user_id}/goals/{goal_id}/earliest-date`, CM-2).
+ *
+ * `earliest_deadline` comes back null when no date inside the two-year limit
+ * restores the goal's chances. That is an answer, not an error.
+ */
+export async function findEarliestDate(
+  userId: string,
+  goalId: string,
+  request: EarliestDateRequest,
+): Promise<EarliestDateResponse> {
+  return getJson<EarliestDateResponse>(
+    `/twin/${encodeURIComponent(userId)}/goals/${encodeURIComponent(goalId)}/earliest-date`,
+    { method: "POST", body: JSON.stringify(request) },
+    LONG_RESULT_TIMEOUT_MS,
   );
 }

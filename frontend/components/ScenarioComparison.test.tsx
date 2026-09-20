@@ -1,225 +1,215 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import mockSimulation from "@/lib/mock/simulation.json";
+import mockTwin from "@/lib/mock/twin.json";
 import type {
-  FinancialConstraint,
-  Goal,
+  FinancialTwin,
+  ImpactAssessment,
   ScenarioMetrics,
   SimulationResponse,
 } from "@/lib/types";
 import { ScenarioComparison } from "./ScenarioComparison";
 
 const SIMULATION = mockSimulation as unknown as SimulationResponse;
+const TWIN = mockTwin as unknown as FinancialTwin;
 
-const RESERVE: FinancialConstraint = {
-  id: "con_emergency_reserve",
-  type: "minimum_reserve",
-  amount: 1500,
-  description: "Never let checking plus savings fall below $1,500.",
-  provenance: "declared",
-};
-
-const GOAL: Goal = {
-  id: "goal_summer_housing",
-  name: "Summer housing",
-  target_amount: 1600,
-  deadline: "2027-05-01",
-  current_amount: 0,
-  provenance: "declared",
-};
-
+/** Section 7.4: Alex's seeded baseline. */
 const BASE: ScenarioMetrics = {
-  ending_balance: 3280.51,
-  min_balance: 2472.14,
-  prob_low_balance: 0.06,
-  prob_below_reserve: 0.002,
+  ending_balance: 3396,
+  min_balance: 2508,
+  prob_low_balance: 0.015,
+  prob_below_reserve: 0,
   goal_shortfall: 0,
   obligations_covered: true,
   prob_obligations_uncovered: 0,
-  prob_goal_met: 0.649,
-  prob_savings_sweep: 0.007,
+  prob_goal_met: 0.768,
+  prob_savings_sweep: 0,
 };
 
 function withMetrics(
   baseline: Partial<ScenarioMetrics>,
   counterfactual: Partial<ScenarioMetrics>,
   simulation: Partial<SimulationResponse> = {},
+  twin: Partial<FinancialTwin> = {},
 ) {
   return render(
     <ScenarioComparison
+      twin={{ ...TWIN, ...twin }}
       simulation={{
         ...SIMULATION,
         baseline: { ...BASE, ...baseline },
         counterfactual: { ...BASE, ...counterfactual },
         ...simulation,
       }}
-      reserve={RESERVE}
-      goal={GOAL}
     />,
   );
 }
 
-/** The row's cells, so a value can be checked against the metric it belongs to. */
+/** A metric row, so a value is read against the row it belongs to. */
 function row(label: string): HTMLElement {
-  const cell = screen.getByText(label).closest("div");
-  return cell!.parentElement as HTMLElement;
+  return screen.getByText(label).parentElement as HTMLElement;
+}
+
+/** [No Purchase, Purchase] for one row, in that order. */
+function cells(label: string): HTMLElement[] {
+  const labelCell = screen.getByText(label);
+  const siblings = Array.from(labelCell.parentElement!.children) as HTMLElement[];
+  return siblings.slice(siblings.indexOf(labelCell) + 1, siblings.indexOf(labelCell) + 3);
 }
 
 describe("ScenarioComparison", () => {
-  it("labels the two futures and names the purchase behind the counterfactual", () => {
+  // SM-4
+  it("heads the two columns and names the purchase under the second", () => {
     withMetrics({}, {});
-    expect(screen.getByText("Baseline")).toBeInTheDocument();
-    expect(screen.getByText("No purchase")).toBeInTheDocument();
-    expect(screen.getByText("Counterfactual")).toBeInTheDocument();
+    expect(screen.getByText("No Purchase")).toBeInTheDocument();
+    expect(screen.getByText("Purchase")).toBeInTheDocument();
     expect(screen.getByText("Laptop · $800")).toBeInTheDocument();
   });
 
-  it("calls balances medians only when the result came from simulated futures", () => {
+  // SM-4 with G-1: the horizon is in a later year than as_of, so it keeps it.
+  it("says what period every number covers", () => {
     withMetrics({}, {});
-    expect(screen.getByText("Median ending balance")).toBeInTheDocument();
-    expect(
-      screen.getByText("At the end of the horizon, across 1,000 simulated futures"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Through May 1, 2027")).toBeInTheDocument();
   });
 
-  it("drops the median wording on a result with no simulation count", () => {
-    withMetrics({}, {}, { num_simulations: null });
-    expect(screen.getByText("Ending balance")).toBeInTheDocument();
-    expect(screen.getByText("At the end of the horizon")).toBeInTheDocument();
-    expect(screen.queryByText("Median ending balance")).not.toBeInTheDocument();
+  it("lists exactly the rows of section 7.1, in order", () => {
+    withMetrics({}, {});
+    const labels = [
+      "Predicted balance",
+      "Chance of low balance",
+      "Chance of dipping into your reserve",
+      "Chance of paying a bill out of savings",
+      "Chance your goal is met",
+      "Upcoming bills",
+    ];
+    for (const label of labels) expect(screen.getByText(label)).toBeInTheDocument();
+    // Nothing from the old layout survives: SM-6 removed the narrative rows.
+    expect(screen.queryByText(/Lowest balance/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/pts/)).not.toBeInTheDocument();
   });
 
-  it("shows the counterfactual's shortfall as a signed difference", () => {
-    withMetrics({ ending_balance: 3280.51 }, { ending_balance: 2480.51 });
-    expect(screen.getByText("−$800")).toBeInTheDocument();
+  it("shows whole dollars and whole percentages", () => {
+    withMetrics({}, { ending_balance: 2596.4, prob_low_balance: 0.966 });
+    expect(screen.getByText("$3,396")).toBeInTheDocument();
+    expect(screen.getByText("$2,596")).toBeInTheDocument();
+    expect(screen.getByText("97%")).toBeInTheDocument();
   });
 
-  it("shows a gain with a plus sign rather than a bare number", () => {
-    withMetrics({ ending_balance: 3000 }, { ending_balance: 3200 });
-    expect(screen.getByText("+$200")).toBeInTheDocument();
-  });
-
-  it("writes an unchanged metric as +$0, never as a blank cell", () => {
-    withMetrics({ ending_balance: 3000 }, { ending_balance: 3000 });
-    expect(screen.getAllByText("+$0").length).toBeGreaterThan(0);
-  });
-
-  it("reports probability changes in points, not as a second percentage", () => {
-    withMetrics({ prob_low_balance: 0.06 }, { prob_low_balance: 0.65 });
-    expect(screen.getByText("+59 pts")).toBeInTheDocument();
-  });
-
-  // chance() exists so a rare risk is never rounded away to 0%.
+  // G-3
   it("never rounds a small but real risk down to zero", () => {
     withMetrics({ prob_below_reserve: 0 }, { prob_below_reserve: 0.002 });
-    const cells = row("Chance of dipping into the emergency reserve");
-    expect(cells).toHaveTextContent("<1%");
+    expect(row("Chance of dipping into your reserve")).toHaveTextContent("<1%");
   });
 
-  it("reads the goal from simulated futures when the backend scored it", () => {
-    withMetrics({ prob_goal_met: 0.649 }, { prob_goal_met: 0.41 });
-    expect(screen.getByText("Met in 65% of futures")).toBeInTheDocument();
-    expect(screen.getByText("Met in 41% of futures")).toBeInTheDocument();
-    expect(screen.getByText("-24 pts")).toBeInTheDocument();
+  // E-5
+  it("shows a figure the backend did not compute as a dash", () => {
+    withMetrics({ prob_savings_sweep: null }, { prob_savings_sweep: null });
+    const [before, after] = cells("Chance of paying a bill out of savings");
+    expect(before).toHaveTextContent("-");
+    expect(after).toHaveTextContent("-");
   });
 
-  it("falls back to the shortfall when no goal probability was computed", () => {
-    withMetrics(
-      { prob_goal_met: null, goal_shortfall: 0 },
-      { prob_goal_met: null, goal_shortfall: 320 },
+  // 7.1: bold reads the unrounded value (G-4).
+  it("bolds a probability at even odds or worse", () => {
+    withMetrics({ prob_low_balance: 0.49 }, { prob_low_balance: 0.5 });
+    const [before, after] = cells("Chance of low balance");
+    expect(within(before).getByText("49%")).not.toHaveClass("font-bold");
+    expect(within(after).getByText("50%")).toHaveClass("font-bold");
+  });
+
+  it("bolds the goal once the purchase costs a quarter of its chance", () => {
+    // 0.768 - 0.518 is exactly the 0.25 the row is bold at.
+    withMetrics({}, { prob_goal_met: 0.518 });
+    expect(within(cells("Chance your goal is met")[1]).getByText("52%")).toHaveClass("font-bold");
+  });
+
+  it("leaves the goal unbolded a thousandth under that", () => {
+    withMetrics({}, { prob_goal_met: 0.519 });
+    // Both columns round to a printable percentage; the threshold reads the
+    // unrounded values (G-4), so 52% here and 52% above differ in weight.
+    expect(within(cells("Chance your goal is met")[1]).getByText("52%")).not.toHaveClass(
+      "font-bold",
     );
-    expect(screen.getByText("On track")).toBeInTheDocument();
-    expect(screen.getByText("$320 short")).toBeInTheDocument();
   });
 
-  // A goal whose deadline is past the horizon was never simulated, so calling it
-  // "on track" would be a claim the simulation never made.
-  it("says a goal past the horizon was not evaluated instead of calling it on track", () => {
+  it("adds the shortfall under the chance when the goal comes up short", () => {
+    withMetrics({}, { goal_shortfall: 504 });
+    expect(screen.getByText("Short by $504")).toBeInTheDocument();
+  });
+
+  it("asks about every goal when the twin has more than one", () => {
+    withMetrics({}, {}, {}, { goals: [...TWIN.goals, { ...TWIN.goals[0], id: "goal_two" }] });
+    expect(screen.getByText("Chance every goal is met")).toBeInTheDocument();
+  });
+
+  // E-4
+  it("hides the reserve row for a twin that declared no reserve", () => {
+    const constraints = TWIN.constraints.filter((c) => c.type !== "minimum_reserve");
+    withMetrics({}, {}, {}, { constraints });
+    expect(screen.queryByText("Chance of dipping into your reserve")).not.toBeInTheDocument();
+  });
+
+  it("hides the goal row when there is no goal, and when none was scored", () => {
+    withMetrics({}, {}, {}, { goals: [] });
+    expect(screen.queryByText(/goal is met/)).not.toBeInTheDocument();
+
+    withMetrics({ prob_goal_met: null }, { prob_goal_met: null });
+    expect(screen.queryByText(/goal is met/)).not.toBeInTheDocument();
+  });
+
+  // 7.2
+  it("reads the bills badge from the Monte Carlo share, not the covered flag", () => {
     withMetrics(
-      { prob_goal_met: null, goal_shortfall: 0 },
-      { prob_goal_met: null, goal_shortfall: 0 },
-      { horizon_end: "2026-12-31" },
+      { prob_obligations_uncovered: 0 },
+      // The $2,500 case: covered on the expected path, uncovered in 37% of futures.
+      { prob_obligations_uncovered: 0.367, obligations_covered: true },
     );
-    expect(
-      screen.getAllByText("Not evaluated (deadline after horizon)").length,
-    ).toBeGreaterThan(0);
-    expect(screen.queryByText("On track")).not.toBeInTheDocument();
+    const [before, after] = cells("Upcoming bills");
+    expect(before).toHaveTextContent("Covered");
+    expect(after).toHaveTextContent("At risk");
   });
 
-  it("names the goal it is scoring rather than saying 'savings goal'", () => {
-    withMetrics({}, {});
-    expect(screen.getByText("Summer housing goal")).toBeInTheDocument();
-    expect(screen.getByText("$1,600 by May 1, 2027")).toBeInTheDocument();
+  it("calls a bill not covered once most futures miss it", () => {
+    withMetrics({}, { prob_obligations_uncovered: 0.5 });
+    expect(cells("Upcoming bills")[1]).toHaveTextContent("Not covered");
   });
 
-  it("falls back to a generic label when the twin has no goal", () => {
-    render(<ScenarioComparison simulation={SIMULATION} reserve={RESERVE} />);
-    expect(screen.getByText("Savings goal")).toBeInTheDocument();
-  });
-
-  it("says how often obligations were covered, not merely that they were", () => {
-    withMetrics({ prob_obligations_uncovered: 0 }, { prob_obligations_uncovered: 0.12 });
-    expect(screen.getByText("Yes · covered in every future")).toBeInTheDocument();
-    expect(screen.getByText("Yes · covered in 88% of futures")).toBeInTheDocument();
-  });
-
-  it("gives a bare yes or no when the backend did not report the share", () => {
+  it("falls back to the covered flag only when the share is missing", () => {
     withMetrics(
       { prob_obligations_uncovered: null },
       { prob_obligations_uncovered: null, obligations_covered: false },
     );
-    expect(screen.getByText("Yes")).toBeInTheDocument();
-    expect(screen.getByText("No")).toBeInTheDocument();
+    const [before, after] = cells("Upcoming bills");
+    expect(before).toHaveTextContent("Covered");
+    expect(after).toHaveTextContent("Not covered");
   });
 
-  it("marks a newly uncovered bill as worse even though it has no delta", () => {
-    withMetrics(
-      { prob_obligations_uncovered: null, obligations_covered: true },
-      { prob_obligations_uncovered: null, obligations_covered: false },
+  // SM-5
+  it("shows the impact level with its reasons in the accessible name", () => {
+    const impact: ImpactAssessment = {
+      level: "high",
+      reasons: ["Chance of low balance rises by 95 points", "Goal is short by $504 more"],
+    };
+    withMetrics({}, {}, { impact });
+    const badge = screen.getByLabelText(
+      "High impact: Chance of low balance rises by 95 points, Goal is short by $504 more",
     );
-    expect(screen.getByText("Worse")).toBeInTheDocument();
+    expect(badge).toHaveTextContent("High impact");
   });
 
-  it("distinguishes a bill paid out of savings from one not paid at all", () => {
-    withMetrics({ prob_savings_sweep: 0 }, { prob_savings_sweep: 0.23 });
-    expect(screen.getByText("Never")).toBeInTheDocument();
-    expect(screen.getByText("In 23% of futures")).toBeInTheDocument();
+  // E-5: a level the backend did not send is not one the page may infer.
+  it("omits the impact badge when the result carries none", () => {
+    withMetrics({}, {}, { impact: null });
+    expect(screen.queryByText(/impact/i)).not.toBeInTheDocument();
   });
 
-  it("admits when the savings sweep was not calculated rather than showing 0%", () => {
-    withMetrics({ prob_savings_sweep: null }, { prob_savings_sweep: null });
-    expect(screen.getAllByText("Not calculated")).toHaveLength(2);
-  });
+  // G-13 / SM-7
+  it("tags sample figures, and does not when the result is live", () => {
+    withMetrics({}, {}, { is_mock: true });
+    expect(screen.getByText("Sample figures")).toBeInTheDocument();
 
-  it("carries the reserve's own words into the row about it", () => {
-    withMetrics({}, {});
-    expect(screen.getByText(RESERVE.description)).toBeInTheDocument();
-    expect(screen.getByText("Emergency reserve is $1,500")).toBeInTheDocument();
-  });
-
-  it("drops the reserve captions entirely when none is declared", () => {
-    render(<ScenarioComparison simulation={SIMULATION} goal={GOAL} />);
-    expect(screen.queryByText(/Emergency reserve is/)).not.toBeInTheDocument();
-    expect(
-      screen.getByText("Chance of dipping into the emergency reserve"),
-    ).toBeInTheDocument();
-  });
-
-  // SPEC 7.1 names long purchase names. This is the narrowest of the three
-  // columns, so it is where a long one clips first.
-  it("wraps a long purchase name in the counterfactual column", () => {
-    const description = "Refurbished 16-inch developer laptop with extended warranty";
-    const simulation = {
-      ...SIMULATION,
-      request: {
-        ...SIMULATION.request,
-        events: [{ ...SIMULATION.request.events[0], description }],
-      },
-    } as SimulationResponse;
-    render(<ScenarioComparison simulation={simulation} goal={GOAL} />);
-    const caption = screen.getByText(new RegExp(description));
-    expect(caption).not.toHaveClass("truncate");
-    expect(caption).toHaveClass("break-words");
+    withMetrics({}, {}, { is_mock: false });
+    expect(screen.getAllByText("Sample figures")).toHaveLength(1);
   });
 });

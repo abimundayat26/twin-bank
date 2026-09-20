@@ -258,6 +258,22 @@ def test_an_answer_is_merged_with_the_question_it_replies_to():
     assert answered["conversation_id"] == asked["conversation_id"]
 
 
+def test_answer_replaces_a_vague_deadline_instead_of_asking_forever():
+    asked = send("I want to save $2,000 for housing by next summer")
+    assert [question["field"] for question in asked["questions"]] == ["deadline"]
+
+    answered = send(
+        "June 1",
+        conversation_id=asked["conversation_id"],
+        in_reply_to=asked["message_id"],
+    )
+
+    assert answered["questions"] == []
+    [proposal] = answered["proposals"]
+    assert proposal["goal"]["name"] == "Housing"
+    assert proposal["goal"]["deadline"] == "2027-06-01"
+
+
 def test_without_in_reply_to_nothing_is_merged():
     asked = send("I want to save for a trip by next June")
     alone = send("$2,000", conversation_id=asked["conversation_id"])
@@ -357,7 +373,17 @@ def test_rejecting_twice_is_idempotent():
 def test_deciding_the_opposite_way_is_a_conflict():
     [proposal] = send(TRIP)["proposals"]
     decide(proposal["proposal_id"], "accept")
-    assert decide(proposal["proposal_id"], "reject").status_code == 409
+    response = decide(proposal["proposal_id"], "reject")
+    assert response.status_code == 409
+    assert response.json()["detail"] == "You already accepted that suggestion."
+
+
+def test_accepting_an_already_rejected_proposal_uses_correct_wording():
+    [proposal] = send(TRIP)["proposals"]
+    decide(proposal["proposal_id"], "reject")
+    response = decide(proposal["proposal_id"], "accept")
+    assert response.status_code == 409
+    assert response.json()["detail"] == "You already rejected that suggestion."
 
 
 def test_an_unknown_proposal_has_expired():

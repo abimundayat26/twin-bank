@@ -1,25 +1,25 @@
 "use client";
 
 /**
- * Purchase Simulator: the focused workspace for one counterfactual purchase.
+ * Purchase Simulator (SPEC section 9.4).
  *
- * It answers how the purchase moves the ending balance, what it does to
- * low-balance and reserve risk, whether the goal still lands, and what the
- * lower-impact alternatives are. It deliberately does not reduce any of that to
- * a single "can afford" verdict (SPEC section 3.3).
- *
- * The detailed time series lives on Balance Trajectory; this page links to it
- * once there is something to look at.
+ * The form is the whole question and the comparison is the whole answer, in
+ * that order down the page. There is no explanation paragraph, no drivers list
+ * and no assumptions block: the backend still returns them, and this page
+ * deliberately does not show them (SM-6). It also never reduces the result to a
+ * single "can afford" verdict — the Impact badge carries a level and the
+ * reasons behind it, and both come from the backend (SM-5, G-6).
  */
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import { AlternativesPanel } from "@/components/AlternativesPanel";
-import { ExplanationPanel } from "@/components/ExplanationPanel";
+import { CommitActions } from "@/components/CommitActions";
 import { PurchaseSimulator } from "@/components/PurchaseSimulator";
 import { ScenarioComparison } from "@/components/ScenarioComparison";
+import { TrajectoryPreview } from "@/components/TrajectoryPreview";
 import { Card } from "@/components/ui";
+import { alternativeRows } from "@/lib/alternatives";
 import { readPrefillParams } from "@/lib/assistant";
 import { useTwin } from "@/lib/state/TwinProvider";
 import { emergencyReserve, primaryGoal } from "@/lib/twin";
@@ -51,18 +51,24 @@ function SimulateWorkspace() {
     optimization,
     isOptimizing,
     optimizationError,
+    planChanged,
+    commitResult,
+    isCommitting,
+    commitError,
     simulate,
     optimize,
+    commit,
+    earliestDate,
   } = useTwin();
 
-  // Alternatives belong with a successful result (SPEC §3.3), so they are asked
-  // for as soon as there is one rather than hidden behind a button. It runs a
-  // Monte Carlo per option, so it is left to arrive on its own: the comparison
-  // above renders immediately and the panel shows its own waiting state.
+  // Alternatives belong with a successful result, so they are asked for as soon
+  // as there is one rather than hidden behind a button. It runs a Monte Carlo
+  // per option, so it is left to arrive on its own: the comparison renders
+  // immediately and the panel shows its own waiting state.
   const simulationId = simulation?.simulation_id;
   useEffect(() => {
-    // The saved offline example is not Alex's purchase, so there is nothing
-    // honest to optimize against it.
+    // The saved offline example is not the reader's purchase, so there is
+    // nothing honest to optimize against it.
     if (!simulationId || simulationSource !== "api") return;
     if (optimization || isOptimizing || optimizationError) return;
     void optimize();
@@ -72,7 +78,7 @@ function SimulateWorkspace() {
 
   if (twinError) {
     return (
-      <main className="mx-auto w-full max-w-6xl px-6 py-10">
+      <main className="mx-auto w-full max-w-5xl px-6 py-10">
         <Card title="Could not load the Financial Twin">
           <p className="text-sm text-bad">{twinError}</p>
           <p className="mt-3 text-sm text-muted">
@@ -86,18 +92,25 @@ function SimulateWorkspace() {
 
   if (!twin) {
     return (
-      <main className="mx-auto w-full max-w-6xl px-6 py-10">
-        <p className="text-sm text-muted">Loading Alex&rsquo;s Financial Twin…</p>
+      <main className="mx-auto w-full max-w-5xl px-6 py-10">
+        <p className="text-sm text-muted">Loading the Financial Twin…</p>
       </main>
     );
   }
 
   const goal = primaryGoal(twin);
   const reserve = emergencyReserve(twin);
+  const purchase = simulation?.request.events[0];
+  // The same rows the table shows, so Apply Compromise can only ever commit the
+  // option the reader is looking at (SM-11, SM-12).
+  const compromise =
+    optimization && simulation
+      ? alternativeRows(optimization, simulation.counterfactual).find((r) => r.key === "compromise")
+      : undefined;
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-8">
-      <div className="mb-6">
+    <main className="mx-auto grid w-full max-w-5xl gap-4 px-6 py-8">
+      <div>
         <h1 className="text-lg font-semibold text-ink">Purchase Simulator</h1>
         <p className="text-sm text-muted">
           Compare the future without the purchase against the future with it. TwinBank shows
@@ -105,90 +118,88 @@ function SimulateWorkspace() {
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[360px_1fr] lg:items-start">
-        <PurchaseSimulator
-          twin={twin}
-          lastDate={goal?.deadline}
-          isSimulating={isSimulating}
-          prefill={prefill}
-          isOffline={isOffline}
-          onSimulate={simulate}
-        />
+      <PurchaseSimulator
+        twin={twin}
+        lastDate={goal?.deadline}
+        isSimulating={isSimulating}
+        prefill={prefill}
+        isOffline={isOffline}
+        error={simulationError}
+        onSimulate={simulate}
+      />
 
-        <div className="grid gap-4">
-          {simulationError ? (
-            <Card title="Simulation failed">
-              <p className="text-sm text-bad">{simulationError}</p>
-            </Card>
-          ) : null}
+      {/* G-14: a failed run shows its message in the form and no numbers at
+          all. `simulation` is already cleared by the provider on an error. */}
+      {simulation ? (
+        <>
+          <ScenarioComparison twin={twin} simulation={simulation} />
 
-          {simulation ? (
-            <>
-              {simulationSource === "fixture" ? (
-                <Card title="Backend offline">
-                  <p className="text-sm text-caution">
-                    Showing the saved example ($800 laptop). Your purchase and answers are
-                    not applied until the backend is running.
-                  </p>
-                </Card>
-              ) : null}
+          <TrajectoryPreview
+            bands={simulation.balance_bands}
+            asOf={twin.as_of}
+            horizonEnd={simulation.horizon_end}
+            reserve={reserve?.amount}
+            simulations={simulation.num_simulations}
+            markers={[
+              ...(purchase
+                ? [{ date: purchase.date, label: purchase.description, tone: "counter" as const }]
+                : []),
+              ...(goal ? [{ date: goal.deadline, label: goal.name, tone: "faint" as const }] : []),
+            ]}
+          />
 
-              <ScenarioComparison simulation={simulation} reserve={reserve} goal={goal} />
-              <ExplanationPanel simulation={simulation} />
+          <CommitActions
+            twin={twin}
+            simulation={simulation}
+            goal={goal}
+            compromise={compromise}
+            isOffline={isOffline}
+            isCommitting={isCommitting}
+            planChanged={planChanged}
+            commitResult={commitResult}
+            commitError={commitError}
+            onCommit={commit}
+            onEarliestDate={earliestDate}
+          />
 
-              <Card title="The detail behind these numbers">
-                <p className="text-sm text-muted">
-                  The full projection, its uncertainty bands, the purchase marker and the
-                  reserve line are on the Balance Trajectory page.
-                </p>
-                <Link
-                  href="/trajectory"
-                  className="mt-3 inline-block rounded-lg border border-counter px-4 py-2.5 text-sm font-semibold text-counter transition hover:bg-counter/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-counter"
-                >
-                  See the balance trajectory
-                </Link>
-              </Card>
-
-              {simulationSource === "api" ? (
-                optimization ? (
-                  <AlternativesPanel
-                    optimization={optimization}
-                    reserve={reserve}
-                    goal={goal}
-                  />
+          {simulationSource === "api" ? (
+            optimization ? (
+              <AlternativesPanel
+                optimization={optimization}
+                purchaseMetrics={simulation.counterfactual}
+              />
+            ) : (
+              <Card title="Other ways to do this">
+                {optimizationError ? (
+                  <>
+                    {/* E-6: a failed optimization never hides the comparison. */}
+                    <p className="text-sm text-bad">
+                      Could not compare options: {optimizationError}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void optimize()}
+                      disabled={isOptimizing}
+                      className="mt-3 rounded-lg border border-line px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-raised disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isOptimizing ? "Comparing options…" : "Try again"}
+                    </button>
+                  </>
                 ) : (
-                  <Card title="Other ways to do this">
-                    {optimizationError ? (
-                      <>
-                        <p className="text-sm text-bad">
-                          Could not compare options: {optimizationError}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => void optimize()}
-                          disabled={isOptimizing}
-                          className="mt-3 rounded-lg border border-line px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-raised disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {isOptimizing ? "Comparing options…" : "Try again"}
-                        </button>
-                      </>
-                    ) : (
-                      <p className="text-sm text-muted">Comparing other ways to do this…</p>
-                    )}
-                  </Card>
-                )
-              ) : null}
-            </>
-          ) : (
-            <Card>
-              <p className="text-sm text-muted">
-                Press <span className="text-counter">Simulate</span> to compare the future
-                without the purchase against the future with it.
-              </p>
-            </Card>
-          )}
-        </div>
-      </div>
+                  <p className="text-sm text-muted">Comparing other ways to do this…</p>
+                )}
+              </Card>
+            )
+          ) : null}
+        </>
+      ) : (
+        <Card>
+          <p className="text-sm text-muted">
+            Press <span className="text-counter">Simulate</span> to compare the future without
+            the purchase against the future with it.
+          </p>
+        </Card>
+      )}
     </main>
   );
 }

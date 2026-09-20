@@ -78,20 +78,26 @@ describe("Purchase Simulator", () => {
     );
   });
 
-  it("pairs baseline against counterfactual once a simulation returns", async () => {
+  it("pairs No Purchase against Purchase once a simulation returns", async () => {
     await simulate();
-    await waitFor(() => expect(screen.getByText("Why?")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("No Purchase")).toBeInTheDocument());
+    expect(screen.getByText("Purchase")).toBeInTheDocument();
     expect(api.runSimulation).toHaveBeenCalledTimes(1);
   });
 
-  it("links on to the detailed trajectory after a success", async () => {
+  // SM-6: the backend still returns them; this page does not show them.
+  it("shows no explanation, drivers or assumptions", async () => {
     await simulate();
-    await waitFor(() =>
-      expect(screen.getByRole("link", { name: /balance trajectory/i })).toHaveAttribute(
-        "href",
-        "/trajectory",
-      ),
-    );
+    await waitFor(() => expect(screen.getByText("No Purchase")).toBeInTheDocument());
+    expect(screen.queryByText("Why?")).not.toBeInTheDocument();
+    expect(screen.queryByText(/What this assumes/i)).not.toBeInTheDocument();
+  });
+
+  // SM-8
+  it("keeps the trajectory closed until it is asked for", async () => {
+    await simulate();
+    const preview = await screen.findByText("Balance over the next 90 days");
+    expect(preview.closest("details")).not.toHaveAttribute("open");
   });
 
   it("asks for alternatives on its own, with no button to press", async () => {
@@ -105,15 +111,15 @@ describe("Purchase Simulator", () => {
   it("shows the backend's error instead of fixture numbers", async () => {
     vi.mocked(api.runSimulation).mockRejectedValue(new Error("horizon too long"));
     await simulate();
-    await waitFor(() => expect(screen.getByText("Simulation failed")).toBeInTheDocument());
-    expect(screen.getByText("horizon too long")).toBeInTheDocument();
-    expect(screen.queryByText("Why?")).not.toBeInTheDocument();
+    // SM-3 and G-14: the message lands in the form, and no numbers appear.
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("horizon too long"));
+    expect(screen.queryByText("No Purchase")).not.toBeInTheDocument();
   });
 
   it("does not optimize against the saved offline example", async () => {
     vi.mocked(api.runSimulation).mockResolvedValue({ data: SIMULATION, source: "fixture" });
     await simulate();
-    await waitFor(() => expect(screen.getByText("Backend offline")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("No Purchase")).toBeInTheDocument());
     expect(api.runOptimization).not.toHaveBeenCalled();
   });
 
@@ -131,8 +137,8 @@ describe("a what-if the Assistant routed here (PL-6)", () => {
     renderSimulate();
 
     await waitFor(() => expect(screen.getByLabelText("What")).toHaveValue("Bike"));
-    expect(screen.getByLabelText("Amount (USD)")).toHaveValue(450);
-    expect(screen.getByLabelText("When")).toHaveValue("2026-10-01");
+    expect(screen.getByLabelText("Amount")).toHaveValue(450);
+    expect(screen.getByLabelText("Date")).toHaveValue("2026-10-01");
     // AS-8: the Assistant hands the purchase over; the user still presses Simulate.
     expect(api.runSimulation).not.toHaveBeenCalled();
   });
@@ -142,7 +148,7 @@ describe("a what-if the Assistant routed here (PL-6)", () => {
     renderSimulate();
 
     await waitFor(() => expect(screen.getByLabelText("What")).toHaveValue("Laptop"));
-    expect(screen.getByLabelText("Amount (USD)")).toHaveValue(800);
+    expect(screen.getByLabelText("Amount")).toHaveValue(800);
     expect(api.runSimulation).not.toHaveBeenCalled();
   });
 });

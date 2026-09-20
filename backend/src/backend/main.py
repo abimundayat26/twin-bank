@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend import assistant, assistant_store, simulation_store, twin_store
 from backend.fixtures import load_raw_transactions
+from backend.forecast_view import build_forecast
 from backend.ingest.build import latest_transaction_date, rebuild
 from backend.ingest.normalize import normalize_all
 from backend.llm_goal_compiler import compile_goals_auto
@@ -24,6 +25,7 @@ from backend.schemas import (
     EarliestDateRequest,
     EarliestDateResponse,
     FinancialTwin,
+    ForecastPayload,
     GoalCompileRequest,
     GoalCompileResponse,
     MinimumBalanceRequest,
@@ -79,6 +81,14 @@ def get_twin(user_id: str) -> FinancialTwin:
 @app.get("/twin/{user_id}/overview", response_model=OverviewPayload)
 def get_overview(user_id: str) -> OverviewPayload:
     return build_overview(twin_for(user_id))
+
+
+@app.get("/twin/{user_id}/forecast", response_model=ForecastPayload)
+def get_forecast(user_id: str) -> ForecastPayload:
+    try:
+        return build_forecast(twin_for(user_id), seed=SIMULATION_SEED)
+    except SimulationError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @app.get("/twin/{user_id}/obligations", response_model=ObligationsPayload)
@@ -190,7 +200,6 @@ def delete_one_time_obligation(user_id: str, obligation_id: str) -> FinancialTwi
         raise HTTPException(
             status_code=404, detail=f"Unknown one-time obligation '{obligation_id}'"
         ) from e
-
 
 @app.post("/twin/build", response_model=FinancialTwin)
 def build_twin(request: TwinBuildRequest) -> FinancialTwin:
@@ -335,18 +344,20 @@ def assistant_message(request: AssistantMessageRequest) -> AssistantMessageRespo
     if request.in_reply_to is not None:
         # AS-11: only the frontend decides a message is an answer, and only a question
         # this process still holds can be answered.
-        earlier = assistant_store.text_behind(conversation, request.in_reply_to)
-        if earlier is None:
+        merged = assistant_store.merge_reply(
+            conversation, request.in_reply_to, text
+        )
+        if merged is None:
             raise HTTPException(
                 status_code=422,
                 detail="That question has expired. Please type the full request again.",
             )
-        text = f"{earlier} {text}"
+        text = merged
     reading = assistant.read_message(twin, text)
     message_id = assistant_store.new_id("msg")
     conversation.remember(text)
     if reading.questions:
-        conversation.leave_open(message_id, text)
+        conversation.leave_open(message_id, text, reading.questions)
     assistant_store.save_proposals(reading.proposals, twin.user_id)
     return AssistantMessageResponse(
         conversation_id=conversation.conversation_id,
@@ -372,7 +383,7 @@ def decide_proposal(
     if stored.status != "pending":
         if stored.status != wanted:
             raise HTTPException(
-                status_code=409, detail=f"You already {stored.status[:-1]} that suggestion."
+                status_code=409, detail=f"You already {stored.status} that suggestion."
             )
         return ProposalDecisionResponse(
             proposal_id=proposal_id,

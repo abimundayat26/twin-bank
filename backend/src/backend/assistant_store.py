@@ -12,12 +12,13 @@ proposals is more than a demo can produce, and a hackathon server that runs for 
 week must not grow without limit.
 """
 
+import re
 import uuid
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Literal
 
-from backend.schemas import Proposal
+from backend.schemas import AssistantQuestion, Proposal
 
 MAX_CONVERSATIONS = 50
 MAX_MESSAGES = 20
@@ -32,17 +33,25 @@ class Conversation:
 
     conversation_id: str
     messages: list[str] = field(default_factory=list)
-    # assistant message_id -> the user text that message's questions were asked about.
-    asked: "OrderedDict[str, str]" = field(default_factory=OrderedDict)
+    # assistant message_id -> the text and questions produced from it.
+    asked: "OrderedDict[str, OpenQuestions]" = field(default_factory=OrderedDict)
 
     def remember(self, text: str) -> None:
         self.messages.append(text)
         del self.messages[:-MAX_MESSAGES]
 
-    def leave_open(self, message_id: str, text: str) -> None:
-        self.asked[message_id] = text
+    def leave_open(
+        self, message_id: str, text: str, questions: list[AssistantQuestion]
+    ) -> None:
+        self.asked[message_id] = OpenQuestions(text=text, questions=questions)
         while len(self.asked) > MAX_MESSAGES:
             self.asked.popitem(last=False)
+
+
+@dataclass
+class OpenQuestions:
+    text: str
+    questions: list[AssistantQuestion]
 
 
 @dataclass
@@ -79,7 +88,82 @@ def conversation(conversation_id: str | None) -> Conversation:
 def text_behind(conv: Conversation, message_id: str) -> str | None:
     """What the user had written when `message_id` asked its questions, or None if
     that question is unknown or has expired (AS-11)."""
-    return conv.asked.get(message_id)
+    open_questions = conv.asked.get(message_id)
+    return open_questions.text if open_questions is not None else None
+
+
+_DEADLINE_LEAD = re.compile(r"^(?:by|before|until|no later than|on|in|within)\b", re.I)
+_BARE_NUMBER = re.compile(r"^[\d.,]+$")
+_QUOTED = re.compile(r'"([^"]+)"')
+
+
+def _question_for_answer(
+    open_questions: OpenQuestions, answer: str
+) -> AssistantQuestion:
+    """Resolve the question selected by the UI's message-level `in_reply_to`.
+
+    Choice answers identify their question directly. Free text answers the first
+    free-text question, matching the frontend's composer behaviour.
+    """
+    said = answer.strip().casefold()
+    for question in open_questions.questions:
+        if any(said == choice.strip().casefold() for choice in question.choices):
+            return question
+    return next(
+        (question for question in open_questions.questions if not question.choices),
+        open_questions.questions[0],
+    )
+
+
+def _answered_fragment(question: AssistantQuestion, answer: str) -> tuple[str, str]:
+    """Return (target, replacement) for the clause a question was about."""
+    said = answer.strip()
+    fragment = question.fragment.strip()
+    if question.field == "deadline":
+        # Vague dates are quoted in the deterministic question. Replace those words
+        # instead of retaining them beside the answer and asking forever.
+        quoted = _QUOTED.search(question.text)
+        target = quoted.group(1) if quoted and quoted.group(1) in fragment else fragment
+        replacement = said if _DEADLINE_LEAD.search(said) else f"by {said}"
+        if target == fragment and target not in replacement:
+            replacement = f"{fragment} {replacement}"
+        return target, replacement
+    if question.field == "amount":
+        amount = f"${said}" if _BARE_NUMBER.fullmatch(said) else said
+        replacement = (
+            fragment.replace(" for ", f" {amount} for ", 1)
+            if " for " in fragment
+            else f"{fragment} {amount}"
+        )
+        return fragment, replacement
+    if question.field == "name":
+        named = said if said.lower().startswith("for ") else f"for {said}"
+        return fragment, f"{fragment} {named}"
+    if question.field == "account":
+        lead = re.match(r"^(?:from|out of|using)\b", said, re.I)
+        return fragment, f"{fragment} {said if lead else f'from {said}'}"
+    if question.field == "mandatory":
+        return fragment, f"{fragment}, {said}"
+    if question.field in ("type", "intent"):
+        return fragment, said
+    return fragment, f"{fragment} {said}"
+
+
+def merge_reply(conv: Conversation, message_id: str, answer: str) -> str | None:
+    """Fold an explicit answer into the exact question fragment it addresses."""
+    open_questions = conv.asked.get(message_id)
+    if open_questions is None or not open_questions.questions:
+        return None
+    question = _question_for_answer(open_questions, answer)
+    target, replacement = _answered_fragment(question, answer)
+    at = open_questions.text.find(target)
+    if at < 0:
+        return f"{open_questions.text.rstrip(' .')}. {replacement}"
+    return (
+        open_questions.text[:at]
+        + replacement
+        + open_questions.text[at + len(target) :]
+    )
 
 
 def save_proposals(proposals: list[Proposal], user_id: str) -> None:
