@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 
 from backend.fixtures import load_simulation, load_twin
+from backend.forecast_view import build_forecast
 from backend.overview import build_overview
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -26,6 +27,7 @@ def sync() -> list[Path]:
         "twin.json": twin,
         "simulation.json": load_simulation(),
         "overview.json": build_overview(twin),
+        "forecast.json": build_forecast(twin, seed=1, is_mock=True),
     }
     written = []
     for name, model in payloads.items():

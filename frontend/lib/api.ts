@@ -13,6 +13,7 @@
  * drift apart. Do not hand-edit them.
  */
 
+import mockForecast from "./mock/forecast.json";
 import mockTwin from "./mock/twin.json";
 import type {
   AssistantMessageRequest,
@@ -25,6 +26,7 @@ import type {
   EarliestDateRequest,
   EarliestDateResponse,
   FinancialTwin,
+  ForecastPayload,
   GoalCompileRequest,
   GoalCompileResponse,
   MinimumBalanceRequest,
@@ -127,6 +129,20 @@ export async function getTwin(userId: string): Promise<Loaded<FinancialTwin>> {
     unlessBackendUnavailable(error);
     console.warn("Falling back to the bundled twin fixture.", error);
     return { data: mockTwin as FinancialTwin, source: "fixture" };
+  }
+}
+
+/** Baseline projection for Forecast & Data, with a generated offline copy (FD-10). */
+export async function getForecast(userId: string): Promise<Loaded<ForecastPayload>> {
+  try {
+    return {
+      data: await getJson<ForecastPayload>(`/twin/${encodeURIComponent(userId)}/forecast`),
+      source: "api",
+    };
+  } catch (error) {
+    unlessBackendUnavailable(error);
+    console.warn("Falling back to the bundled forecast fixture.", error);
+    return { data: mockForecast as ForecastPayload, source: "fixture" };
   }
 }
 

@@ -357,7 +357,17 @@ def test_rejecting_twice_is_idempotent():
 def test_deciding_the_opposite_way_is_a_conflict():
     [proposal] = send(TRIP)["proposals"]
     decide(proposal["proposal_id"], "accept")
-    assert decide(proposal["proposal_id"], "reject").status_code == 409
+    response = decide(proposal["proposal_id"], "reject")
+    assert response.status_code == 409
+    assert response.json()["detail"] == "You already accepted that suggestion."
+
+
+def test_accepting_an_already_rejected_proposal_uses_correct_wording():
+    [proposal] = send(TRIP)["proposals"]
+    decide(proposal["proposal_id"], "reject")
+    response = decide(proposal["proposal_id"], "accept")
+    assert response.status_code == 409
+    assert response.json()["detail"] == "You already rejected that suggestion."
 
 
 def test_an_unknown_proposal_has_expired():

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from backend.fixtures import FIXTURES_DIR, load_twin
+from backend.forecast_view import build_forecast
 from backend.overview import build_overview
 
 FRONTEND_MOCKS = Path(__file__).resolve().parents[2] / "frontend" / "lib" / "mock"
@@ -26,3 +27,9 @@ def test_frontend_simulation_mock_matches_fixture():
 def test_frontend_overview_mock_matches_builder():
     mock = json.loads((FRONTEND_MOCKS / "overview.json").read_text())
     assert mock == build_overview(load_twin()).model_dump(mode="json")
+
+
+def test_frontend_forecast_mock_matches_builder():
+    mock = json.loads((FRONTEND_MOCKS / "forecast.json").read_text())
+    expected = build_forecast(load_twin(), seed=1, is_mock=True)
+    assert mock == expected.model_dump(mode="json")
