@@ -1,7 +1,8 @@
 """User answers layered on top of whichever twin is configured.
 
-Answers (declared obligation categories, the minimum checking balance,
-confirmed goals, the emergency reserve and confirmed one-time obligations) live
+Answers (declared obligation categories, edits to detected recurring
+obligations, the minimum checking balance, confirmed goals, the emergency
+reserve and confirmed one-time obligations) live
 in process memory and are saved to
 a small JSON file, so they survive a server restart. `TWIN_ANSWERS_PATH` moves
 the file; set it empty to keep answers in memory only. Delete the file to start
@@ -13,17 +14,23 @@ calculates money.
 
 import logging
 import os
+import re
+import threading
 from datetime import timedelta
 from pathlib import Path
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from backend.schemas import (
+    EditableName,
     FinancialConstraint,
+    FinancialObligation,
     FinancialTwin,
     Goal,
+    MAX_MONEY,
     ObligationCategory,
     OneTimeObligation,
+    RecurringObligationCreate,
 )
 from backend.simulation.engine import MAX_HORIZON_DAYS
 from backend.twin_source import load_source_twin
@@ -41,10 +48,47 @@ def _answers_path_from_env() -> Path | None:
     return Path(value) if value.strip() else None
 
 
+class RecurringOverride(BaseModel):
+    """The user's edits to one detected recurring obligation, applied by id.
+
+    Private to this module, not a shared contract: the route body that carries these
+    edits is its own model in `schemas.py`. Only the fields the user actually changed
+    are set; `None` means "leave the detector's value alone", which is why a paused
+    obligation and one whose amount was corrected are told apart here rather than by
+    comparing against the detector's output.
+
+    The value ranges are repeated from the route body on purpose. Nothing invalid
+    should be able to reach the answers file even if a future caller forgets to
+    validate first.
+    """
+
+    name: EditableName | None = None
+    expected_amount: float | None = Field(
+        default=None, gt=0, le=MAX_MONEY, allow_inf_nan=False
+    )
+    due_day: int | None = Field(default=None, ge=1, le=31)
+    active: bool | None = None
+
+
+# Editing one of these makes the obligation the user's figure rather than the
+# detector's (PER-5). Pausing is not on the list: a paused rent is still the rent
+# that was observed, so its provenance does not change.
+OVERRIDDEN_VALUES = ("name", "expected_amount", "due_day")
+
 answers_path: Path | None = _answers_path_from_env()
 _loaded = False
+# Every write goes through one lock-protected function, so two requests cannot
+# interleave a half-applied change into memory or the file (PER-7).
+_write_lock = threading.Lock()
 
 declared_categories: dict[str, ObligationCategory] = {}  # obligation id -> answer
+# Recurring obligations are rebuilt from transactions, so an edit cannot live on the
+# built twin: the next rebuild would silently undo it. It lives here instead, keyed
+# by obligation id.
+recurring_overrides: dict[str, RecurringOverride] = {}
+# Recurring payments the user added cannot be rediscovered reliably from transaction
+# history. Keep them beside the overrides so a rebuild cannot erase them (PER-1).
+declared_recurring: list[FinancialObligation] = []
 minimum_checking_balance: float | None = None
 # None means "not answered yet": the fixture's goals and reserve apply.
 declared_goals: list[Goal] | None = None
@@ -62,10 +106,17 @@ class InvalidDeclaration(ValueError):
     pass
 
 
+class DetectedObligationCannotBeDeleted(ValueError):
+    pass
+
+
 class _SavedAnswers(BaseModel):
     """The answers file. Private to this module, not a shared contract."""
 
-    declared_categories: dict[str, ObligationCategory] = {}
+    declared_categories: dict[str, ObligationCategory] = Field(default_factory=dict)
+    # Defaults to empty, so an answers.json written before overrides existed still loads.
+    recurring_overrides: dict[str, RecurringOverride] = Field(default_factory=dict)
+    declared_recurring: list[FinancialObligation] = Field(default_factory=list)
     minimum_checking_balance: float | None = None
     declared_goals: list[Goal] | None = None
     declared_reserves: list[FinancialConstraint] | None = None
@@ -88,6 +139,10 @@ def _load() -> None:
         return
     declared_categories.clear()
     declared_categories.update(saved.declared_categories)
+    recurring_overrides.clear()
+    recurring_overrides.update(saved.recurring_overrides)
+    declared_recurring.clear()
+    declared_recurring.extend(saved.declared_recurring)
     minimum_checking_balance = saved.minimum_checking_balance
     declared_goals = saved.declared_goals
     declared_reserves = saved.declared_reserves
@@ -99,6 +154,8 @@ def _save() -> None:
         return
     saved = _SavedAnswers(
         declared_categories=declared_categories,
+        recurring_overrides=recurring_overrides,
+        declared_recurring=declared_recurring,
         minimum_checking_balance=minimum_checking_balance,
         declared_goals=declared_goals,
         declared_reserves=declared_reserves,
@@ -114,15 +171,34 @@ def _save() -> None:
         logger.warning("Could not save answers to %s: %s", answers_path, e)
 
 
-def get_twin() -> FinancialTwin:
-    """The twin from whichever source is configured, with the user's answers applied."""
+def _answered_obligation(obligation: FinancialObligation) -> FinancialObligation:
+    """One recurring obligation with the user's category answer and edits applied.
+
+    An override is looked up by id. If a rebuild no longer produces that id the
+    override is simply not applied -- it stays on disk against the day the payment
+    reappears, and never raises (PER-2).
+    """
+    if obligation.id in declared_categories:
+        obligation = obligation.model_copy(
+            update={"declared_category": declared_categories[obligation.id]}
+        )
+    override = recurring_overrides.get(obligation.id)
+    if override is None:
+        return obligation
+    edits = override.model_dump(exclude_none=True)
+    if not edits:
+        return obligation
+    if any(field in edits for field in OVERRIDDEN_VALUES):
+        edits["provenance"] = "declared"
+    return obligation.model_copy(update=edits)
+
+
+def apply_answers(twin: FinancialTwin) -> FinancialTwin:
+    """Layer every saved declaration over a newly loaded or rebuilt twin (PER-9)."""
     _load()
-    twin = load_source_twin()
     obligations = [
-        o.model_copy(update={"declared_category": declared_categories[o.id]})
-        if o.id in declared_categories
-        else o
-        for o in twin.obligations
+        _answered_obligation(obligation)
+        for obligation in [*twin.obligations, *declared_recurring]
     ]
     reserves = [c for c in twin.constraints if c.type == "minimum_reserve"]
     constraints = declared_reserves if declared_reserves is not None else reserves
@@ -155,12 +231,116 @@ def get_twin() -> FinancialTwin:
     )
 
 
+def get_twin() -> FinancialTwin:
+    """The twin from whichever source is configured, with the user's answers applied."""
+    return apply_answers(load_source_twin())
+
+
 def declare_category(obligation_id: str, category: ObligationCategory) -> FinancialTwin:
     if obligation_id not in {o.id for o in get_twin().obligations}:
         raise UnknownObligation(obligation_id)
     declared_categories[obligation_id] = category
     _save()
     return get_twin()
+
+
+def override_recurring(obligation_id: str, changes: RecurringOverride) -> FinancialTwin:
+    """Record the user's edits to one recurring obligation, detected or declared.
+
+    Fully validated before anything is mutated and saved once, under the write lock,
+    so a rejected change leaves neither memory nor the answers file touched (PER-7).
+    Fields left as `None` keep whatever the obligation has now, so pausing a payment
+    does not discard an amount the user corrected earlier.
+    """
+    with _write_lock:
+        _load()
+        edits = changes.model_dump(exclude_none=True)
+        if not edits:
+            raise InvalidDeclaration("At least one field must be given")
+        if obligation_id not in {o.id for o in get_twin().obligations}:
+            raise UnknownObligation(obligation_id)
+        current = recurring_overrides.get(obligation_id, RecurringOverride())
+        recurring_overrides[obligation_id] = current.model_copy(update=edits)
+        _save()
+        return get_twin()
+
+
+def _recurring_slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "payment"
+
+
+def _unique_recurring_id(name: str, taken: set[str]) -> str:
+    base = f"rec_{_recurring_slug(name)}"
+    obligation_id = base
+    suffix = 2
+    while obligation_id in taken:
+        obligation_id = f"{base}_{suffix}"
+        suffix += 1
+    return obligation_id
+
+
+def add_declared_recurring(request: RecurringObligationCreate) -> FinancialTwin:
+    """Add one user-declared monthly payment without changing observed structure."""
+    with _write_lock:
+        _load()
+        duplicate = next(
+            (
+                obligation
+                for obligation in map(_answered_obligation, declared_recurring)
+                if obligation.active and obligation.name.casefold() == request.name.casefold()
+            ),
+            None,
+        )
+        if duplicate is not None:
+            raise InvalidDeclaration(
+                f"An active recurring obligation named '{request.name}' already exists"
+            )
+        # A vanished detected payment can still own an override/category answer
+        # (PER-2). Reserve those ids so a new declaration cannot inherit stale edits.
+        taken = {obligation.id for obligation in get_twin().obligations}
+        taken.update(recurring_overrides)
+        taken.update(declared_categories)
+        declared_recurring.append(
+            FinancialObligation(
+                id=_unique_recurring_id(request.name, taken),
+                name=request.name,
+                expected_amount=request.amount,
+                due_day=request.due_day,
+                mandatory=request.mandatory,
+                confidence=1.0,
+                provenance="declared",
+                category_candidates=[],
+                declared_category=None,
+                active=True,
+            )
+        )
+        _save()
+        return get_twin()
+
+
+def delete_declared_recurring(obligation_id: str) -> FinancialTwin:
+    """Delete a declared payment; detected payments can only be paused (PER-4)."""
+    with _write_lock:
+        _load()
+        index = next(
+            (
+                index
+                for index, obligation in enumerate(declared_recurring)
+                if obligation.id == obligation_id
+            ),
+            None,
+        )
+        if index is None:
+            if obligation_id in {obligation.id for obligation in get_twin().obligations}:
+                raise DetectedObligationCannotBeDeleted(
+                    "Detected payments can be paused, not deleted."
+                )
+            raise UnknownObligation(obligation_id)
+        declared_recurring.pop(index)
+        recurring_overrides.pop(obligation_id, None)
+        declared_categories.pop(obligation_id, None)
+        _save()
+        return get_twin()
 
 
 def set_minimum_checking_balance(amount: float) -> FinancialTwin:
@@ -241,6 +421,8 @@ def reset() -> None:
     global declared_one_time_obligations
     _loaded = True
     declared_categories.clear()
+    recurring_overrides.clear()
+    declared_recurring.clear()
     minimum_checking_balance = None
     declared_goals = None
     declared_reserves = None

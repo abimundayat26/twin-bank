@@ -100,9 +100,9 @@ def build_twin(request: TwinBuildRequest) -> FinancialTwin:
         twin = twin.model_copy(update={"accounts": request.accounts})
     # A twin as of a past date must not see what happened after it.
     built = rebuild(twin, [t for t in transactions if t.date <= as_of], as_of)
-    # The observed builder must not infer declarations. Reapply only obligations
-    # already confirmed into twin_store; compiler drafts never reach this point.
-    built = built.model_copy(update={"one_time_obligations": twin.one_time_obligations})
+    # The observed builder must not infer declarations. Reapply every confirmed
+    # answer from twin_store; compiler drafts never reach this point (PER-9).
+    built = twin_store.apply_answers(built)
     log_twin_build(built)
     return built
 
