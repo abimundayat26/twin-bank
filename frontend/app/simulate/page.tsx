@@ -132,7 +132,11 @@ function SimulateWorkspace() {
           all. `simulation` is already cleared by the provider on an error. */}
       {simulation ? (
         <>
-          <ScenarioComparison twin={twin} simulation={simulation} />
+          <ScenarioComparison
+            twin={twin}
+            simulation={simulation}
+            planChanged={planChanged}
+          />
 
           <TrajectoryPreview
             bands={simulation.balance_bands}
