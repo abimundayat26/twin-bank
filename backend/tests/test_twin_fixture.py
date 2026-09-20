@@ -8,9 +8,11 @@ untouched.
 """
 
 import json
+from datetime import date, timedelta
 
 from backend.fixtures import FIXTURES_DIR, load_raw_transactions, load_seed_twin, load_twin
 from backend.ingest import normalize_all
+from backend.ingest.recurrence import BLOCK_DAYS, fortnight_blocks
 from backend.regenerate_twin_fixture import build
 
 
@@ -42,12 +44,37 @@ def test_the_seed_is_loadable_and_is_alex():
 def test_the_rebuild_is_dated_from_the_feed_not_the_seed():
     """A twin must not describe a day it has not observed.
 
-    The feed ends the day before the seed's own `as_of`, and that one day is a
-    27th fortnight holding a single day of spending if it is let in.
+    Fortnight blocks are counted backwards from `as_of`, so letting the seed's
+    own `as_of` through would push the newest block one day past the end of the
+    feed -- thirteen days of spending counted as fourteen, in the block the
+    recency weighting leans on hardest.
     """
     last_day = max(t.date for t in normalize_all(load_raw_transactions()))
     assert build().as_of == last_day
     assert build().as_of < load_seed_twin().as_of
+
+
+def test_a_later_as_of_would_run_the_newest_block_past_the_feed():
+    """The reason for the line above, as an assertion rather than a comment.
+
+    Blocks are counted back from `as_of`. One day later is not a new block at
+    the old end of the window; it is the same count of blocks shifted forward,
+    with the newest one now ending on a day the feed does not reach.
+    """
+    transactions = normalize_all(load_raw_transactions())
+    last_day = max(t.date for t in transactions)
+    window_start = min(t.date for t in transactions)
+
+    honest = fortnight_blocks(window_start, last_day)
+    overshot = fortnight_blocks(window_start, last_day + timedelta(days=1))
+
+    assert honest[-1][1] == last_day
+    assert overshot[-1][1] > last_day
+    assert len([d for d in date_range(*overshot[-1]) if d <= last_day]) == BLOCK_DAYS - 1
+
+
+def date_range(start: date, end: date) -> list[date]:
+    return [start + timedelta(days=offset) for offset in range((end - start).days + 1)]
 
 
 def test_declared_data_is_carried_from_the_seed_never_detected():
