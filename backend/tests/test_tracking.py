@@ -37,7 +37,7 @@ def test_built_twin_params_describe_the_forecast():
         "source": "none",
         "method": "seasonal_ewma",
         "as_of": "2026-09-18",
-        "window_start": "2025-09-20",
+        "window_start": "2025-10-04",
         "observed_fortnights": "25",
         "half_life_days": "180.0",
     }

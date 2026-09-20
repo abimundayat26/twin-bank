@@ -1,4 +1,9 @@
-from backend.fixtures import load_raw_transactions, load_simulation, load_twin
+from backend.fixtures import (
+    load_raw_transactions,
+    load_seed_twin,
+    load_simulation,
+    load_twin,
+)
 from backend.ingest.normalize import normalize_all
 from backend.ingest.recurrence import detect_structure
 
@@ -20,16 +25,21 @@ def test_twin_has_income_with_uncertainty():
 
 def test_twin_has_required_obligations():
     obligations = {o.id: o for o in load_twin().obligations}
-    assert "obl_rent" in obligations
-    assert obligations["obl_rent"].mandatory is True
-    assert obligations["obl_rent"].provenance == "observed"
+    assert "obl_hokie_property_mgmt_rent" in obligations
+    assert obligations["obl_hokie_property_mgmt_rent"].mandatory is True
+    assert obligations["obl_hokie_property_mgmt_rent"].provenance == "observed"
 
 
 def test_twin_flags_ambiguous_recurring_transfer():
-    """The recurring transfer of unclear purpose should read as soft, not a hard bill."""
+    """The recurring transfer of unclear purpose should read as soft, not a hard bill.
+
+    The amount is what the detector measured across the feed, not the round
+    number the seed planted: the generator varies it, so recovering it exactly
+    would mean the detector had ignored the data.
+    """
     obligations = {o.id: o for o in load_twin().obligations}
-    transfer = obligations["obl_mystery_transfer"]
-    assert transfer.expected_amount == 75.0
+    transfer = obligations["obl_online_transfer_to"]
+    assert transfer.expected_amount == 71.82
     assert transfer.mandatory is False
     assert transfer.confidence < 0.7
     assert transfer.provenance == "observed"
@@ -71,11 +81,15 @@ def test_simulation_fixture_references_twin_account():
 
 
 def test_seasonal_profiles_are_fitted_from_the_feed():
-    """The fixture's profiles are what the forecaster recovers from transactions.json,
-    fitted through the last transaction (the /twin/build default), not hand-written."""
+    """The seed's profiles are what the forecaster recovers from transactions.json,
+    fitted through the last transaction (the /twin/build default), not hand-written.
+
+    Against the seed, because the seed is the generator's input. Running this
+    against `twin.json` would compare the detector's output to a detector run.
+    """
     transactions = normalize_all(load_raw_transactions())
     as_of = max(t.date for t in transactions)
     fitted = {v.category: v.seasonal for v in detect_structure(transactions, as_of).variable_spending}
-    for spending in load_twin().variable_spending:
+    for spending in load_seed_twin().variable_spending:
         assert spending.seasonal is not None, spending.category
         assert spending.seasonal == fitted[spending.category], spending.category

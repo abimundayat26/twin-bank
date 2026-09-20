@@ -426,7 +426,8 @@ def detect_structure(transactions: list[Transaction], as_of: date) -> DetectedSt
     """Recover income, obligations and variable spending from a transaction history.
 
     `as_of` is the day the twin describes; the observation window runs from the
-    earliest transaction up to it.
+    earliest transaction up to it. The forecast reports a narrower window --
+    only the whole fortnights the spending estimate was fitted to.
     """
     if not transactions:
         return DetectedStructure(income=[], obligations=[], variable_spending=[])
@@ -435,6 +436,14 @@ def detect_structure(transactions: list[Transaction], as_of: date) -> DetectedSt
     obligations, recurring_keys = detect_obligations(transactions, window_start, as_of)
     variable_spending = detect_variable_spending(transactions, recurring_keys, window_start, as_of)
     seasonal = any(v.seasonal is not None for v in variable_spending)
+    # The reported window is the fitted one, not the whole history. Blocks are
+    # counted back from `as_of` and the leftover days at the start are dropped,
+    # so the first record can sit outside every block the estimate was fitted
+    # to. Reporting it as the window start would put a date on screen next to a
+    # block count that does not divide into it, on the page whose job is to say
+    # where the numbers came from. Obligation detection still reads the whole
+    # history -- this narrows what the forecast claims, not what was looked at.
+    blocks = fortnight_blocks(window_start, as_of)
     return DetectedStructure(
         income=detect_income(transactions, as_of),
         obligations=obligations,
@@ -442,8 +451,8 @@ def detect_structure(transactions: list[Transaction], as_of: date) -> DetectedSt
         forecast=ForecastMetadata(
             method="seasonal_ewma" if seasonal else "flat_mean",
             as_of=as_of,
-            window_start=window_start,
-            observed_fortnights=len(fortnight_blocks(window_start, as_of)),
+            window_start=blocks[0][0] if blocks else window_start,
+            observed_fortnights=len(blocks),
             # fit_category recency-weights every category, with or without a
             # seasonal profile, so the half-life always applies.
             half_life_days=HALF_LIFE_DAYS,

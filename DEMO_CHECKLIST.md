@@ -1,209 +1,131 @@
-# Pre-demo verification checklist
+# Workstream 2 pre-demo verification
 
-Run this before presenting. It is meant to be run by **someone who did not write the
-code** — every step is a command with an expected result, not a judgement call.
+This is the backend/API preflight for the Alex demo. It complements the Workstream 3
+presenter and browser walkthrough; it does not replace it.
 
-Companion to the presenter script. This document answers *"is the machine ready?"*;
-the script answers *"what do I say?"*. If both are open at once, run this one first.
+Run from a fresh clone or clean worktree. The default path uses the bundled Alex twin,
+requires no credential, and makes no network call. `TWIN_ANSWERS_PATH=''` deliberately
+ignores answers saved during rehearsal, while `SIMULATION_SEED=1` makes the Monte Carlo
+figures repeatable.
 
-Everything here was executed end to end on **2026-09-19** from a **fresh clone of
-`main` at `04850a8`**, with **no `.env` and no credentials of any kind**. Results below
-are what it actually printed, not what it ought to print.
-
----
-
-## 0. The one thing most likely to go wrong
-
-**TwinBank remembers answers between runs, in `backend/.data/answers.json`, and they
-change the numbers on screen.**
-
-This bit during rehearsal. Answering one classification question — *"the recurring
-transfer is savings"* — moved the projected balance by **$525** ($75 × 7 occurrences,
-because a declared savings transfer moves money inside the twin instead of spending
-it). Nothing on screen says the numbers moved, and the file survives a restart.
-
-So: **rehearse, then clear, then present.**
-
-```bash
-rm -rf backend/.data          # forget every answer from rehearsal
-```
-
-Second: **Monte Carlo is unseeded by default**, so every `/simulate` returns slightly
-different figures. Quoting a number from rehearsal and having the live run disagree is
-avoidable:
-
-```bash
-SIMULATION_SEED=1 uv run uvicorn backend.main:app --port 8000
-```
-
-Measured, on the fresh clone:
-
-| State | Baseline ending balance | Counterfactual |
-| --- | --- | --- |
-| No seed | moves every run (saw $3,764) | moves every run |
-| `SIMULATION_SEED=1`, `backend/.data` cleared | **$3,280.51** | **$2,480.51** |
-| `SIMULATION_SEED=1`, one classification answered | $3,805.51 | $3,005.51 |
-
-The middle row matches `backend/fixtures/simulation.json` **to the cent**. That is the
-state to present in: the numbers on screen are then the numbers in the repository, and
-they are the same every time you press Simulate.
-
----
-
-## 1. Fresh clone
-
-```bash
-git clone <repo> twinbank && cd twinbank
-```
-
-- [ ] no `.env` file is present, and you have not created one
-- [ ] `ls backend/.data` says no such directory
-
-## 2. Backend
+## 1. Fresh-clone and default-fixture checks
 
 ```bash
 cd backend
 uv sync
-uv run pytest -q
+TWIN_ANSWERS_PATH='' uv run pytest -q \
+  tests/test_fixtures.py \
+  tests/test_frontend_mocks.py \
+  tests/test_twin_fixture.py
 ```
 
-- [ ] **554 passed** (or more — the number only ever grows)
-- [ ] the run needed no credential and reached no network
+- [ ] Alex validates with two accounts, one goal, five recurring obligations, and no
+      confirmed one-time obligations.
+- [ ] The generated frontend mocks exactly match the backend fixtures.
+- [ ] The twin carries the fitted seasonal forecast from the current fixture.
+- [ ] No credential or external service was required.
 
-## 3. Frontend
+## 2. Backend demo-story canary
 
 ```bash
-cd frontend
-npm install
-npm test && npm run typecheck && npm run lint && npm run build
+TWIN_ANSWERS_PATH='' uv run pytest -q tests/test_demo_story.py
 ```
 
-- [ ] **535 passed** across 32 files (or more)
-- [ ] typecheck, lint and build all clean
+- [ ] Alex's `$800` laptop lowers the projected ending balance.
+- [ ] Goal, reserve, and low-balance risk all worsen in the counterfactual.
+- [ ] The explanation names the busy spending stretch.
+- [ ] Optimization returns at least one limit-preserving alternative and recommends
+      the first such candidate.
 
-*Measured: all four clean on the fresh clone.*
-
-## 4. Start both, on this machine only
+## 3. Start the local API
 
 ```bash
-cd backend && SIMULATION_SEED=1 uv run uvicorn backend.main:app --port 8000
-cd frontend && npm run dev
+TWIN_ANSWERS_PATH='' SIMULATION_SEED=1 \
+  uv run uvicorn backend.main:app --port 8000
 ```
 
-- [ ] **no `--host` flag.** With none, uvicorn binds `127.0.0.1` and nothing outside
-      this machine can reach it. Verify:
+- [ ] Use no `--host` argument and no tunnel. Uvicorn must remain on loopback.
+- [ ] Leave `GOAL_COMPILER` unset. The default compiler is deterministic rules.
+- [ ] No model credential is needed or used.
+
+In a second terminal:
 
 ```bash
-ss -ltn | grep 8000     # must show 127.0.0.1:8000, never 0.0.0.0:8000
-```
-
-*Measured: `LISTEN 127.0.0.1:8021` — loopback only, confirmed.*
-
-- [ ] no tunnel (ngrok, cloudflared) is running
-
-## 5. API smoke pass
-
-Six calls, in the order the demo makes them. Copy-paste and compare.
-
-```bash
-B=http://127.0.0.1:8000
-curl -s $B/health
-curl -s $B/twin/alex | python3 -m json.tool | head -30
-curl -s -X POST $B/goals/compile -H 'content-type: application/json' \
+API=http://127.0.0.1:8000
+curl -s "$API/health"
+curl -s "$API/twin/alex" | python3 -m json.tool | head -35
+curl -s -X POST "$API/goals/compile" -H 'content-type: application/json' \
   -d '{"user_id":"alex","text":"I want to save for a car"}'
-SIM=$(curl -s -X POST $B/simulate -H 'content-type: application/json' \
+SIMULATION=$(curl -s -X POST "$API/simulate" -H 'content-type: application/json' \
   -d '{"user_id":"alex","events":[{"type":"purchase","description":"Laptop","amount":800,"date":"2026-09-20","account_id":"acc_checking"}]}')
-echo "$SIM" | python3 -c 'import json,sys;print(json.load(sys.stdin)["simulation_id"])'
-curl -s $B/explain/<that id>
-curl -s -X POST $B/optimize -H 'content-type: application/json' \
+SIMULATION_ID=$(printf '%s' "$SIMULATION" | python3 -c \
+  'import json,sys; print(json.load(sys.stdin)["simulation_id"])')
+curl -s "$API/explain/$SIMULATION_ID"
+curl -s -X POST "$API/optimize" -H 'content-type: application/json' \
   -d '{"user_id":"alex","events":[{"type":"purchase","description":"Laptop","amount":800,"date":"2026-09-20","account_id":"acc_checking"}]}'
 ```
 
-- [ ] `/health` → `{"status":"ok"}`
-- [ ] `/twin/alex` → `source: "fixture"`, total `3140.0`, Everyday Checking `1340.0`,
-      Savings `1800.0`, one goal (Summer housing, 2027-05-01), five obligations
-- [ ] `/goals/compile` with an incomplete goal → **zero goals** and two clarifications
-      (`amount`, `deadline`), `compiler: "rules"`. *This is the honesty demo: it asks
-      instead of inventing.*
-- [ ] `/simulate` → baseline **$3,280.51**, counterfactual **$2,480.51**
-- [ ] `/explain/{id}` → five drivers, starting with the laptop at `-800.0`
-- [ ] `/optimize` → `recommended_id: cand_cut_discretionary_50`, and at least one
-      candidate with `meets_constraints: true`
+Expected with the current default fixture and seed:
 
-*All six measured green on the fresh clone.*
+- [ ] `/health` returns `{"status":"ok"}`.
+- [ ] `/twin/alex` reports `source: "fixture"`, total balance `$3,140`, a seasonal
+      forecast, and no confirmed one-time obligations.
+- [ ] The incomplete car goal produces no draft goal, asks for amount and deadline,
+      and reports `compiler: "rules"`.
+- [ ] `/simulate` reports baseline ending balance `$3,396.06` and laptop ending
+      balance `$2,596.06`.
+- [ ] `/explain/{id}` returns five drivers beginning with `Laptop (this purchase)`;
+      every money figure is grounded by the twin or computed result.
+- [ ] `/optimize` recommends `cand_cut_discretionary_50`; two of eight candidates
+      meet every declared limit and unsuccessful candidates disclose their violations.
 
-## 6. Negative rehearsals
-
-A demo is only safe if you have already seen it fail.
-
-- [ ] **A rejected simulation shows the backend's error, not fixture numbers.**
+## 4. Rejected-request and draft-only checks
 
 ```bash
-curl -s -X POST $B/simulate -H 'content-type: application/json' \
+curl -s -X POST "$API/simulate" -H 'content-type: application/json' \
   -d '{"user_id":"alex","events":[{"type":"purchase","description":"Laptop","amount":800,"date":"2026-09-20","account_id":"acc_nope"}]}'
+curl -s "$API/twin/bob"
+curl -s -X POST "$API/goals/compile" -H 'content-type: application/json' \
+  -d '{"user_id":"alex","text":"I have $1,200 tuition due 2027-01-15 from checking"}'
 ```
-*Measured: `422 {"detail":"Unknown account_id 'acc_nope'"}`.* The frontend surfaces the
-error rather than falling back — `lib/api.ts` throws `ApiError` on a backend error and
-only falls back when the backend is **unreachable**.
 
-- [ ] **An unknown user is refused.** *Measured: `404 {"detail":"No twin for user 'bob'"}`.*
+- [ ] The bad account is rejected with `422`; no fixture result replaces the error.
+- [ ] The unknown user is rejected with `404`.
+- [ ] Tuition without mandatory/optional status produces a clarification and no
+      obligation draft.
+- [ ] Compiling a complete obligation still changes no twin until the explicit
+      confirmation request is sent.
 
-- [ ] **No model credential is needed.** With `GOAL_COMPILER` unset, every compile
-      reply says `compiler: "rules"`. *Measured.* Never set `GOAL_COMPILER=llm` for a
-      demo: it needs a key, and the rules compiler is what has been rehearsed.
+## 5. Offline and fallback expectations
 
-- [ ] **Backend stopped → the frontend shows the offline state, not fixture numbers
-      presented as live.** ⚠️ **Confirm this one in a browser.** The page is
-      client-rendered, so a `curl` of the served HTML shows none of the labels and
-      proves nothing. Stop the backend, reload, and read the badge: it must say
-      **"Backend offline · Bundled example"**. The logic is unit-tested
-      (`lib/provenance.test.ts`), but only a human can confirm what is on the screen.
+- A stopped backend is an offline condition, not a successful live result. The frontend
+  may show its bundled example only with the offline/fallback label.
+- An unavailable external data source may fall back to the fixture, but the twin source
+  must remain `fixture`; it must never be presented as Nessie data.
+- A rejected API request must remain an error and must not be replaced by fixture numbers.
+- Browser wording and the presenter flow are verified by Workstream 3's PR #119.
 
----
+The automated contract checks are:
 
-## Recovery appendix — **not the official demo**
+```bash
+cd ../frontend
+npm test -- --run lib/api.test.ts lib/provenance.test.ts
+```
 
-> Read this only if something has already broken. `frontend/SPEC.md` §12 is explicit
-> that a fixture-backed session **does not count as a complete official demo**, and
-> that fallback must never be described as an equivalent path. Say out loud what you
-> are showing.
+## 6. Presenter-owned Nessie check — separate from this preflight
 
-| Symptom | Recovery | What you must say |
-| --- | --- | --- |
-| Numbers differ from rehearsal | `rm -rf backend/.data`, restart with `SIMULATION_SEED=1` | nothing — fix it before you start |
-| Backend will not start | present the frontend alone; it falls back to bundled fixtures | *"the backend is down, these are bundled example figures"* |
-| Backend up, Nessie failing | it already falls back to fixtures and labels itself `Demo fixture` | *"this twin is from a demo fixture, not live bank data"* |
-| A simulation returns an error | show the error; it is the honest behaviour | *"TwinBank refuses rather than inventing a number"* |
-| The forecast page has no metadata | expected — Alex's hand-written twin has `forecast: null` | *"this twin was written by hand, so there is no fitted forecast to show"* |
+The repository defaults to fixtures. If the presenter is running the official
+Nessie-backed variant, only the presenter performs the Workstream 1 readback procedure
+with their own local configuration. Workstream 2 does not request, inspect, copy, or
+configure credentials.
 
-**Never** improvise a fix by setting `GOAL_COMPILER=llm`, exporting a key, or binding
-the backend to `0.0.0.0`. None of those is rehearsed and the first two need a
-credential that only the group lead holds.
+Before presenting that variant, the presenter must confirm:
 
----
+- [ ] the repository's Workstream 1 Nessie readback check passes;
+- [ ] `/twin/alex` truthfully reports `source: "nessie"`;
+- [ ] the live twin's newly computed simulation and optimization results were rehearsed;
+- [ ] if Nessie becomes unavailable, the fallback is identified as a demo fixture.
 
-## Open question this checklist cannot close
-
-**Does the official demo run on fixtures or on live Nessie?** The two specs disagree —
-`SPEC.md` §5 says *"the demo stays on fixtures by default"*, `frontend/SPEC.md` §12 says
-the official demo *"requires a connected backend and a Financial Twin built from
-Capital One Nessie"*. `SPEC.md` §13 lists it as **open**, default fixtures, owned by
-Workstream 1.
-
-**Until the team decides, this checklist verifies the fixture path**, which is the
-recorded default and the only one that can be verified without a credential.
-
-If the team chooses Nessie, five steps are added ahead of section 4 — they are already
-written out in `frontend/SPEC.md` §12 and each needs the presenter's **own** Nessie
-key, which nobody else configures for them:
-
-1. configure your own Nessie credentials, never in the browser or the repository
-2. seed or confirm the Alex demo data in the sandbox
-3. run the repository's Nessie readback check
-4. start the backend with Nessie enabled
-5. confirm the frontend reports **"Backend connected · Nessie data"** — if it says
-   anything else, you are on the fixture path and must say so
-
-Nothing else in this document changes: the smoke pass, the negative rehearsals and the
-recovery appendix apply either way. Only the expected figures in section 5 move, because
-they would then come from live data.
+Do not reuse the fixture dollar expectations above for a Nessie-built twin. Inspect the
+new computed result and update only Workstream 2 expectations that depend on it; do not
+edit ingestion, generation, or forecasting code during demo preflight.

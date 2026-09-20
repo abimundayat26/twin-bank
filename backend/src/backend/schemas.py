@@ -7,10 +7,10 @@ small, dedicated PR (see CLAUDE.md "Shared Contracts").
 Conventions: money is USD dollars, dates are ISO 8601, probabilities are 0-1.
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, computed_field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 # "observed" = derived from banking data; "declared" = stated by the user.
 Provenance = Literal["observed", "declared"]
@@ -133,7 +133,9 @@ class OneTimeObligation(BaseModel):
     amount: float = Field(gt=0, description="Always a withdrawal, so the sign is implied.")
     due_date: date = Field(description="The one absolute date it is paid. It does not repeat.")
     account_id: str = Field(description="The account it is paid from.")
-    mandatory: bool = True
+    mandatory: bool = Field(
+        description="Whether missing this payment would violate a commitment the user marked mandatory."
+    )
     provenance: Literal["declared"] = "declared"
 
 
@@ -211,13 +213,54 @@ class ForecastMetadata(BaseModel):
         "seasonal_ewma: recency-weighted, with a per-month seasonal profile."
     )
     as_of: date = Field(description="Last day of observed data behind the estimate.")
-    window_start: date = Field(description="First day of observed data behind the estimate.")
+    window_start: date = Field(
+        description="First day of the fitted window: the start of the oldest whole "
+        "fortnight behind the estimate. Records older than this exist but were not "
+        "fitted to, so window_start to as_of always divides into observed_fortnights."
+    )
     observed_fortnights: int = Field(ge=0, description="14-day blocks the estimate is fitted to.")
     half_life_days: float | None = Field(
         default=None,
         gt=0,
         description="Days after which an observation carries half the weight. "
         "None when the method weights every observation equally.",
+    )
+
+
+class ProcessingLineage(BaseModel):
+    """Where and when the pipeline that produced this twin ran.
+
+    Identifiers and status only. `frontend/SPEC.md` section 3.5 renders this on
+    the Forecast & Data page and forbids any secret, token, private connection
+    value or raw environment configuration reaching the browser, so this model
+    is built so that none can be put in it in the first place: every field is
+    either a closed set of words, an identifier matched against a fixed shape,
+    or a timestamp. There is no free-text field for a credential to be pasted
+    into, and `extra="forbid"` rejects a key smuggled in under a new name.
+
+    A host, workspace URL, volume path or experiment name is deliberately absent
+    for the same reason. The user is told where the work ran, not how to reach it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    location: Literal["local", "databricks"] = Field(
+        description="Where the pipeline ran. 'local' is the backend process itself."
+    )
+    status: Literal["succeeded", "failed", "unknown"] = Field(
+        default="unknown",
+        description="How the run that produced this twin finished. 'unknown' when the "
+        "producer cannot tell -- a served twin whose job status was never read.",
+    )
+    mlflow_run_id: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{32}$",
+        description="MLflow run that recorded this build: 32 lowercase hex characters, "
+        "MLflow's own format. None when tracking was off. The shape is enforced so "
+        "that nothing else can be stored here.",
+    )
+    run_time: datetime | None = Field(
+        default=None, description="When that run happened. None when it was not recorded."
     )
 
 
@@ -247,6 +290,11 @@ class FinancialTwin(BaseModel):
     # `twin_source` knows, so a twin assembled anywhere else leaves this None.
     # "databricks": built by the Databricks twin build job and read back from it.
     source: Literal["fixture", "nessie", "databricks"] | None = None
+    # How the twin was produced, as opposed to where its data came from: the two
+    # are separate facts and a twin can carry either without the other. None when
+    # nothing recorded it, which the UI must show as unavailable rather than
+    # guessing (frontend/SPEC.md section 3.5).
+    lineage: ProcessingLineage | None = None
 
     @computed_field
     @property
@@ -440,7 +488,7 @@ class OptimizationResponse(BaseModel):
 # obligation. "intent": the text could be a goal or a declared obligation and the
 # Assistant must ask rather than choose (frontend/SPEC.md 3.2).
 GoalClarificationField = Literal[
-    "amount", "deadline", "name", "type", "account", "intent"
+    "amount", "deadline", "name", "type", "account", "intent", "mandatory"
 ]
 
 

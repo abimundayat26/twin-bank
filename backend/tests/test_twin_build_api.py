@@ -44,6 +44,37 @@ def test_the_declared_half_survives_untouched():
     assert built.constraints == on_file.constraints
 
 
+def obligation_draft() -> dict:
+    response = client.post(
+        "/goals/compile",
+        json={
+            "user_id": "alex",
+            "text": "I have $1,200 tuition due 2027-01-15 from checking, mandatory",
+        },
+    )
+    assert response.status_code == 200
+    [draft] = response.json()["one_time_obligations"]
+    return draft
+
+
+def test_a_confirmed_one_time_obligation_survives_the_api_rebuild():
+    response = client.put(
+        "/twin/alex/goals",
+        json={"goals": [], "constraints": [], "one_time_obligations": [obligation_draft()]},
+    )
+    assert response.status_code == 200
+
+    rebuilt = build()
+
+    assert [obligation.name for obligation in rebuilt.one_time_obligations] == ["Tuition"]
+
+
+def test_an_unconfirmed_obligation_draft_never_survives_as_a_fact():
+    assert obligation_draft()
+
+    assert build().one_time_obligations == []
+
+
 def test_balances_are_carried_from_the_accounts_on_file():
     on_file, built = load_twin(), build()
     assert built.accounts == on_file.accounts
@@ -67,6 +98,15 @@ def test_as_of_can_be_given():
 
 
 def test_building_does_not_change_what_get_twin_serves():
+    """Also the reason this endpoint has no UI entry point.
+
+    A build returns a twin and stores nothing, so a "Rebuild" control could only
+    show the user a twin the app is not using, or imply a refresh that did not
+    happen. `frontend/SPEC.md` section 3.5 forbids the second outright. The
+    decision to keep this backend-only is recorded in `main.build_twin` and in
+    the README; if this assertion ever has to change, that decision is the thing
+    to revisit, because the reasoning rests on it.
+    """
     build()
     served = FinancialTwin.model_validate(client.get("/twin/alex").json())
     assert served == load_twin().model_copy(update={"source": "fixture"})

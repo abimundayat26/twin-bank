@@ -9,8 +9,12 @@ from backend.schemas import FinancialConstraint
 from backend.simulation.engine import LOW_BALANCE_THRESHOLD, low_balance_threshold, simulate_scenario
 
 HORIZON = date(2027, 5, 1)
-TRANSFER = "obl_mystery_transfer"
+TRANSFER = "obl_online_transfer_to"
 TRANSFERS_IN_HORIZON = 7  # due on the 5th, Oct 2026 through Apr 2027
+# Read off the twin: the detector measures this from the feed, so it is not a
+# round number and pinning it here would only break on the next rebuild.
+TRANSFER_AMOUNT = next(o.expected_amount for o in load_twin().obligations if o.id == TRANSFER)
+TRANSFERRED = TRANSFERS_IN_HORIZON * TRANSFER_AMOUNT
 
 
 def with_category(twin, obligation_id, category, **extra):
@@ -40,7 +44,7 @@ def undeclared(twin):
 
 def test_not_recurring_is_left_out(twin, undeclared):
     result = simulate_scenario(with_category(twin, TRANSFER, "not_recurring"), [], HORIZON)
-    assert result.ending_balance == pytest.approx(undeclared.ending_balance + TRANSFERS_IN_HORIZON * 75)
+    assert result.ending_balance == pytest.approx(undeclared.ending_balance + TRANSFERRED)
     assert result.min_checking > undeclared.min_checking
 
 
@@ -48,7 +52,7 @@ def test_savings_transfer_leaves_checking_but_keeps_total(twin, undeclared):
     spent = simulate_scenario(with_category(twin, TRANSFER, "optional_spending"), [], HORIZON)
     saved = simulate_scenario(with_category(twin, TRANSFER, "savings_transfer"), [], HORIZON)
     assert saved.checking == spent.checking == undeclared.checking
-    assert saved.ending_balance == pytest.approx(spent.ending_balance + TRANSFERS_IN_HORIZON * 75)
+    assert saved.ending_balance == pytest.approx(spent.ending_balance + TRANSFERRED)
     assert saved.min_balance > spent.min_balance
 
 
