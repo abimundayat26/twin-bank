@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -32,6 +32,18 @@ function bands(
 }
 
 const plot = () => screen.getByRole("img");
+
+/** The hover readout, which only exists while a day is hovered. */
+const READOUT = "div.pointer-events-none.absolute";
+
+/**
+ * Queries scoped to the hover readout.
+ *
+ * The G-19 table repeats every figure the readout shows, so an unscoped query
+ * for a dollar amount now matches twice.
+ */
+const readout = (container: HTMLElement) =>
+  within(container.querySelector(READOUT) as HTMLElement);
 
 describe("BalanceTrajectoryChart", () => {
   it("degrades to a sentence rather than crashing when a result has no bands", () => {
@@ -172,7 +184,8 @@ describe("BalanceTrajectoryChart", () => {
     render(
       <BalanceTrajectoryChart bands={bands(30)} counterfactualLabel="Delayed to October" />,
     );
-    expect(screen.getByText(/Delayed to October/)).toBeInTheDocument();
+    // The legend, and the two column headers of the G-19 table.
+    expect(screen.getAllByText(/Delayed to October/).length).toBeGreaterThan(0);
   });
 
   it("plots the bundled simulation fixture end to end", () => {
@@ -196,16 +209,18 @@ describe("BalanceTrajectoryChart", () => {
       ({ left: 0, width: 300, top: 0, height: 200 }) as DOMRect;
 
     fireEvent.pointerMove(target, { clientX: 0, clientY: 10 });
-    expect(screen.getByText("September 19, 2026")).toBeInTheDocument();
-    expect(screen.getByText("$3,000.00")).toBeInTheDocument();
-    expect(screen.getByText("$2,200.00")).toBeInTheDocument();
-    expect(screen.getByText("−$800")).toBeInTheDocument();
+    expect(readout(container).getByText("September 19, 2026")).toBeInTheDocument();
+    expect(readout(container).getByText("$3,000.00")).toBeInTheDocument();
+    expect(readout(container).getByText("$2,200.00")).toBeInTheDocument();
+    // G-2's true minus, and scoped to the readout because the G-19 table now
+    // repeats every figure the tooltip shows.
+    expect(readout(container).getByText("−$800")).toBeInTheDocument();
 
     fireEvent.pointerMove(target, { clientX: 300, clientY: 10 });
-    expect(screen.getByText("October 18, 2026")).toBeInTheDocument();
+    expect(readout(container).getByText("October 18, 2026")).toBeInTheDocument();
 
     fireEvent.pointerLeave(target);
-    expect(screen.queryByText("October 18, 2026")).not.toBeInTheDocument();
+    expect(container.querySelector(READOUT)).toBeNull();
   });
 
   it("shows the counterfactual's own 10th-to-90th range at the hovered day", () => {
@@ -215,7 +230,7 @@ describe("BalanceTrajectoryChart", () => {
       ({ left: 0, width: 300, top: 0, height: 200 }) as DOMRect;
 
     fireEvent.pointerMove(target, { clientX: 0, clientY: 10 });
-    expect(screen.getByText("$2,100 to $2,300")).toBeInTheDocument();
+    expect(readout(container).getByText("$2,100 to $2,300")).toBeInTheDocument();
   });
 
   // A pointer event before layout gives a zero-width box; dividing by it would
@@ -226,5 +241,88 @@ describe("BalanceTrajectoryChart", () => {
     fireEvent.pointerMove(target, { clientX: 40, clientY: 10 });
     // The tooltip's own exact-dollar reading; the chart's caption is unaffected.
     expect(screen.queryByText("$3,000.00")).not.toBeInTheDocument();
+  });
+
+  /** Every y-axis label, in the order they are drawn. */
+  const axisLabels = (container: HTMLElement) =>
+    [...container.querySelectorAll("text[text-anchor='end']")]
+      .map((node) => node.textContent ?? "")
+      .filter((text) => text.startsWith("$") || text.startsWith("-$"));
+
+  describe("the y axis (TR-3)", () => {
+    it("labels 4 to 7 ticks in whole dollars, with no cents", () => {
+      const { container } = render(<BalanceTrajectoryChart bands={bands(120)} />);
+      const labels = axisLabels(container);
+      expect(labels.length).toBeGreaterThanOrEqual(4);
+      expect(labels.length).toBeLessThanOrEqual(7);
+      for (const label of labels) expect(label).not.toContain(".");
+    });
+
+    it("steps by a round amount rather than by the data's own extremes", () => {
+      const { container } = render(<BalanceTrajectoryChart bands={bands(120)} />);
+      // Labels run top to bottom, so the gaps are negative; the size is what matters.
+      const values = axisLabels(container).map((label) => Number(label.replace(/[$,]/g, "")));
+      const steps = values.slice(1).map((value, index) => Math.abs(value - values[index]));
+      expect(new Set(steps).size).toBe(1);
+      const mantissa = steps[0] / 10 ** Math.floor(Math.log10(steps[0]));
+      expect([1, 2, 2.5, 5]).toContain(mantissa);
+    });
+  });
+
+  describe("the x axis (TR-4)", () => {
+    // G-1: the twin's own year is implied, any other year is spelled out.
+    it("omits the year inside the twin's year and shows it outside", () => {
+      const { container } = render(
+        <BalanceTrajectoryChart bands={bands(200)} asOf="2026-09-19" />,
+      );
+      const labels = [...container.querySelectorAll("text[text-anchor='middle']")].map(
+        (node) => node.textContent ?? "",
+      );
+      expect(labels).toContain("Oct 1");
+      expect(labels).toContain("Jan 1, 2027");
+    });
+
+    it("falls back to the first plotted day when no as-of is given", () => {
+      const { container } = render(<BalanceTrajectoryChart bands={bands(60)} />);
+      const labels = [...container.querySelectorAll("text[text-anchor='middle']")].map(
+        (node) => node.textContent ?? "",
+      );
+      expect(labels).toContain("Oct 1");
+    });
+  });
+
+  describe("the text equivalent (TR-6, G-19)", () => {
+    it("tabulates the plotted values for a screen reader", () => {
+      render(<BalanceTrajectoryChart bands={bands(60)} />);
+      const table = screen.getByRole("table");
+      expect(table).toHaveClass("sr-only");
+      // Both ends of the horizon, plus each month the axis labels.
+      expect(within(table).getByRole("rowheader", { name: "September 19, 2026" })).toBeInTheDocument();
+      expect(within(table).getByRole("rowheader", { name: "November 17, 2026" })).toBeInTheDocument();
+      expect(within(table).getAllByRole("row").length).toBeGreaterThanOrEqual(4);
+    });
+
+    it("reads the same numbers the lines are drawn from", () => {
+      render(<BalanceTrajectoryChart bands={bands(60)} />);
+      const row = screen.getByRole("row", { name: /September 19, 2026/ });
+      // series() starts the baseline at $3,000 with the counterfactual $800 below.
+      expect(within(row).getByText("$3,000")).toBeInTheDocument();
+      expect(within(row).getByText("$2,200")).toBeInTheDocument();
+      expect(within(row).getByText("$2,900 to $3,100")).toBeInTheDocument();
+    });
+
+    it("drops the narrative footer", () => {
+      render(<BalanceTrajectoryChart bands={bands(60)} simulations={2000} />);
+      expect(screen.queryByText(/measured mid-day/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Lines are the median across/)).not.toBeInTheDocument();
+    });
+  });
+
+  // TR-7: the card scrolls, not the page (G-20).
+  it("keeps a narrow screen's overflow inside the card", () => {
+    const { container } = render(<BalanceTrajectoryChart bands={bands(60)} />);
+    const scroller = container.querySelector("div.overflow-x-auto");
+    expect(scroller).not.toBeNull();
+    expect(scroller?.querySelector("svg")).not.toBeNull();
   });
 });

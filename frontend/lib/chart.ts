@@ -113,6 +113,83 @@ export function yDomain(series: number[][], extra: number[] = []): Domain {
   return { lo: lo - pad, hi: hi + pad };
 }
 
+/** Mantissas a "nice" axis step is built from (TR-3): step = m x 10^k dollars. */
+export const TICK_MANTISSAS = [1, 2, 2.5, 5];
+
+/**
+ * Whole-dollar steps in ascending order, up to an order of magnitude past `span`.
+ *
+ * `2.5` only earns a place from 10^1 up: a $2.50 tick would need cents, which
+ * G-2 forbids, so non-integer steps are dropped rather than rounded into
+ * duplicate labels.
+ */
+function candidateSteps(span: number): number[] {
+  const steps: number[] = [];
+  const maxExponent = Math.ceil(Math.log10(Math.max(span, 1))) + 1;
+  for (let exponent = 0; exponent <= maxExponent; exponent += 1) {
+    for (const mantissa of TICK_MANTISSAS) {
+      const step = mantissa * 10 ** exponent;
+      if (Number.isInteger(step)) steps.push(step);
+    }
+  }
+  return steps.sort((a, b) => a - b);
+}
+
+/**
+ * Y-axis values on a nice step, 4 to 7 of them (TR-3).
+ *
+ * Ticks are multiples of the step, so they read as round money (`$12,500`)
+ * rather than as whatever the data's extremes happened to be, and zero always
+ * lands on a tick when the plot straddles it. Among the steps that fit the tick
+ * budget the one closest to the middle of that budget wins, and a tie goes to
+ * the larger step, which is the sparser axis.
+ *
+ * This picks label positions. It does not touch a plotted value (G-6).
+ */
+export function niceTicks(domain: Domain, minTicks = 4, maxTicks = 7): number[] {
+  const span = domain.hi - domain.lo;
+  if (!Number.isFinite(span) || span <= 0) return [];
+
+  const ticksFor = (step: number): number[] => {
+    const ticks: number[] = [];
+    const first = Math.ceil(domain.lo / step) * step;
+    // A whole step of slack, so a float that lands a hair past `hi` is not lost.
+    for (let value = first; value <= domain.hi + step * 1e-9; value += step) {
+      ticks.push(Math.round(value));
+    }
+    return ticks;
+  };
+
+  const target = (minTicks + maxTicks) / 2;
+  let best: number[] = [];
+  let bestDistance = Infinity;
+  let fallback: number[] = [];
+  let fallbackDistance = Infinity;
+
+  for (const step of candidateSteps(span)) {
+    const ticks = ticksFor(step);
+    const distance = Math.abs(ticks.length - target);
+    // Ties go to the first, smallest step here: when nothing fits the budget,
+    // the densest axis is the one most likely to carry a label at all.
+    if (distance < fallbackDistance) {
+      fallbackDistance = distance;
+      fallback = ticks;
+    }
+    if (ticks.length < minTicks || ticks.length > maxTicks) continue;
+    if (distance <= bestDistance) {
+      bestDistance = distance;
+      best = ticks;
+    }
+  }
+
+  // A domain too narrow for 4 whole-dollar ticks (a flat projection, or one
+  // padded to less than a few dollars) gets the nearest fit instead: fewer
+  // ticks than the budget asks for still beats an axis with no labels. A
+  // domain narrower than the gap between two whole dollars gets nothing,
+  // because no whole-dollar tick lies inside it.
+  return best.length ? best : fallback;
+}
+
 /** Evenly spaced x: the engine emits one point per day, so index spacing is date spacing. */
 export function makeScaleX(count: number, left: number, width: number) {
   return (index: number) => (count < 2 ? left + width / 2 : left + (index / (count - 1)) * width);
