@@ -21,7 +21,7 @@ import { BalanceTrajectoryChart } from "@/components/BalanceTrajectoryChart";
 import { Card } from "@/components/ui";
 import { ApiError, getExplanation, type DataSource } from "@/lib/api";
 import { useTwin } from "@/lib/state/TwinProvider";
-import { emergencyReserve, primaryGoal } from "@/lib/twin";
+import { emergencyReserve } from "@/lib/twin";
 import { DEFAULT_LOW_BALANCE_THRESHOLD, type SimulationResponse } from "@/lib/types";
 
 /** Where the id of the simulation on screen survives a reload (TR-1). */
@@ -214,7 +214,6 @@ export default function TrajectoryPage() {
     );
   }
 
-  const goal = primaryGoal(twin);
   const reserve = emergencyReserve(twin);
   const minimum = twin.constraints.find((c) => c.type === "minimum_checking_balance");
   const purchases = shown.request.events;
@@ -265,7 +264,11 @@ export default function TrajectoryPage() {
             label: event.description,
             tone: "counter" as const,
           })),
-          ...(goal ? [{ date: goal.deadline, label: goal.name, tone: "faint" as const }] : []),
+          ...twin.goals.map((goal) => ({
+            date: goal.deadline,
+            label: goal.name,
+            tone: "faint" as const,
+          })),
         ]}
       />
     </main>

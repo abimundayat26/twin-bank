@@ -144,7 +144,11 @@ function SimulateWorkspace() {
               ...(purchase
                 ? [{ date: purchase.date, label: purchase.description, tone: "counter" as const }]
                 : []),
-              ...(goal ? [{ date: goal.deadline, label: goal.name, tone: "faint" as const }] : []),
+              ...twin.goals.map((item) => ({
+                date: item.deadline,
+                label: item.name,
+                tone: "faint" as const,
+              })),
             ]}
           />
 

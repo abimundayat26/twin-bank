@@ -106,6 +106,30 @@ describe("Balance Trajectory", () => {
     expect(screen.queryByText(/measured mid-day/)).not.toBeInTheDocument();
   });
 
+  // TR-2: the full trajectory marks every goal deadline.
+  it("marks every goal deadline", async () => {
+    vi.mocked(api.getTwin).mockResolvedValue({
+      data: {
+        ...TWIN,
+        goals: [
+          ...TWIN.goals,
+          { ...TWIN.goals[0], id: "goal_trip", name: "Trip", deadline: "2026-11-01" },
+        ],
+      },
+      source: "api",
+    });
+    window.sessionStorage.setItem(SIMULATION_ID_KEY, SIMULATION.simulation_id);
+    vi.mocked(api.getExplanation).mockResolvedValue({ data: SIMULATION, source: "api" });
+
+    render(
+      <TwinProvider>
+        <TrajectoryPage />
+      </TwinProvider>,
+    );
+
+    expect(await screen.findByText("Trip")).toBeInTheDocument();
+  });
+
   it("says plainly when it is showing the saved offline example", async () => {
     vi.mocked(api.runSimulation).mockResolvedValue({ data: SIMULATION, source: "fixture" });
     const user = userEvent.setup();

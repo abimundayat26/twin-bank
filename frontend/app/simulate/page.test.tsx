@@ -100,6 +100,24 @@ describe("Purchase Simulator", () => {
     expect(preview.closest("details")).not.toHaveAttribute("open");
   });
 
+  // TR-2: every declared deadline is marked, not only the primary goal.
+  it("marks every goal deadline in the trajectory preview", async () => {
+    vi.mocked(api.getTwin).mockResolvedValue({
+      data: {
+        ...TWIN,
+        goals: [
+          ...TWIN.goals,
+          { ...TWIN.goals[0], id: "goal_trip", name: "Trip", deadline: "2026-11-01" },
+        ],
+      },
+      source: "api",
+    });
+
+    await simulate();
+
+    expect(await screen.findByText("Trip")).toBeInTheDocument();
+  });
+
   it("asks for alternatives on its own, with no button to press", async () => {
     await simulate();
     await waitFor(() => expect(api.runOptimization).toHaveBeenCalledTimes(1));
