@@ -23,27 +23,20 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import {
   ApiError,
   commitPurchase,
-  compileGoal,
   findEarliestDate,
   getTwin,
-  respondToClarification,
   runOptimization,
   runSimulation,
-  saveGoals,
   setMinimumBalance,
   type DataSource,
   type Loaded,
 } from "@/lib/api";
-import { withoutGoal } from "@/lib/goals";
 import { OFFLINE_REASON } from "@/lib/offline";
-import { GOALS_SCOPE, MINIMUM_BALANCE_SCOPE } from "@/lib/scopes";
+import { MINIMUM_BALANCE_SCOPE } from "@/lib/scopes";
 import type {
-  DeclaredGoalsRequest,
   EarliestDateResponse,
   FinancialTwin,
-  GoalCompileResponse,
   GoalDateChange,
-  ObligationCategory,
   OptimizationResponse,
   SimulationEvent,
   SimulationResponse,
@@ -64,12 +57,6 @@ export interface TwinState {
   savingScope: string | undefined;
   twinUpdateError: string | undefined;
 
-  goalDraft: GoalCompileResponse | null;
-  isCompilingGoal: boolean;
-  goalCompileError: string | undefined;
-  goalSaveError: string | undefined;
-  composerKey: number;
-
   simulation: SimulationResponse | null;
   simulationSource: DataSource | undefined;
   isSimulating: boolean;
@@ -88,16 +75,11 @@ export interface TwinState {
   isCommitting: boolean;
   commitError: string | undefined;
 
-  answerClarification: (obligationId: string, category: ObligationCategory) => void;
   /** Replaces the twin with one the backend has already saved (see `applyTwin`). */
   applyTwin: (next: FinancialTwin) => void;
   /** Reloads the canonical twin after a stale 404/409 write. */
   refreshTwin: () => Promise<void>;
   setMinimum: (amount: number) => void;
-  compileGoalText: (text: string) => Promise<void>;
-  confirmGoals: (request: DeclaredGoalsRequest) => Promise<void>;
-  removeGoal: (goalId: string) => void;
-  discardGoalDraft: () => void;
   simulate: (event: SimulationEvent) => Promise<void>;
   optimize: () => Promise<void>;
   commit: (events: SimulationEvent[], goalUpdates?: GoalDateChange[]) => Promise<boolean>;
@@ -115,15 +97,6 @@ export function TwinProvider({ children }: { children: ReactNode }) {
   const [isBusy, setIsBusy] = useState(false);
   const [savingScope, setSavingScope] = useState<string>();
   const [twinUpdateError, setTwinUpdateError] = useState<string>();
-
-  // Drafts from the goal compiler, waiting for Alex to confirm them. Kept here
-  // because compiling is an API call; the composer itself only receives props.
-  const [goalDraft, setGoalDraft] = useState<GoalCompileResponse | null>(null);
-  const [isCompilingGoal, setIsCompilingGoal] = useState(false);
-  const [goalCompileError, setGoalCompileError] = useState<string>();
-  const [goalSaveError, setGoalSaveError] = useState<string>();
-  // Bumped after a confirmed save, to remount the composer with an empty box.
-  const [composerKey, setComposerKey] = useState(0);
 
   const [simulation, setSimulation] = useState<SimulationResponse | null>(null);
   const [simulationSource, setSimulationSource] = useState<DataSource>();
@@ -202,22 +175,6 @@ export function TwinProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  function answerClarification(obligationId: string, category: ObligationCategory) {
-    if (!twin) return;
-    if (isOffline) {
-      setTwinUpdateError(OFFLINE_REASON);
-      return;
-    }
-    void updateTwin(
-      respondToClarification(twin, {
-        user_id: twin.user_id,
-        obligation_id: obligationId,
-        category,
-      }),
-      obligationId,
-    );
-  }
-
   /**
    * Replaces the twin with one the backend has already saved: the response to an
    * accepted Assistant proposal (AS-15), or an opening question answered in the
@@ -251,59 +208,6 @@ export function TwinProvider({ children }: { children: ReactNode }) {
       return;
     }
     void updateTwin(setMinimumBalance(twin, { amount }), MINIMUM_BALANCE_SCOPE);
-  }
-
-  /** Drafts only. Nothing reaches the twin until `confirmGoals`. */
-  async function compileGoalText(text: string) {
-    if (!twin) return;
-    if (isOffline) {
-      setGoalCompileError(OFFLINE_REASON);
-      return;
-    }
-    setIsCompilingGoal(true);
-    setGoalCompileError(undefined);
-    setGoalSaveError(undefined);
-    try {
-      const loaded = await compileGoal({ user_id: twin.user_id, text });
-      setGoalDraft(loaded.data);
-    } catch (error: unknown) {
-      // No fixture behind `compileGoal`: there is nothing honest to show instead.
-      setGoalDraft(null);
-      setGoalCompileError(errorText(error));
-    } finally {
-      setIsCompilingGoal(false);
-    }
-  }
-
-  /**
-   * `request` is the complete declared set the composer merged, not just the new
-   * goal: the endpoint replaces everything it is sent. A rejected save keeps the
-   * draft on screen so Alex can fix the text rather than retype it.
-   */
-  async function confirmGoals(request: DeclaredGoalsRequest) {
-    if (!twin) return;
-    if (isOffline) {
-      setGoalSaveError(OFFLINE_REASON);
-      return;
-    }
-    if (await updateTwin(saveGoals(twin, request), GOALS_SCOPE, setGoalSaveError)) {
-      setGoalDraft(null);
-      setComposerKey((key) => key + 1);
-    }
-  }
-
-  function removeGoal(goalId: string) {
-    if (!twin) return;
-    if (isOffline) {
-      setTwinUpdateError(OFFLINE_REASON);
-      return;
-    }
-    void updateTwin(saveGoals(twin, withoutGoal(twin, goalId)), goalId);
-  }
-
-  function discardGoalDraft() {
-    setGoalDraft(null);
-    setGoalSaveError(undefined);
   }
 
   async function simulate(event: SimulationEvent) {
@@ -425,11 +329,6 @@ export function TwinProvider({ children }: { children: ReactNode }) {
     isBusy,
     savingScope,
     twinUpdateError,
-    goalDraft,
-    isCompilingGoal,
-    goalCompileError,
-    goalSaveError,
-    composerKey,
     simulation,
     simulationSource,
     isSimulating,
@@ -441,14 +340,9 @@ export function TwinProvider({ children }: { children: ReactNode }) {
     commitResult,
     isCommitting,
     commitError,
-    answerClarification,
     applyTwin,
     refreshTwin,
     setMinimum,
-    compileGoalText,
-    confirmGoals,
-    removeGoal,
-    discardGoalDraft,
     simulate,
     optimize,
     commit,
