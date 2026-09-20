@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend import assistant, assistant_store, simulation_store, twin_store
 from backend.fixtures import load_raw_transactions
+from backend.forecast_view import build_forecast
 from backend.ingest.build import latest_transaction_date, rebuild
 from backend.ingest.normalize import normalize_all
 from backend.llm_goal_compiler import compile_goals_auto
@@ -19,6 +20,7 @@ from backend.schemas import (
     ClarificationResponseRequest,
     DeclaredGoalsRequest,
     FinancialTwin,
+    ForecastPayload,
     GoalCompileRequest,
     GoalCompileResponse,
     MinimumBalanceRequest,
@@ -68,6 +70,14 @@ def get_twin(user_id: str) -> FinancialTwin:
 @app.get("/twin/{user_id}/overview", response_model=OverviewPayload)
 def get_overview(user_id: str) -> OverviewPayload:
     return build_overview(twin_for(user_id))
+
+
+@app.get("/twin/{user_id}/forecast", response_model=ForecastPayload)
+def get_forecast(user_id: str) -> ForecastPayload:
+    try:
+        return build_forecast(twin_for(user_id), seed=SIMULATION_SEED)
+    except SimulationError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @app.post("/twin/build", response_model=FinancialTwin)
@@ -250,7 +260,7 @@ def decide_proposal(
     if stored.status != "pending":
         if stored.status != wanted:
             raise HTTPException(
-                status_code=409, detail=f"You already {stored.status[:-1]} that suggestion."
+                status_code=409, detail=f"You already {stored.status} that suggestion."
             )
         return ProposalDecisionResponse(
             proposal_id=proposal_id,

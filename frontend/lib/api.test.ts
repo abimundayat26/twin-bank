@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   compileGoal,
+  getForecast,
   getExplanation,
   getTwin,
   runOptimization,
@@ -11,6 +12,7 @@ import {
   setMinimumBalance,
 } from "./api";
 import mockTwin from "./mock/twin.json";
+import mockForecast from "./mock/forecast.json";
 import type {
   FinancialConstraint,
   FinancialTwin,
@@ -98,6 +100,13 @@ describe("when the backend is unreachable", () => {
     await expect(getTwin("alex")).resolves.toEqual({ data: mockTwin, source: "fixture" });
   });
 
+  it("falls back to the generated forecast mock", async () => {
+    await expect(getForecast("alex")).resolves.toEqual({
+      data: mockForecast,
+      source: "fixture",
+    });
+  });
+
   it("does not fall back to a bundled simulation", async () => {
     await expect(runSimulation(request)).rejects.toThrow("fetch failed");
   });
@@ -108,6 +117,22 @@ describe("when the backend is unreachable", () => {
 
   it("does not pretend a write succeeded locally", async () => {
     await expect(setMinimumBalance(twin, { amount: 300 })).rejects.toThrow("fetch failed");
+  });
+});
+
+describe("getForecast", () => {
+  it("gets the user's baseline forecast from the API", async () => {
+    backendReplies(200, mockForecast);
+    await expect(getForecast("alex")).resolves.toEqual({ data: mockForecast, source: "api" });
+    expect(vi.mocked(fetch).mock.calls[0][0]).toMatch(/\/twin\/alex\/forecast$/);
+  });
+
+  it("surfaces a backend error instead of replacing it with sample figures", async () => {
+    backendReplies(422, { detail: "Twin has no accounts" });
+    await expect(getForecast("alex")).rejects.toMatchObject({
+      status: 422,
+      message: "Twin has no accounts",
+    });
   });
 });
 
