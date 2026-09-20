@@ -1,6 +1,11 @@
 """User answers are saved to a file and survive a server restart."""
 
+import os
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+from pathlib import Path
 
 from backend import twin_store
 from backend.schemas import FinancialConstraint, Goal, OneTimeObligation
@@ -94,6 +99,50 @@ def test_a_failed_save_still_applies_the_answer(monkeypatch, tmp_path):
     monkeypatch.setattr(twin_store, "answers_path", blocker / "answers.json")
     twin = twin_store.set_minimum_checking_balance(300)
     assert minimum_balance(twin) == 300
+
+
+def test_mutations_share_one_write_lock(monkeypatch):
+    active = 0
+    most_active = 0
+    counter_lock = threading.Lock()
+
+    def slow_save() -> None:
+        nonlocal active, most_active
+        with counter_lock:
+            active += 1
+            most_active = max(most_active, active)
+        time.sleep(0.02)
+        with counter_lock:
+            active -= 1
+
+    monkeypatch.setattr(twin_store, "_save", slow_save)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = [
+            pool.submit(twin_store.declare_category, TRANSFER, "savings_transfer"),
+            pool.submit(twin_store.set_goals, [GOAL], [RESERVE]),
+            pool.submit(twin_store.set_minimum_checking_balance, 300),
+        ]
+        for future in futures:
+            future.result()
+
+    assert most_active == 1
+
+
+def test_each_save_uses_a_unique_temporary_file(monkeypatch):
+    temporary_paths: list[Path] = []
+    real_replace = os.replace
+
+    def record_replace(source, destination) -> None:
+        temporary_paths.append(Path(source))
+        real_replace(source, destination)
+
+    monkeypatch.setattr(twin_store.os, "replace", record_replace)
+    twin_store.set_minimum_checking_balance(300)
+    twin_store.set_minimum_checking_balance(400)
+
+    assert len(temporary_paths) == 2
+    assert temporary_paths[0] != temporary_paths[1]
+    assert all(path.name.endswith(".tmp") for path in temporary_paths)
 
 
 # --- Confirmed one-time obligations ----------------------------------------------

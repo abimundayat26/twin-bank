@@ -16,6 +16,7 @@ import hashlib
 import logging
 import os
 import re
+import tempfile
 import threading
 from datetime import date, timedelta
 from pathlib import Path
@@ -41,10 +42,6 @@ from backend.simulation.engine import MAX_HORIZON_DAYS
 from backend.twin_source import load_source_twin
 
 logger = logging.getLogger(__name__)
-
-# Every write goes through this (PER-7), so a commit that moves a goal and adds a
-# purchase is never half-applied when two requests arrive together.
-_write_lock = threading.RLock()
 
 MINIMUM_BALANCE_ID = "con_minimum_checking"
 DEFAULT_ANSWERS_PATH = Path(__file__).resolve().parents[2] / ".data" / "answers.json"
@@ -88,7 +85,7 @@ answers_path: Path | None = _answers_path_from_env()
 _loaded = False
 # Every write goes through one lock-protected function, so two requests cannot
 # interleave a half-applied change into memory or the file (PER-7).
-_write_lock = threading.Lock()
+_write_lock = threading.RLock()
 
 declared_categories: dict[str, ObligationCategory] = {}  # obligation id -> answer
 # Recurring obligations are rebuilt from transactions, so an edit cannot live on the
@@ -170,14 +167,28 @@ def _save() -> None:
         declared_reserves=declared_reserves,
         declared_one_time_obligations=declared_one_time_obligations,
     )
-    tmp = answers_path.with_name(answers_path.name + ".tmp")
+    tmp: Path | None = None
     try:
         answers_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp.write_text(saved.model_dump_json(indent=2))
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=answers_path.parent,
+            prefix=f".{answers_path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            handle.write(saved.model_dump_json(indent=2))
+            tmp = Path(handle.name)
         os.replace(tmp, answers_path)
     except OSError as e:
         # The answer still applies for this process; only the restart copy is lost.
         logger.warning("Could not save answers to %s: %s", answers_path, e)
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def _answered_obligation(obligation: FinancialObligation) -> FinancialObligation:
@@ -246,11 +257,12 @@ def get_twin() -> FinancialTwin:
 
 
 def declare_category(obligation_id: str, category: ObligationCategory) -> FinancialTwin:
-    if obligation_id not in {o.id for o in get_twin().obligations}:
-        raise UnknownObligation(obligation_id)
-    declared_categories[obligation_id] = category
-    _save()
-    return get_twin()
+    with _write_lock:
+        if obligation_id not in {o.id for o in get_twin().obligations}:
+            raise UnknownObligation(obligation_id)
+        declared_categories[obligation_id] = category
+        _save()
+        return get_twin()
 
 
 def override_recurring(obligation_id: str, changes: RecurringOverride) -> FinancialTwin:
@@ -354,10 +366,11 @@ def delete_declared_recurring(obligation_id: str) -> FinancialTwin:
 
 def set_minimum_checking_balance(amount: float) -> FinancialTwin:
     global minimum_checking_balance
-    _load()
-    minimum_checking_balance = amount
-    _save()
-    return get_twin()
+    with _write_lock:
+        _load()
+        minimum_checking_balance = amount
+        _save()
+        return get_twin()
 
 
 def check_one_time_obligations(
@@ -488,31 +501,34 @@ def set_goals(
     list clears them. They are never derived from anything, only confirmed.
     """
     global declared_goals, declared_reserves, declared_one_time_obligations
-    current = get_twin()
-    as_of = current.as_of
-    latest = as_of + timedelta(days=MAX_HORIZON_DAYS)
-    if len({g.id for g in goals}) != len(goals):
-        raise InvalidDeclaration("Goal ids must be unique")
-    for goal in goals:
-        if not as_of < goal.deadline <= latest:
-            raise InvalidDeclaration(
-                f"Goal '{goal.id}' deadline {goal.deadline} must be after {as_of} and no later than {latest}"
-            )
-    for constraint_type in ("minimum_reserve", "minimum_checking_balance"):
-        if sum(c.type == constraint_type for c in constraints) > 1:
-            raise InvalidDeclaration(f"At most one {constraint_type} constraint")
-    if one_time_obligations is not None:
-        check_one_time_obligations(one_time_obligations, current)
-    floor = next((c for c in constraints if c.type == "minimum_checking_balance"), None)
-    if one_time_obligations is not None:
-        declared_one_time_obligations = list(one_time_obligations)
-    declared_goals = list(goals)
-    declared_reserves = [c for c in constraints if c.type == "minimum_reserve"]
-    if floor is not None:
-        set_minimum_checking_balance(floor.amount)
-    else:
+    global minimum_checking_balance
+    with _write_lock:
+        current = get_twin()
+        as_of = current.as_of
+        latest = as_of + timedelta(days=MAX_HORIZON_DAYS)
+        if len({g.id for g in goals}) != len(goals):
+            raise InvalidDeclaration("Goal ids must be unique")
+        for goal in goals:
+            if not as_of < goal.deadline <= latest:
+                raise InvalidDeclaration(
+                    f"Goal '{goal.id}' deadline {goal.deadline} must be after {as_of} and no later than {latest}"
+                )
+        for constraint_type in ("minimum_reserve", "minimum_checking_balance"):
+            if sum(c.type == constraint_type for c in constraints) > 1:
+                raise InvalidDeclaration(f"At most one {constraint_type} constraint")
+        if one_time_obligations is not None:
+            check_one_time_obligations(one_time_obligations, current)
+        floor = next(
+            (c for c in constraints if c.type == "minimum_checking_balance"), None
+        )
+        if one_time_obligations is not None:
+            declared_one_time_obligations = list(one_time_obligations)
+        declared_goals = list(goals)
+        declared_reserves = [c for c in constraints if c.type == "minimum_reserve"]
+        if floor is not None:
+            minimum_checking_balance = floor.amount
         _save()
-    return get_twin()
+        return get_twin()
 
 
 class UnknownGoal(KeyError):

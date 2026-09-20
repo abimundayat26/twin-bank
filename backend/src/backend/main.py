@@ -344,18 +344,20 @@ def assistant_message(request: AssistantMessageRequest) -> AssistantMessageRespo
     if request.in_reply_to is not None:
         # AS-11: only the frontend decides a message is an answer, and only a question
         # this process still holds can be answered.
-        earlier = assistant_store.text_behind(conversation, request.in_reply_to)
-        if earlier is None:
+        merged = assistant_store.merge_reply(
+            conversation, request.in_reply_to, text
+        )
+        if merged is None:
             raise HTTPException(
                 status_code=422,
                 detail="That question has expired. Please type the full request again.",
             )
-        text = f"{earlier} {text}"
+        text = merged
     reading = assistant.read_message(twin, text)
     message_id = assistant_store.new_id("msg")
     conversation.remember(text)
     if reading.questions:
-        conversation.leave_open(message_id, text)
+        conversation.leave_open(message_id, text, reading.questions)
     assistant_store.save_proposals(reading.proposals, twin.user_id)
     return AssistantMessageResponse(
         conversation_id=conversation.conversation_id,

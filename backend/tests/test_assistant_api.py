@@ -258,6 +258,22 @@ def test_an_answer_is_merged_with_the_question_it_replies_to():
     assert answered["conversation_id"] == asked["conversation_id"]
 
 
+def test_answer_replaces_a_vague_deadline_instead_of_asking_forever():
+    asked = send("I want to save $2,000 for housing by next summer")
+    assert [question["field"] for question in asked["questions"]] == ["deadline"]
+
+    answered = send(
+        "June 1",
+        conversation_id=asked["conversation_id"],
+        in_reply_to=asked["message_id"],
+    )
+
+    assert answered["questions"] == []
+    [proposal] = answered["proposals"]
+    assert proposal["goal"]["name"] == "Housing"
+    assert proposal["goal"]["deadline"] == "2027-06-01"
+
+
 def test_without_in_reply_to_nothing_is_merged():
     asked = send("I want to save for a trip by next June")
     alone = send("$2,000", conversation_id=asked["conversation_id"])

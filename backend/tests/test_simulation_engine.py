@@ -9,6 +9,7 @@ from backend.simulation.engine import (
     MAX_HORIZON_DAYS,
     SimulationError,
     compare,
+    evaluate_goals,
     monthly_due_dates,
     simulate_scenario,
 )
@@ -450,6 +451,25 @@ def test_goal_is_measured_at_its_own_deadline(twin):
     assert by_id["goal_early"].available == pytest.approx(total_on[date(2026, 12, 1)] - 1500)
     # Later goals are funded after earlier goals' targets.
     assert by_id["goal_summer_housing"].available == pytest.approx(result.ending_balance - 1500 - 500)
+
+
+def test_unfunded_goal_does_not_inflate_or_cascade_shortfalls(twin):
+    early = Goal(id="goal_early", name="Early", target_amount=500, deadline=date(2026, 10, 1))
+    later = Goal(id="goal_later", name="Later", target_amount=400, deadline=date(2026, 11, 1))
+    twin = twin.model_copy(update={"goals": [early, later]})
+
+    outcomes = evaluate_goals(
+        twin,
+        [twin.as_of, early.deadline, later.deadline],
+        [twin.total_balance, 1400, 2000],
+        reserve=1500,
+    )
+
+    assert outcomes[0].available == 0
+    assert outcomes[0].shortfall == early.target_amount
+    assert outcomes[1].available == 500
+    assert outcomes[1].shortfall == 0
+    assert outcomes[1].surplus == 100
 
 
 def test_goal_after_horizon_is_not_evaluated(twin):
