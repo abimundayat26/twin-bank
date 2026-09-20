@@ -67,6 +67,15 @@ def test_as_of_can_be_given():
 
 
 def test_building_does_not_change_what_get_twin_serves():
+    """Also the reason this endpoint has no UI entry point.
+
+    A build returns a twin and stores nothing, so a "Rebuild" control could only
+    show the user a twin the app is not using, or imply a refresh that did not
+    happen. `frontend/SPEC.md` section 3.5 forbids the second outright. The
+    decision to keep this backend-only is recorded in `main.build_twin` and in
+    the README; if this assertion ever has to change, that decision is the thing
+    to revisit, because the reasoning rests on it.
+    """
     build()
     served = FinancialTwin.model_validate(client.get("/twin/alex").json())
     assert served == load_twin().model_copy(update={"source": "fixture"})
