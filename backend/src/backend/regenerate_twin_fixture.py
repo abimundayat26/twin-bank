@@ -21,10 +21,20 @@ come from the seed and pass through untouched, because no transaction history
 can produce them (SPEC section 2).
 
 `as_of` is the last day the feed covers, not today and not the seed's own
-`as_of`. The two differ by a day, and that day matters: the feed ends on
-2026-09-18 after exactly 26 fortnights, so dating the twin 2026-09-19 opens a
-27th block holding a single day, which the fitter counts as a whole fortnight of
-near-zero spending. A twin must never describe a stretch it has not observed.
+`as_of`. The two differ by a day, and that day matters. `fortnight_blocks`
+counts whole 14-day blocks *backwards* from `as_of`, so moving `as_of` forward
+moves every block with it: at 2026-09-18 the newest block ends on the feed's
+last day, and at 2026-09-19 it ends a day past it, holding thirteen days of
+spending where the fitter expects fourteen. Under a 180-day half-life that
+short block is the most heavily weighted observation there is, so the shortfall
+lands where it does the most damage -- measured, groceries sigma 38.4 -> 54.5.
+A twin must never describe a day it has not observed.
+
+The cost of choosing 2026-09-18 is at the other end of the window: 363 days
+divides into 25 whole fortnights with 13 days left over, and those 13 days --
+the oldest in the feed -- are dropped. That is the right trade, because
+recency weighting makes the oldest fortnight the cheapest one to lose and the
+newest one the most expensive to corrupt.
 """
 
 import json
