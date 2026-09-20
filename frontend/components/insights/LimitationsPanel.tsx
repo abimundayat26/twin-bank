@@ -2,8 +2,11 @@
  * What this page cannot tell you, assembled from the twin itself. Props only.
  *
  * The list is derived rather than written out, so it can never claim a
- * limitation the twin does not have — or hide one it does. Everything here is
- * either a property of the loaded twin or a contract that does not exist yet.
+ * limitation the twin does not have — or hide one it does. Every item is a
+ * property of the twin that loaded, including the processing lineage: that
+ * contract exists now (`lib/types.ts`) but nothing populates it yet, so the
+ * page says the field arrived empty rather than that no endpoint could ever
+ * carry it. The wording holds either way once a producer starts filling it in.
  */
 
 import type { DataSource } from "@/lib/api";
@@ -60,9 +63,28 @@ function limitations(twin: FinancialTwin, backend: DataSource | undefined): stri
   items.push(
     "Seasonal factors are fitted to the history observed. They say how past months differed from an average one, not what a particular month ahead will cost.",
   );
-  items.push(
-    "Pipeline run status, published dataset versions and MLflow run metadata are not exposed by any endpoint yet, so no tracked run can be named here.",
-  );
+  // What the lineage contract does and does not carry for this twin. Nothing
+  // populates it today, so the first branch is what the demo shows; the others
+  // keep this list truthful the day a producer starts filling it in.
+  if (backend !== "fixture") {
+    if (!twin.lineage) {
+      items.push(
+        "No processing lineage came with this twin, so the run that produced it, how that run finished and any tracked MLflow run cannot be named here.",
+      );
+    } else {
+      if (twin.lineage.status === "unknown") {
+        items.push(
+          "The backend did not report how that run finished, so this page cannot tell you whether it succeeded, failed or is still going.",
+        );
+      }
+      if (!twin.lineage.mlflow_run_id) {
+        items.push(
+          "The run that produced this twin was not recorded in MLflow, so there is no tracked run to name.",
+        );
+      }
+    }
+  }
+
   items.push(
     "The browser receives the summarized twin only — never transactions, credentials or connection settings.",
   );
