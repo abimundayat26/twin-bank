@@ -27,6 +27,7 @@ from backend.goal_compiler import (
     DUE_WORDS,
     RESERVE_ID,
     check_deadline,
+    MAX_AMOUNT,
     check_due_date,
     compile_goals,
     dedupe_constraints,
@@ -201,7 +202,13 @@ def validate_draft(
         written = [parse_amount(m) for m in iter_amounts(fragment)]
         name = (item.name or "").strip()
         what = f"for {name}" if name else "for this"
-        if item.amount is None or item.amount <= 0 or item.amount not in written:
+        # V2, over both paths: positive, written in the fragment, and small enough to be real.
+        if (
+            item.amount is None
+            or item.amount <= 0
+            or item.amount > MAX_AMOUNT
+            or item.amount not in written
+        ):
             ask("amount", f"How much do you need {what}?", fragment)
             continue
 

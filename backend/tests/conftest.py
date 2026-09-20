@@ -1,18 +1,19 @@
 import pytest
 
-from backend import simulation_store, twin_source, twin_store
+from backend import assistant_store, simulation_store, twin_source, twin_store
 from backend.fixtures import load_twin
 
 
 @pytest.fixture(autouse=True)
 def reset_twin_store(tmp_path, monkeypatch):
-    """User answers, stored simulations and the cached twin are process-wide, so
-    clear them around every test. Saved answers go to a temporary file, never the repo."""
+    """User answers, stored simulations, assistant drafts and the cached twin are
+    process-wide, so clear them around every test. Saved answers go to a temporary
+    file, never the repo."""
     monkeypatch.setattr(twin_store, "answers_path", tmp_path / "answers.json")
-    for module in (twin_store, simulation_store, twin_source):
+    for module in (twin_store, simulation_store, twin_source, assistant_store):
         module.reset()
     yield
-    for module in (twin_store, simulation_store, twin_source):
+    for module in (twin_store, simulation_store, twin_source, assistant_store):
         module.reset()
 
 
