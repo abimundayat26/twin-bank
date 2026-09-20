@@ -79,6 +79,7 @@ export interface FinancialObligation {
   expected_amount: number;
   /** Day of month the obligation is due. */
   due_day: number;
+  /** Explicitly supplied by the user; the compiler must not invent this status. */
   mandatory: boolean;
   confidence: number;
   provenance: Provenance;
@@ -116,6 +117,29 @@ export interface Goal {
   target_amount: number;
   deadline: IsoDate;
   current_amount: number;
+  provenance: "declared";
+}
+
+/**
+ * A known future expense that happens once: tuition, a deposit, an annual premium.
+ *
+ * Deliberately not a `FinancialObligation`. That one recurs on a day of the month;
+ * this one has a single absolute date and must never repeat.
+ *
+ * Always declared — the user tells TwinBank about it, and it reaches the twin only
+ * after they confirm the draft. A confirmed one belongs to the *baseline* future: it
+ * is a commitment already made, not a hypothetical purchase being simulated.
+ */
+export interface OneTimeObligation {
+  id: string;
+  name: string;
+  /** Always a withdrawal, so the sign is implied. */
+  amount: number;
+  /** The one absolute date it is paid. It does not repeat. */
+  due_date: IsoDate;
+  /** The account it is paid from. */
+  account_id: string;
+  mandatory: boolean;
   provenance: "declared";
 }
 
@@ -190,6 +214,12 @@ export interface FinancialTwin {
   variable_spending: VariableSpendingDistribution[];
   goals: Goal[];
   constraints: FinancialConstraint[];
+  /**
+   * Known one-off future expenses the user declared and confirmed. Absent on a twin
+   * from a backend that predates the contract, so read it through
+   * `oneTimeObligations()` in `lib/twin.ts` rather than indexing it directly.
+   */
+  one_time_obligations?: OneTimeObligation[];
   /** How the observed figures were estimated. Absent/null when not recorded. */
   forecast?: ForecastMetadata | null;
   /**
@@ -363,7 +393,20 @@ export interface OptimizationResponse {
 
 // --- Goal compiler ------------------------------------------------------------
 
-export type GoalClarificationField = "amount" | "deadline" | "name" | "type";
+/**
+ * "type": a goal or a standing reserve. "account": which account pays a one-time
+ * obligation. "intent": the text could be a goal or a declared obligation and the
+ * Assistant must ask rather than choose. "mandatory": the user must explicitly
+ * classify a one-time obligation as mandatory or optional.
+ */
+export type GoalClarificationField =
+  | "amount"
+  | "deadline"
+  | "name"
+  | "type"
+  | "account"
+  | "intent"
+  | "mandatory";
 
 export interface GoalCompileRequest {
   user_id: string;
@@ -379,13 +422,41 @@ export interface GoalClarification {
   fragment: string;
 }
 
+/**
+ * A category the user stated in words for an obligation TwinBank detected.
+ *
+ * A draft, like everything else the compiler returns. Read it back and confirm it
+ * through `POST /clarifications/respond`; nothing here has been declared.
+ */
+export interface ObligationClassificationDraft {
+  obligation_id: string;
+  /** As shown to the user, so it can be read back. */
+  obligation_name: string;
+  category: ObligationCategory;
+  /** The part of the text this came from. */
+  fragment: string;
+}
+
 /** Drafts only: nothing is saved until the user confirms them. */
 export interface GoalCompileResponse {
   user_id: string;
   text: string;
   goals: Goal[];
   constraints: FinancialConstraint[];
-  /** Asked instead of guessing. A goal missing a detail is not in goals. */
+  /**
+   * Drafted one-off expenses the user says they already owe. Absent from a backend
+   * that predates the contract, so read it as "none drafted", never as an error.
+   */
+  one_time_obligations?: OneTimeObligation[];
+  /**
+   * Answers about already-detected recurring obligations, read back for confirmation
+   * rather than applied. Absent from a backend that predates the contract.
+   */
+  classifications?: ObligationClassificationDraft[];
+  /**
+   * Asked instead of guessing. A goal or obligation missing a detail is not drafted
+   * at all.
+   */
   clarifications: GoalClarification[];
   /** Parts of the text that matched nothing. */
   unparsed: string[];
@@ -399,6 +470,11 @@ export interface GoalCompileResponse {
 export interface DeclaredGoalsRequest {
   goals: Goal[];
   constraints?: FinancialConstraint[];
+  /**
+   * Confirmed one-off expenses. Omitted keeps the ones already confirmed; an empty
+   * list clears them.
+   */
+  one_time_obligations?: OneTimeObligation[] | null;
 }
 
 /**

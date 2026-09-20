@@ -114,6 +114,31 @@ class FinancialObligation(BaseModel):
         return candidates
 
 
+class OneTimeObligation(BaseModel):
+    """A known future expense that happens once: tuition, a deposit, an annual premium.
+
+    Deliberately not a `FinancialObligation`. That one is keyed on `due_day`, a day of
+    the month, and the engine expands it through `monthly_due_dates()` -- a single
+    absolute date has no place in recurrence logic, and squeezing it in there would be
+    the easiest way to corrupt it.
+
+    Always declared: the user tells TwinBank about this, it is never inferred from
+    transactions (SPEC section 2), and it only reaches the twin after the user confirms
+    the draft. A confirmed one belongs to the *baseline* future -- it is a commitment
+    already made, not a hypothetical purchase being simulated.
+    """
+
+    id: str
+    name: str
+    amount: float = Field(gt=0, description="Always a withdrawal, so the sign is implied.")
+    due_date: date = Field(description="The one absolute date it is paid. It does not repeat.")
+    account_id: str = Field(description="The account it is paid from.")
+    mandatory: bool = Field(
+        description="Whether missing this payment would violate a commitment the user marked mandatory."
+    )
+    provenance: Literal["declared"] = "declared"
+
+
 class SeasonalProfile(BaseModel):
     """How a category's spending moves around the year.
 
@@ -249,6 +274,12 @@ class FinancialTwin(BaseModel):
     variable_spending: list[VariableSpendingDistribution]
     goals: list[Goal]
     constraints: list[FinancialConstraint]
+    one_time_obligations: list[OneTimeObligation] = Field(
+        default=[],
+        description="Known one-off future expenses the user declared and confirmed. "
+        "Empty on a twin that predates the contract, and on any twin built purely from "
+        "transactions: these can only come from the user.",
+    )
     forecast: ForecastMetadata | None = Field(
         default=None,
         description="How the observed figures above were estimated. None when they were "
@@ -453,7 +484,12 @@ class OptimizationResponse(BaseModel):
 
 # --- Goal compiler ------------------------------------------------------------
 
-GoalClarificationField = Literal["amount", "deadline", "name", "type"]
+# "type": a goal or a standing reserve. "account": which account pays a one-time
+# obligation. "intent": the text could be a goal or a declared obligation and the
+# Assistant must ask rather than choose (frontend/SPEC.md 3.2).
+GoalClarificationField = Literal[
+    "amount", "deadline", "name", "type", "account", "intent", "mandatory"
+]
 
 
 class GoalCompileRequest(BaseModel):
@@ -467,6 +503,21 @@ class GoalClarification(BaseModel):
     fragment: str = Field(description="The part of the text the question is about.")
 
 
+class ObligationClassificationDraft(BaseModel):
+    """A category the user stated in words for an obligation TwinBank detected.
+
+    A draft, like everything else the compiler produces. The Assistant reads it back
+    and the user confirms it through POST /clarifications/respond; nothing here has
+    touched `declared_category` (frontend/SPEC.md 3.2 -- the Assistant "must not
+    silently turn a suggestion into a declared fact").
+    """
+
+    obligation_id: str
+    obligation_name: str = Field(description="As shown to the user, so it can be read back.")
+    category: ObligationCategory
+    fragment: str = Field(description="The part of the text this came from.")
+
+
 class GoalCompileResponse(BaseModel):
     """Drafts only: nothing is saved until the user confirms them."""
 
@@ -474,8 +525,19 @@ class GoalCompileResponse(BaseModel):
     text: str
     goals: list[Goal]
     constraints: list[FinancialConstraint]
+    one_time_obligations: list[OneTimeObligation] = Field(
+        default=[],
+        description="Drafted one-off expenses the user says they already owe, as opposed "
+        "to money they are saving toward.",
+    )
+    classifications: list[ObligationClassificationDraft] = Field(
+        default=[],
+        description="Answers about already-detected recurring obligations, read back for "
+        "confirmation rather than applied.",
+    )
     clarifications: list[GoalClarification] = Field(
-        description="Asked instead of guessing. A goal missing a detail is not in goals."
+        description="Asked instead of guessing. A goal or obligation missing a detail is "
+        "not drafted at all."
     )
     unparsed: list[str] = Field(description="Parts of the text that matched nothing.")
     compiler: Literal["rules", "llm"]
@@ -487,3 +549,8 @@ class DeclaredGoalsRequest(BaseModel):
 
     goals: list[Goal]
     constraints: list[FinancialConstraint] = []
+    one_time_obligations: list[OneTimeObligation] | None = Field(
+        default=None,
+        description="Confirmed one-off expenses. Omitted keeps the ones already "
+        "confirmed; an empty list clears them.",
+    )

@@ -180,17 +180,18 @@ describe("reviewing a draft", () => {
     expect(screen.getByText(RESERVE.description)).toBeInTheDocument();
   });
 
-  // SPEC 7.1: a long goal name must stay readable in the review list.
-  it("wraps a long goal name instead of clipping it", () => {
-    const name = "Summer housing deposit and first month of shared apartment rent";
-    renderComposer({
-      draft: draftOf({ goals: [{ ...HOUSING, id: "goal_long", name }] }),
-    });
-    const label = screen.getByText(name);
-    expect(label).not.toHaveClass("truncate");
-    expect(label).toHaveClass("break-words");
+  it("wraps a long goal name in review instead of clipping it", () => {
+    const name = "Summer housing near campus with utilities and a refundable security deposit";
+    renderComposer({ draft: draftOf({ goals: [{ ...HOUSING, name }] }) });
+
+    const goalName = screen.getByText(name);
+    expect(goalName).toHaveClass("break-words");
+    expect(goalName).not.toHaveClass("truncate");
+    expect(goalName.parentElement).toHaveClass("flex-col", "sm:flex-row");
   });
 
+  // The constraint list is a separate block from the goal list above, and only
+  // it carries a user-written sentence, so it needs its own check (SPEC 7.1).
   it("wraps a long declared constraint instead of clipping it", () => {
     renderComposer({ draft: draftOf() });
     expect(screen.getByText(RESERVE.description)).toHaveClass("break-words");

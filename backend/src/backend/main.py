@@ -100,6 +100,9 @@ def build_twin(request: TwinBuildRequest) -> FinancialTwin:
         twin = twin.model_copy(update={"accounts": request.accounts})
     # A twin as of a past date must not see what happened after it.
     built = rebuild(twin, [t for t in transactions if t.date <= as_of], as_of)
+    # The observed builder must not infer declarations. Reapply only obligations
+    # already confirmed into twin_store; compiler drafts never reach this point.
+    built = built.model_copy(update={"one_time_obligations": twin.one_time_obligations})
     log_twin_build(built)
     return built
 
@@ -156,13 +159,21 @@ def optimize(request: OptimizationRequest) -> OptimizationResponse:
 def compile_goal_text(request: GoalCompileRequest) -> GoalCompileResponse:
     """Drafts only. Saving them is a separate PUT /twin/{user_id}/goals, after the user confirms."""
     twin = twin_for(request.user_id)
-    return compile_goals_auto(twin.user_id, request.text, twin.as_of)
+    return compile_goals_auto(
+        twin.user_id,
+        request.text,
+        twin.as_of,
+        accounts=twin.accounts,
+        detected=twin.obligations,
+    )
 
 
 @app.put("/twin/{user_id}/goals", response_model=FinancialTwin)
 def set_goals(user_id: str, request: DeclaredGoalsRequest) -> FinancialTwin:
     twin_for(user_id)
     try:
-        return twin_store.set_goals(request.goals, request.constraints)
+        return twin_store.set_goals(
+            request.goals, request.constraints, request.one_time_obligations
+        )
     except twin_store.InvalidDeclaration as e:
         raise HTTPException(status_code=422, detail=str(e)) from e

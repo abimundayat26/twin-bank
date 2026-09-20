@@ -34,17 +34,28 @@ export function Card({
 export function Badge({
   children,
   tone = "neutral",
+  surface = "default",
 }: {
   children: ReactNode;
   tone?: "neutral" | "good" | "caution" | "bad" | "info";
+  /** Shell badges use white-derived treatments that retain contrast on navy. */
+  surface?: "default" | "shell";
 }) {
-  const tones = {
+  const defaultTones = {
     neutral: "border-line text-muted",
     good: "border-good/70 text-good",
     caution: "border-caution/70 text-caution",
     bad: "border-bad/70 bg-bad/10 text-bad",
     info: "border-counter/70 text-counter",
   } as const;
+  const shellTones = {
+    neutral: "border-on-shell/50 text-on-shell",
+    good: "border-on-shell/70 text-on-shell",
+    caution: "border-on-shell/70 bg-on-shell/10 text-on-shell",
+    bad: "border-on-shell/70 bg-on-shell/10 text-on-shell",
+    info: "border-on-shell/70 text-on-shell",
+  } as const;
+  const tones = surface === "shell" ? shellTones : defaultTones;
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${tones[tone]}`}

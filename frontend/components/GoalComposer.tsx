@@ -66,6 +66,9 @@ const ANSWER_HINT: Record<GoalClarification["field"], string> = {
   deadline: "e.g. May 1 2027, 2027-05-01, or in 6 months",
   name: "e.g. a laptop",
   type: "Say this part again in your own words",
+  account: "e.g. checking",
+  intent: "Say this part again in your own words",
+  mandatory: "Say mandatory or optional",
 };
 
 // A 1px border recolour is not a focus indicator on its own: it is the same

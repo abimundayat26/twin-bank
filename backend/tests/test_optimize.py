@@ -1,5 +1,6 @@
 """Optimization: candidate generation, constraint checks, ranking, and the /optimize API."""
 
+import re
 from datetime import date, timedelta
 
 import pytest
@@ -10,13 +11,20 @@ from backend.forecast import block_factor
 from backend.main import app
 from backend.schemas import (
     FinancialConstraint,
+    OneTimeObligation,
     OptimizationRequest,
     OptimizationResponse,
     SeasonalProfile,
     SimulationEvent,
 )
 from backend.simulation import SimulationError
-from backend.simulation.engine import income_dates, resolve_horizon_end, spending_blocks
+from backend.simulation.engine import (
+    expected_daily_spending,
+    income_dates,
+    low_balance_threshold,
+    resolve_horizon_end,
+    spending_blocks,
+)
 from backend.simulation.explain import build_optimization_summary, money
 from backend.simulation.optimize import (
     COMBINED_ASSUMPTION,
@@ -24,6 +32,7 @@ from backend.simulation.optimize import (
     adjusted_twin,
     check_constraints,
     combined_candidates,
+    commitments_assumption,
     generate_candidates,
     run_optimization,
 )
@@ -424,3 +433,175 @@ def test_optimize_endpoint_rejects_unknown_account():
 
 def test_optimize_endpoint_rejects_unknown_user():
     assert client.post("/optimize", json={**LAPTOP_REQUEST, "user_id": "bob"}).status_code == 404
+
+
+# --- One-time obligations ------------------------------------------------------
+
+
+def owing(twin, amount: float, due: str = "2026-11-10", mandatory: bool = True):
+    return twin.model_copy(
+        update={
+            "one_time_obligations": [
+                OneTimeObligation(
+                    id="one_tuition",
+                    name="Tuition",
+                    amount=amount,
+                    due_date=date.fromisoformat(due),
+                    account_id="acc_checking",
+                    mandatory=mandatory,
+                )
+            ]
+        }
+    )
+
+
+def test_no_obligations_leaves_the_result_exactly_as_it_was(twin):
+    """The no-regression proof: every twin on file has this list empty."""
+    empty = twin.model_copy(update={"one_time_obligations": []})
+    assert optimize(empty).model_dump(exclude={"optimization_id"}) == optimize(
+        twin
+    ).model_dump(exclude={"optimization_id"})
+
+
+def test_a_commitment_shrinks_the_set_of_options_that_keep_every_limit(twin):
+    def feasible(result):
+        return [c.id for c in result.candidates if c.meets_constraints]
+
+    assert len(feasible(optimize(owing(twin, 2000)))) < len(feasible(optimize(twin)))
+
+
+def test_no_option_moves_or_cancels_a_declared_commitment(twin):
+    """A commitment the user has already made is not TwinBank's to reschedule."""
+    owed = owing(twin, 2000)
+    horizon = resolve_horizon_end(owed, None)
+    for candidate in generate_candidates(owed, [laptop()], horizon):
+        assert all(e.type == "purchase" for e in candidate.events)
+        assert all(a.category != "one_tuition" for a in candidate.spending_adjustments)
+    # And nothing reaches the response either.
+    for scored in optimize(owed).candidates:
+        assert all(e.type == "purchase" for e in scored.events)
+
+
+def test_a_recommended_option_still_keeps_every_limit_with_a_commitment_present(twin):
+    # Small enough that an option survives, so this checks the recommendation rather
+    # than the absence of one.
+    result = optimize(owing(twin, 200))
+    recommended = next(c for c in result.candidates if c.id == result.recommended_id)
+    assert recommended.meets_constraints and recommended.violations == []
+    # The reserve and the minimum-checking limit still hold, and the recommendation
+    # does not get there by leaving the commitment itself unpaid.
+    assert recommended.metrics.prob_obligations_uncovered == 0
+
+
+def test_the_run_says_what_it_weighed_the_options_against(twin):
+    [line] = commitments_assumption(owing(twin, 1200), date(2027, 5, 1))
+    assert "$1,200" in line and "no option moves or cancels one you marked mandatory" in line
+    assert line in optimize(owing(twin, 1200)).assumptions
+
+
+def test_an_optional_commitment_is_weighed_but_not_promised_to_be_kept(twin):
+    [line] = commitments_assumption(owing(twin, 1200, mandatory=False), date(2027, 5, 1))
+    assert "$1,200" in line and "mandatory" not in line
+
+
+def test_a_commitment_outside_the_horizon_is_not_claimed_to_have_been_weighed(twin):
+    """It never happens in this run, so saying it was weighed would be untrue."""
+    assert commitments_assumption(owing(twin, 1200, due="2027-09-01"), date(2027, 5, 1)) == []
+    assert commitments_assumption(twin, date(2027, 5, 1)) == []
+
+
+# --- F5: an alternative may not quote a number the optimizer did not compute -------
+#
+# The twin of the guard in tests/test_explain.py. frontend/SPEC.md 15:884 --
+# explanations translate computed results "without changing the numbers"; the
+# alternatives panel is an explanation too, and it prints more figures than the
+# summary does.
+
+MONEY_IN_TEXT = re.compile(r"-?\$\d{1,3}(?:,\d{3})*(?:\.\d+)?")
+
+
+def optimizer_figures_stated(response) -> set[str]:
+    texts = [response.summary, *response.assumptions]
+    for candidate in response.candidates:
+        texts += [candidate.label, candidate.detail, *candidate.violations]
+    said: set[str] = set()
+    for text in texts:
+        said |= set(MONEY_IN_TEXT.findall(text))
+    return said
+
+
+def optimizer_figures_computed(twin, response) -> set[str]:
+    """Every figure the run holds, plus the one it derives: the spending-cut quote.
+
+    The quote is a horizon average, and `test_spending_cut_quote_matches_the_simulated_
+    average_across_seasons` already proves the optimizer's copy of this arithmetic is
+    the one the simulator uses. Deriving it here again is what keeps the derived list
+    to a single entry.
+    """
+    allowed: set[str] = set()
+
+    def add(value: float) -> None:
+        allowed.add(money(value))
+        allowed.add(money(-value))
+
+    def walk(obj) -> None:
+        if isinstance(obj, bool) or obj is None:
+            return
+        if isinstance(obj, (int, float)):
+            add(float(obj))
+        elif isinstance(obj, dict):
+            for value in obj.values():
+                walk(value)
+        elif isinstance(obj, (list, tuple)):
+            for item in obj:
+                walk(item)
+
+    walk(response.model_dump())
+    walk(twin.model_dump())
+    add(low_balance_threshold(twin))
+
+    end = response.horizon_end
+    days = (end - twin.as_of).days
+    multipliers = {
+        adjustment.multiplier
+        for candidate in response.candidates
+        for adjustment in candidate.spending_adjustments
+    }
+    for spending in twin.variable_spending:
+        only = twin.model_copy(update={"variable_spending": [spending]})
+        base = sum(expected_daily_spending(only, end).values()) / days * 14
+        add(base)
+        for multiplier in multipliers:
+            add(base * multiplier)
+    return allowed
+
+
+def assert_alternatives_invent_nothing(twin, amount: float = 800.0) -> None:
+    response = run_optimization(
+        twin, request(laptop(amount)), n_simulations=60, seed=3
+    )
+    invented = optimizer_figures_stated(response) - optimizer_figures_computed(twin, response)
+    assert invented == set(), f"alternatives quote figures nothing computed: {sorted(invented)}"
+
+
+def test_the_demo_alternatives_invent_no_figure(twin):
+    assert_alternatives_invent_nothing(twin)
+
+
+def test_flat_twin_alternatives_invent_no_figure(flat_twin):
+    assert_alternatives_invent_nothing(flat_twin)
+
+
+def test_alternatives_with_a_declared_commitment_invent_no_figure(twin):
+    assert_alternatives_invent_nothing(owing(twin, 1200))
+
+
+def test_alternatives_for_a_purchase_nothing_can_cover_invent_no_figure(twin):
+    """Every candidate breaks a limit, so every violation sentence is printed."""
+    assert_alternatives_invent_nothing(twin, 5000)
+
+
+def test_the_optimizer_guard_catches_an_invented_figure(twin):
+    response = run_optimization(twin, request(laptop()), n_simulations=60, seed=3)
+    computed = optimizer_figures_computed(twin, response)
+    assert set(MONEY_IN_TEXT.findall("wait and save $4,321")) - computed == {"$4,321"}

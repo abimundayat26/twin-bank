@@ -51,6 +51,12 @@ describe("Badge", () => {
     const { container } = render(<Badge>Plain</Badge>);
     expect(container.firstChild).toHaveClass("text-muted");
   });
+
+  it("uses a high-contrast treatment on the dark application shell", () => {
+    const { container } = render(<Badge surface="shell">Connected</Badge>);
+    expect(container.firstChild).toHaveClass("border-on-shell/50", "text-on-shell");
+    expect(container.firstChild).not.toHaveClass("text-muted");
+  });
 });
 
 describe("Row", () => {
@@ -83,29 +89,18 @@ describe("Row", () => {
     expect(screen.getByText("Observed")).toBeInTheDocument();
   });
 
-  // SPEC 7.1: these rows carry account, obligation and goal names. Clipping one
-  // to an ellipsis loses information a sighted user cannot get back.
-  it("wraps a long financial label instead of clipping it", () => {
-    const long = "Everyday Checking \u2014 Joint Household Operating Account (Primary)";
+  it("wraps long labels and stacks the value on narrow screens instead of clipping them", () => {
+    const label =
+      "Recurring transfer of unclear purpose (destination unclear — possibly savings or repayment)";
     render(
       <ul>
-        <Row label={long} value="$1,340.00" />
+        <Row label={label} hint="Possibly several categories" value="$75" meta={<Badge>Unanswered</Badge>} />
       </ul>,
     );
-    const label = screen.getByText(long);
-    expect(label).not.toHaveClass("truncate");
-    expect(label).toHaveClass("break-words");
-  });
 
-  it("stacks the label above the value on a narrow viewport", () => {
-    render(
-      <ul>
-        <Row label="Rent" value="$1,200" />
-      </ul>,
-    );
-    const row = screen.getByText("Rent").closest("li");
-    // Column by default, side by side only from the `sm` breakpoint up.
-    expect(row).toHaveClass("flex-col");
-    expect(row).toHaveClass("sm:flex-row");
+    const text = screen.getByText(label);
+    expect(text).toHaveClass("break-words");
+    expect(text).not.toHaveClass("truncate");
+    expect(text.closest("li")).toHaveClass("flex-col", "sm:flex-row");
   });
 });

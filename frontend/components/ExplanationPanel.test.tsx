@@ -41,6 +41,38 @@ describe("ExplanationPanel", () => {
     expect(container.querySelector(".text-bad")).toHaveTextContent("+$200");
   });
 
+  it("keeps a declared commitment distinguishable from a hypothetical purchase", () => {
+    // Both are negative, so both render in the same colour. The distinction has to
+    // survive in the words (frontend/SPEC.md 13:768), and the panel must pass the
+    // backend's wording through rather than summarising it away.
+    const { container } = render_({
+      drivers: [
+        {
+          label: "Laptop (this purchase)",
+          impact_amount: -800,
+          direction: "negative",
+          detail: "The purchase being simulated. It happens in one scenario only.",
+        },
+        {
+          label: "Tuition (already owed)",
+          impact_amount: -1200,
+          direction: "negative",
+          detail: "A commitment Alex declared. It is spent in both scenarios.",
+        },
+      ],
+    });
+    expect(screen.getByText("Laptop (this purchase)")).toBeInTheDocument();
+    expect(screen.getByText("Tuition (already owed)")).toBeInTheDocument();
+    expect(
+      screen.getByText("The purchase being simulated. It happens in one scenario only."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("A commitment Alex declared. It is spent in both scenarios."),
+    ).toBeInTheDocument();
+    // Colour alone would not tell them apart: both are styled the same.
+    expect(container.querySelectorAll(".text-bad")).toHaveLength(2);
+  });
+
   it("renders every assumption the simulation declared", () => {
     render_({ assumptions: ["Spending follows observed averages.", "No new income."] });
     expect(screen.getByText("Spending follows observed averages.")).toBeInTheDocument();

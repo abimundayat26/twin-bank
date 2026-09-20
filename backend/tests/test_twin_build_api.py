@@ -44,6 +44,37 @@ def test_the_declared_half_survives_untouched():
     assert built.constraints == on_file.constraints
 
 
+def obligation_draft() -> dict:
+    response = client.post(
+        "/goals/compile",
+        json={
+            "user_id": "alex",
+            "text": "I have $1,200 tuition due 2027-01-15 from checking, mandatory",
+        },
+    )
+    assert response.status_code == 200
+    [draft] = response.json()["one_time_obligations"]
+    return draft
+
+
+def test_a_confirmed_one_time_obligation_survives_the_api_rebuild():
+    response = client.put(
+        "/twin/alex/goals",
+        json={"goals": [], "constraints": [], "one_time_obligations": [obligation_draft()]},
+    )
+    assert response.status_code == 200
+
+    rebuilt = build()
+
+    assert [obligation.name for obligation in rebuilt.one_time_obligations] == ["Tuition"]
+
+
+def test_an_unconfirmed_obligation_draft_never_survives_as_a_fact():
+    assert obligation_draft()
+
+    assert build().one_time_obligations == []
+
+
 def test_balances_are_carried_from_the_accounts_on_file():
     on_file, built = load_twin(), build()
     assert built.accounts == on_file.accounts

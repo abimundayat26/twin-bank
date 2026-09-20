@@ -15,7 +15,7 @@ or when the call fails, /goals/compile uses the rules compiler (compiler="rules"
 
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import date
 from typing import Literal
 
@@ -25,21 +25,29 @@ from pydantic import BaseModel, ValidationError
 from backend.goal_compiler import (
     AMOUNT,
     CHECKING_FLOOR_ID,
+    DUE_WORDS,
     RESERVE_ID,
     check_deadline,
+    check_due_date,
     compile_goals,
     dedupe_constraints,
+    funding_account,
     money,
+    obligation_status,
     parse_amount,
     parse_deadline,
     unique_goal_id,
+    unique_obligation_id,
 )
 from backend.schemas import (
+    Account,
     FinancialConstraint,
+    FinancialObligation,
     Goal,
     GoalClarification,
     GoalClarificationField,
     GoalCompileResponse,
+    OneTimeObligation,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,13 +59,14 @@ TIMEOUT_SECONDS = 6
 
 
 class LlmItem(BaseModel):
-    kind: Literal["goal", "reserve", "checking_floor", "unclear"]
+    kind: Literal["goal", "reserve", "checking_floor", "obligation", "unclear"]
     fragment: str
     name: str | None
     amount: float | None
     deadline: str | None
     question: str | None
     question_field: GoalClarificationField | None
+    mandatory: bool | None = None
 
 
 class LlmDraft(BaseModel):
@@ -72,8 +81,13 @@ For each thing the user asks for, add one item:
 - kind "goal": money to have saved by a deadline ("$2,000 for summer housing by May").
 - kind "reserve": an emergency reserve to keep across checking and savings at all times.
 - kind "checking_floor": a minimum balance to keep in checking alone.
+- kind "obligation": a one-off expense the user already owes on a known date ("$1,200
+  tuition due January 15"), as opposed to money they are saving toward. Put the due date
+  in deadline. If it could be either a goal or an obligation, make it "unclear" with
+  question_field "intent".
 - kind "unclear": the user wants something but a detail is missing or ambiguous. Set question
-  (one short question to the user) and question_field (amount, deadline, name or type).
+  (one short question to the user) and question_field (amount, deadline, name, type,
+  account, intent or mandatory).
 Fields:
 - fragment: the exact words from the text this item comes from, copied character for character.
 - name: a short name for a goal ("Summer housing"), else null.
@@ -81,6 +95,8 @@ Fields:
 - deadline: YYYY-MM-DD only if the text names a specific date or month; resolve it relative to
   today's date given below (the next such date after today). For vague timing ("next summer",
   "soon", "someday") set deadline to null and make the item "unclear" with question_field "deadline".
+- mandatory: true or false only if the fragment explicitly says mandatory or optional; otherwise
+  set it to null and make the item "unclear" with question_field "mandatory".
 Put parts of the text that ask for nothing in unparsed, copied exactly."""
 
 
@@ -103,10 +119,69 @@ def extract_with_claude(text: str, as_of: date) -> LlmDraft | None:
     return response.parsed_output
 
 
-def validate_draft(user_id: str, text: str, as_of: date, draft: LlmDraft) -> GoalCompileResponse:
+def draft_llm_obligation(
+    item: LlmItem,
+    fragment: str,
+    name: str,
+    as_of: date,
+    accounts: Sequence[Account],
+    drafted: list[OneTimeObligation],
+    ask: Callable[[str, str, str], None],
+) -> None:
+    """The obligation half of validate_draft, under the same rule: code checks every fact.
+
+    The amount has already been matched against the fragment by the caller. The due
+    date goes through the rules parser first and only falls back to the model's
+    reading when the rules found no timing words at all, exactly as goals do.
+    """
+    assert item.amount is not None
+    what = f"the {name.lower()}"
+    normalized = DUE_WORDS.sub("by", fragment)
+    due, due_words = parse_deadline(normalized, as_of)
+    if due is None and due_words is None and item.deadline:
+        try:
+            due = date.fromisoformat(item.deadline)
+        except ValueError:
+            due = None
+    question = check_due_date(due, due_words, what, as_of)
+    if question is not None:
+        ask("deadline", question, fragment)
+        return
+
+    account_id, account_question = funding_account(normalized, accounts)
+    if account_question:
+        ask("account", account_question, fragment)
+        return
+
+    mandatory = obligation_status(fragment)
+    if mandatory is None or item.mandatory is not mandatory:
+        ask("mandatory", f"Is {what} mandatory or optional?", fragment)
+        return
+
+    assert due is not None and account_id is not None
+    drafted.append(
+        OneTimeObligation(
+            id=unique_obligation_id(name, {o.id for o in drafted}),
+            name=name[:1].upper() + name[1:],
+            amount=item.amount,
+            due_date=due,
+            account_id=account_id,
+            mandatory=mandatory,
+        )
+    )
+
+
+def validate_draft(
+    user_id: str,
+    text: str,
+    as_of: date,
+    draft: LlmDraft,
+    accounts: Sequence[Account] = (),
+) -> GoalCompileResponse:
     """Turn the LLM's draft into goals and constraints, or questions, using only code-checked facts."""
     goals: list[Goal] = []
     constraints: list[FinancialConstraint] = []
+    obligations: list[OneTimeObligation] = []
     clarifications: list[GoalClarification] = []
 
     def ask(field, question: str, fragment: str) -> None:
@@ -155,6 +230,11 @@ def validate_draft(user_id: str, text: str, as_of: date, draft: LlmDraft) -> Goa
         if not name:
             ask("name", f"What is {money(item.amount)} for?", fragment)
             continue
+
+        if item.kind == "obligation":
+            draft_llm_obligation(item, fragment, name, as_of, accounts, obligations, ask)
+            continue
+
         deadline, deadline_words = parse_deadline(fragment, as_of)
         if deadline is None and deadline_words is None and item.deadline:
             # The rules found no timing words at all, so take the LLM's reading of the date.
@@ -179,6 +259,7 @@ def validate_draft(user_id: str, text: str, as_of: date, draft: LlmDraft) -> Goa
         text=text,
         goals=goals,
         constraints=constraints,
+        one_time_obligations=obligations,
         clarifications=clarifications,
         unparsed=unparsed,
         compiler="llm",
@@ -190,20 +271,28 @@ def compile_goals_auto(
     text: str,
     as_of: date,
     extract: Callable[[str, date], LlmDraft | None] = extract_with_claude,
+    accounts: Sequence[Account] = (),
+    detected: Sequence[FinancialObligation] = (),
 ) -> GoalCompileResponse:
-    """The LLM compiler when enabled, else (or when it fails) the rules compiler."""
+    """The LLM compiler when enabled, else (or when it fails) the rules compiler.
+
+    Note the LLM path drafts no obligation classifications: its item kinds do not
+    include one, so an answer about a detected obligation is only recognised by the
+    rules compiler. GOAL_COMPILER is "rules" by default, and every fallback below
+    lands there, so the demo is unaffected.
+    """
     if not llm_enabled():
-        return compile_goals(user_id, text, as_of)
+        return compile_goals(user_id, text, as_of, accounts, detected)
     try:
         draft = extract(text, as_of)
         if draft is None:
             logger.warning("LLM goal compiler returned no draft, using rules")
-            return compile_goals(user_id, text, as_of)
-        return validate_draft(user_id, text, as_of, draft)
+            return compile_goals(user_id, text, as_of, accounts, detected)
+        return validate_draft(user_id, text, as_of, draft, accounts)
     except (anthropic.APIError, ValidationError) as e:
         logger.warning("LLM goal compiler failed, using rules: %s", e)
     except Exception:
         # Anything else (an SDK change, a draft shape validate_draft does not expect)
         # must still not break the demo.
         logger.exception("LLM goal compiler crashed, using rules")
-    return compile_goals(user_id, text, as_of)
+    return compile_goals(user_id, text, as_of, accounts, detected)

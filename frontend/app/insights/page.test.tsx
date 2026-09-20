@@ -2,7 +2,12 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DataSource } from "@/lib/api";
-import type { FinancialTwin, ForecastMetadata, SeasonalProfile } from "@/lib/types";
+import type {
+  FinancialTwin,
+  ForecastMetadata,
+  ProcessingLineage,
+  SeasonalProfile,
+} from "@/lib/types";
 import mockTwin from "@/lib/mock/twin.json";
 
 vi.mock("@/lib/api", async () => {
@@ -29,6 +34,15 @@ const EWMA: ForecastMetadata = {
   observed_fortnights: 14,
   half_life_days: 90,
 };
+
+/**
+ * No backend populates `lineage` yet -- every twin the demo serves carries
+ * null -- so the states below are built here rather than read from a fixture.
+ * That is the point: the panel has to be honest about a field nothing fills in.
+ */
+function lineage(patch: Partial<ProcessingLineage> = {}): ProcessingLineage {
+  return { location: "databricks", status: "succeeded", ...patch };
+}
 
 const FLAT_PROFILE: SeasonalProfile = {
   factors: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [String(i + 1), 1])),
@@ -150,6 +164,101 @@ describe("Processing panel", () => {
     await renderLoaded();
     expect(screen.getByText("Built in Databricks.")).toBeInTheDocument();
     expect(screen.queryByText("Built by the local pipeline.")).not.toBeInTheDocument();
+  });
+
+  it("says the lineage is missing rather than inventing a run for it", async () => {
+    loads(twinWith({ lineage: null }));
+    await renderLoaded();
+    expect(screen.getByText(/reported no processing lineage with the twin/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/metadata the backend did not send, not evidence that a run failed/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Run status")).not.toBeInTheDocument();
+    expect(screen.queryByText("MLflow run")).not.toBeInTheDocument();
+  });
+
+  it("describes a published Databricks run in words, with no badge to click", async () => {
+    loads(twinWith({ source: "databricks", lineage: lineage() }));
+    await renderLoaded();
+    expect(screen.getByText("Built in Databricks.")).toBeInTheDocument();
+    expect(screen.getByText(/finished successfully/)).toBeInTheDocument();
+    const status = screen.getByText("Run status").closest("li");
+    expect(within(status!).getByText("Succeeded")).toBeInTheDocument();
+    // Section 15.1: a planned capability wears no active-looking control.
+    const panel = screen.getByText("Processing").closest("section");
+    expect(within(panel!).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(panel!).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("keeps the last good twin on screen when the latest run failed", async () => {
+    loads(twinWith({ source: "databricks", lineage: lineage({ status: "failed" }) }));
+    await renderLoaded();
+    expect(screen.getByText(/most recent run TwinBank was told about failed/)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing has been blanked/)).toBeInTheDocument();
+    const status = screen.getByText("Run status").closest("li");
+    expect(within(status!).getByText("Failed")).toBeInTheDocument();
+    // The twin itself is still described in full.
+    expect(screen.getByText("Campus Bookstore Payroll")).toBeInTheDocument();
+    expect(screen.getByText("Forecast")).toBeInTheDocument();
+  });
+
+  it("does not claim a run finished when the backend could not say", async () => {
+    loads(twinWith({ source: "databricks", lineage: lineage({ status: "unknown" }) }));
+    await renderLoaded();
+    expect(screen.getByText(/may still be going, or its outcome was never read/)).toBeInTheDocument();
+    const status = screen.getByText("Run status").closest("li");
+    expect(within(status!).getByText("Not reported")).toBeInTheDocument();
+    expect(screen.getByText("Campus Bookstore Payroll")).toBeInTheDocument();
+  });
+
+  it("separates a local build from where its data came from", async () => {
+    loads(twinWith({ source: "databricks", lineage: lineage({ location: "local" }) }));
+    await renderLoaded();
+    expect(screen.getByText("Built by the local pipeline.")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Where the work ran and where the data came from are separate facts/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/No Databricks job was involved/)).not.toBeInTheDocument();
+  });
+
+  it("shows the MLflow run and its time only when they are supplied", async () => {
+    loads(
+      twinWith({
+        source: "databricks",
+        lineage: lineage({
+          mlflow_run_id: "9f2c1a7b4d8e40319ab6c5d2e7f80a13",
+          run_time: "2026-09-19T14:32:00Z",
+        }),
+      }),
+    );
+    await renderLoaded();
+    expect(screen.getByText("9f2c1a7b4d8e40319ab6c5d2e7f80a13")).toBeInTheDocument();
+    expect(screen.getByText(/September 19, 2026 at 2:32 PM UTC/)).toBeInTheDocument();
+    expect(screen.queryByText(/No MLflow run was recorded/)).not.toBeInTheDocument();
+  });
+
+  it("names no tracked run when the build was not recorded in MLflow", async () => {
+    loads(twinWith({ source: "databricks", lineage: lineage() }));
+    await renderLoaded();
+    expect(screen.getByText(/No MLflow run was recorded for this build/)).toBeInTheDocument();
+    expect(screen.queryByText("MLflow run")).not.toBeInTheDocument();
+    expect(screen.queryByText("Run time")).not.toBeInTheDocument();
+  });
+
+  it("refuses to print an MLflow id that is not an MLflow id", async () => {
+    const smuggled = "dbfs:/Volumes/main/twin/artifacts";
+    loads(twinWith({ source: "databricks", lineage: lineage({ mlflow_run_id: smuggled }) }));
+    await renderLoaded();
+    expect(screen.queryByText(smuggled)).not.toBeInTheDocument();
+    expect(screen.getByText(/shape TwinBank does not recognize/)).toBeInTheDocument();
+  });
+
+  it("says nothing was processed when the backend could not be reached", async () => {
+    loads(twinWith({ source: "databricks", lineage: lineage() }), "fixture");
+    await renderLoaded();
+    expect(screen.getByText("Nothing was processed for this screen.")).toBeInTheDocument();
+    expect(screen.queryByText("Built in Databricks.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Run status")).not.toBeInTheDocument();
   });
 });
 
@@ -318,9 +427,28 @@ describe("Limitations panel", () => {
     ).toBeInTheDocument();
   });
 
-  it("says MLflow lineage is unavailable rather than implying a tracked run", async () => {
+  it("says the lineage field arrived empty rather than that no endpoint exists", async () => {
+    loads(twinWith({ lineage: null }));
     await renderLoaded();
-    expect(screen.getByText(/MLflow run metadata are not exposed by any endpoint yet/)).toBeInTheDocument();
+    expect(screen.getByText(/No processing lineage came with this twin/)).toBeInTheDocument();
+  });
+
+  it("drops that limitation once a run is named, and keeps the ones still true", async () => {
+    loads(
+      twinWith({
+        lineage: lineage({ mlflow_run_id: "9f2c1a7b4d8e40319ab6c5d2e7f80a13" }),
+      }),
+    );
+    await renderLoaded();
+    expect(screen.queryByText(/No processing lineage came with this twin/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/was not recorded in MLflow/)).not.toBeInTheDocument();
+  });
+
+  it("names an untracked run and an unreported outcome as the gaps they are", async () => {
+    loads(twinWith({ lineage: lineage({ status: "unknown" }) }));
+    await renderLoaded();
+    expect(screen.getByText(/did not report how that run finished/)).toBeInTheDocument();
+    expect(screen.getByText(/was not recorded in MLflow/)).toBeInTheDocument();
   });
 
   it("states that demo figures are not a real account", async () => {

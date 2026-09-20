@@ -35,6 +35,21 @@ beforeEach(() => {
 });
 
 describe("AppShell", () => {
+  it("uses the dark shell treatment for the header and navigation", async () => {
+    const user = userEvent.setup();
+    renderShell();
+
+    expect(screen.getByRole("banner")).toHaveClass("bg-shell", "text-on-shell");
+    const menu = screen.getByRole("button", { name: "Menu" });
+    expect(menu).toHaveClass("text-on-shell", "focus-visible:outline-on-shell");
+
+    await user.click(menu);
+    expect(document.querySelector("#primary-menu")).toHaveClass(
+      "bg-shell",
+      "text-on-shell",
+    );
+  });
+
   it("names the page the user is on", async () => {
     pathname.mockReturnValue("/simulate");
     renderShell();

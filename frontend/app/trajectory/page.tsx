@@ -15,6 +15,7 @@ import { Card, Row } from "@/components/ui";
 import { longDate, money } from "@/lib/format";
 import { useTwin } from "@/lib/state/TwinProvider";
 import { emergencyReserve, primaryGoal } from "@/lib/twin";
+import { DEFAULT_LOW_BALANCE_THRESHOLD } from "@/lib/types";
 
 export default function TrajectoryPage() {
   const { twin, simulation, simulationSource } = useTwin();
@@ -26,7 +27,7 @@ export default function TrajectoryPage() {
           <p className="text-sm text-muted">
             This page shows the balance bands behind a simulation: the baseline future, the
             future with the purchase, the purchase marker, the goal deadline and the reserve
-            line.
+            and low-balance reference lines.
           </p>
           <p className="mt-3 text-sm text-muted">
             Run a purchase first and the projection will appear here.
@@ -79,6 +80,8 @@ export default function TrajectoryPage() {
         <BalanceTrajectoryChart
           bands={simulation.balance_bands}
           reserve={reserve?.amount}
+          checkingMinimum={minimum?.amount ?? DEFAULT_LOW_BALANCE_THRESHOLD}
+          checkingMinimumIsDefault={!minimum}
           simulations={simulation.num_simulations}
           markers={[
             ...purchases.map((event) => ({
@@ -122,13 +125,15 @@ export default function TrajectoryPage() {
                 value={money(reserve.amount)}
               />
             ) : null}
-            {minimum ? (
-              <Row
-                label="Minimum checking balance"
-                hint="Your own low-balance line"
-                value={money(minimum.amount)}
-              />
-            ) : null}
+            <Row
+              label={minimum ? "Minimum checking balance" : "Low-balance line"}
+              hint={
+                minimum
+                  ? "Your own low-balance line"
+                  : "Simulator default; Alex has not set a minimum checking balance"
+              }
+              value={money(minimum?.amount ?? DEFAULT_LOW_BALANCE_THRESHOLD)}
+            />
             {goal ? (
               <Row
                 label={goal.name}

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { chance, longDate, money, ordinalDay, shortDate, signedMoney } from "./format";
+import {
+  chance,
+  longDate,
+  longDateTime,
+  money,
+  ordinalDay,
+  shortDate,
+  signedMoney,
+} from "./format";
 
 describe("money", () => {
   it("rounds to whole dollars", () => {
@@ -47,5 +55,23 @@ describe("ordinalDay", () => {
     [31, "31st"],
   ])("%i -> %s", (day, expected) => {
     expect(ordinalDay(day)).toBe(expected);
+  });
+});
+
+describe("longDateTime", () => {
+  it("renders a run timestamp in UTC, with the zone shown", () => {
+    expect(longDateTime("2026-09-19T14:32:00Z")).toBe("September 19, 2026 at 2:32 PM UTC");
+  });
+
+  it("keeps the instant when the timestamp carries an offset", () => {
+    expect(longDateTime("2026-09-19T16:32:00+02:00")).toBe("September 19, 2026 at 2:32 PM UTC");
+  });
+
+  it("reads a zoneless timestamp as UTC rather than as the viewer's local time", () => {
+    expect(longDateTime("2026-09-19T14:32:00")).toBe("September 19, 2026 at 2:32 PM UTC");
+  });
+
+  it("returns null for something that is not a timestamp", () => {
+    expect(longDateTime("whenever")).toBeNull();
   });
 });

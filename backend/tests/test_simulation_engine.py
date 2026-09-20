@@ -3,7 +3,7 @@ from datetime import date, timedelta
 import pytest
 
 from backend.fixtures import load_twin
-from backend.schemas import Goal, SeasonalProfile, SimulationEvent
+from backend.schemas import Goal, OneTimeObligation, SeasonalProfile, SimulationEvent
 from backend.simulation.engine import (
     LOW_BALANCE_THRESHOLD,
     MAX_HORIZON_DAYS,
@@ -226,6 +226,127 @@ def test_optional_obligation_shortfall_does_not_count_as_uncovered(twin):
     result = simulate_scenario(optional_only, [purchase(1300)], date(2026, 10, 31))
     assert result.min_checking < 0
     assert result.obligations_covered
+
+
+# --- One-time obligations ------------------------------------------------------
+
+
+def owed(
+    amount: float,
+    due: str,
+    *,
+    id: str = "one_tuition",
+    name: str = "Tuition",
+    account_id: str = "acc_checking",
+    mandatory: bool = True,
+) -> OneTimeObligation:
+    return OneTimeObligation(
+        id=id,
+        name=name,
+        amount=amount,
+        due_date=date.fromisoformat(due),
+        account_id=account_id,
+        mandatory=mandatory,
+    )
+
+
+def owing(twin, *obligations: OneTimeObligation):
+    return twin.model_copy(update={"one_time_obligations": list(obligations)})
+
+
+def test_an_empty_list_of_one_time_obligations_changes_nothing(twin):
+    """The no-regression proof: every twin on file has this list empty."""
+    assert simulate_scenario(owing(twin), [], HORIZON) == simulate_scenario(twin, [], HORIZON)
+
+
+def test_a_one_time_obligation_is_spent_in_the_baseline(twin):
+    with_it = simulate_scenario(owing(twin, owed(1000, "2026-11-10")), [], HORIZON)
+    without = simulate_scenario(twin, [], HORIZON)
+    assert with_it.ending_balance == pytest.approx(without.ending_balance - 1000, abs=0.01)
+
+
+def test_a_one_time_obligation_after_the_horizon_changes_nothing(twin):
+    after = owing(twin, owed(1000, "2027-06-01"))
+    assert simulate_scenario(after, [], HORIZON) == simulate_scenario(twin, [], HORIZON)
+
+
+def test_a_one_time_obligation_before_as_of_is_not_applied(twin):
+    """as_of balances already include whatever was spent before them."""
+    already = owing(twin, owed(1000, "2026-09-01"))
+    assert simulate_scenario(already, [], HORIZON) == simulate_scenario(twin, [], HORIZON)
+
+
+def test_a_one_time_obligation_on_as_of_itself_is_not_applied(twin):
+    """The window is (as_of, horizon_end], the same as every other flow."""
+    today = owing(twin, owed(1000, twin.as_of.isoformat()))
+    assert simulate_scenario(today, [], HORIZON) == simulate_scenario(twin, [], HORIZON)
+
+
+def test_a_mandatory_one_time_obligation_checking_cannot_cover_sweeps_savings(twin):
+    # 2026-09-20: before the 9/25 paycheck, so checking has only its opening 1340.
+    result = simulate_scenario(owing(twin, owed(1500, "2026-09-20")), [], HORIZON)
+    assert result.obligations_covered
+    [sweep] = [s for s in result.savings_sweeps if s.obligation_id == "one_tuition"]
+    assert sweep.due == date(2026, 9, 20) and sweep.amount > 0
+
+
+def test_a_mandatory_one_time_obligation_savings_cannot_cover_either_is_uncovered(twin):
+    drained = twin.model_copy(
+        update={"accounts": [a.model_copy(update={"balance": 0.0}) if a.type == "savings" else a
+                             for a in twin.accounts]}
+    )
+    result = simulate_scenario(owing(drained, owed(1500, "2026-09-20")), [], HORIZON)
+    assert not result.obligations_covered
+    first = result.uncovered_obligations[0]
+    assert (first.obligation_id, first.due) == ("one_tuition", date(2026, 9, 20))
+    assert first.checking_after < 0
+
+
+def test_a_non_mandatory_one_time_obligation_is_charged_but_never_blamed(twin):
+    """Exactly how a non-mandatory *recurring* obligation already behaves: the money
+    leaves, but negative checking is not reported as a bill that went unpaid."""
+    bare = twin.model_copy(update={"obligations": [], "income": [], "variable_spending": []})
+    result = simulate_scenario(
+        owing(bare, owed(2000, "2026-09-20", mandatory=False)), [], date(2026, 9, 30)
+    )
+    assert result.checking[-1] == pytest.approx(1340 - 2000)
+    assert result.obligations_covered and result.savings_sweeps == []
+
+
+def test_a_one_time_obligation_paid_from_savings_leaves_checking_alone(twin):
+    from_savings = owing(twin, owed(1000, "2026-11-10", account_id="acc_savings"))
+    result = simulate_scenario(from_savings, [], HORIZON)
+    baseline = simulate_scenario(twin, [], HORIZON)
+    assert result.checking == baseline.checking
+    assert result.ending_balance == pytest.approx(baseline.ending_balance - 1000, abs=0.01)
+
+
+def test_a_one_time_and_a_recurring_obligation_on_one_day_both_apply(twin):
+    rent = next(o for o in twin.obligations if "rent" in o.name.lower())
+    same_day = twin.model_copy(
+        update={
+            "obligations": [rent],
+            "accounts": [a.model_copy(update={"balance": 660.0}) if a.type == "checking"
+                         else a.model_copy(update={"balance": 0.0}) for a in twin.accounts],
+            "income": [],
+            "variable_spending": [],
+        }
+    )
+    result = simulate_scenario(
+        owing(same_day, owed(40, "2026-10-01", id="one_fee", name="Late fee")), [], date(2026, 10, 2)
+    )
+    # Both are charged: 660 - 650 - 40. Mandatory first across the two kinds, so the
+    # $650 rent is paid and the one-time fee is the charge that cannot be covered.
+    assert result.checking[-1] == pytest.approx(-30.0)
+    assert [u.obligation_id for u in result.uncovered_obligations] == ["one_fee"]
+
+
+def test_a_funding_account_that_no_longer_exists_falls_back_to_checking(twin):
+    """C3, undefined in the spec: the charge is still real, so it is not dropped."""
+    dangling = owing(twin, owed(1000, "2026-11-10", account_id="acc_deleted"))
+    result = simulate_scenario(dangling, [], HORIZON)
+    expected = simulate_scenario(owing(twin, owed(1000, "2026-11-10")), [], HORIZON)
+    assert result.ending_balance == pytest.approx(expected.ending_balance, abs=0.01)
 
 
 def test_due_day_31_clamps_to_month_end():
