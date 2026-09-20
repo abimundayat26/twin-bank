@@ -4,12 +4,14 @@ import {
   ApiError,
   compileGoal,
   getExplanation,
+  getOverview,
   getTwin,
   runOptimization,
   runSimulation,
   saveGoals,
   setMinimumBalance,
 } from "./api";
+import mockOverview from "./mock/overview.json";
 import mockTwin from "./mock/twin.json";
 import type {
   FinancialConstraint,
@@ -17,10 +19,12 @@ import type {
   Goal,
   GoalCompileResponse,
   OptimizationResponse,
+  OverviewPayload,
   SimulationRequest,
 } from "./types";
 
 const twin = mockTwin as FinancialTwin;
+const overview = mockOverview as OverviewPayload;
 const request = {
   user_id: "alex",
   events: [
@@ -89,6 +93,26 @@ describe("when the backend is reachable", () => {
     );
     await expect(getTwin("alex")).rejects.toBeInstanceOf(SyntaxError);
   });
+
+  it("gets the typed Overview payload through the normal request path", async () => {
+    backendReplies(200, overview);
+    await expect(getOverview("alex user")).resolves.toEqual({
+      data: overview,
+      source: "api",
+    });
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toMatch(/\/twin\/alex%20user\/overview$/);
+    expect(init?.cache).toBe("no-store");
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("surfaces the backend detail when Overview is rejected", async () => {
+    backendReplies(404, { detail: "No twin for user 'nobody'" });
+    await expect(getOverview("nobody")).rejects.toMatchObject({
+      status: 404,
+      message: "No twin for user 'nobody'",
+    });
+  });
 });
 
 describe("when the backend is unreachable", () => {
@@ -104,6 +128,10 @@ describe("when the backend is unreachable", () => {
 
   it("does not fall back to a bundled explanation", async () => {
     await expect(getExplanation("sim_fixture_alex_laptop")).rejects.toThrow("fetch failed");
+  });
+
+  it("does not fall back to the bundled Overview", async () => {
+    await expect(getOverview("alex")).rejects.toThrow("fetch failed");
   });
 
   it("does not pretend a write succeeded locally", async () => {
