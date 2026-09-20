@@ -16,6 +16,7 @@ TUITION = OneTimeObligation(
     amount=1200,
     due_date=date(2027, 1, 15),
     account_id="acc_checking",
+    mandatory=True,
 )
 
 
