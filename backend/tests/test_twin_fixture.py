@@ -31,7 +31,9 @@ def test_the_served_twin_records_how_it_was_estimated():
     assert forecast is not None
     assert forecast.method == "seasonal_ewma"
     assert forecast.as_of.isoformat() == "2026-09-18"
-    assert forecast.window_start.isoformat() == "2025-09-20"
+    # The fitted window, not the whole feed. The feed opens on 2025-09-20, but
+    # 363 days leaves 13 over, so the oldest 14 days fall outside every block.
+    assert forecast.window_start.isoformat() == "2025-10-04"
     assert forecast.observed_fortnights == 25
 
 

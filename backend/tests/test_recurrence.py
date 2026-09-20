@@ -22,6 +22,7 @@ from backend.ingest.build import build_twin
 from backend.ingest.models import Category, Transaction
 from backend.ingest.normalize import normalize_all
 from backend.ingest.recurrence import (
+    BLOCK_DAYS,
     detect_cadence,
     detect_income,
     detect_monthly,
@@ -380,9 +381,16 @@ def test_the_built_twin_records_how_it_forecast() -> None:
     assert built.forecast is not None
     assert built.forecast.method == "seasonal_ewma"
     assert built.forecast.as_of == twin.as_of
-    assert built.forecast.window_start == min(t.date for t in transactions)
     assert built.forecast.observed_fortnights == 26
     assert built.forecast.half_life_days == HALF_LIFE_DAYS
+
+    # The reported window is the fitted one. It never starts before the first
+    # record, and it always divides into the block count it is shown beside --
+    # a date range and a number of fortnights that disagree would be a
+    # provenance claim nobody can check.
+    assert built.forecast.window_start >= min(t.date for t in transactions)
+    observed_days = (built.forecast.as_of - built.forecast.window_start).days + 1
+    assert observed_days == built.forecast.observed_fortnights * BLOCK_DAYS
 
 
 def test_a_short_history_stays_flat() -> None:

@@ -218,7 +218,7 @@ describe("Forecast panel", () => {
     expect(screen.getByText("180-day half-life")).toBeInTheDocument();
     expect(screen.getByText("25")).toBeInTheDocument();
     expect(
-      screen.getAllByText("September 20, 2025 – September 18, 2026").length,
+      screen.getAllByText("October 4, 2025 – September 18, 2026").length,
     ).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText(/No forecast metadata recorded/)).not.toBeInTheDocument();
   });
