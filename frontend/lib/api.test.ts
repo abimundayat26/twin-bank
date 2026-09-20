@@ -5,6 +5,7 @@ import {
   compileGoal,
   createOneTimeObligation,
   createRecurringObligation,
+  deleteGoal,
   deleteOneTimeObligation,
   deleteRecurringObligation,
   getExplanation,
@@ -17,6 +18,8 @@ import {
   runSimulation,
   saveGoals,
   setMinimumBalance,
+  setReserve,
+  updateGoal,
   updateOneTimeObligation,
   updateRecurringObligation,
 } from "./api";
@@ -354,6 +357,68 @@ describe("getObligations", () => {
   it("has no bundled listing, so an unreachable backend throws", async () => {
     backendDown();
     await expect(getObligations("alex")).rejects.toThrow("fetch failed");
+  });
+});
+
+/** The partial goal and limit writes the Goals & Limits panel uses (PL-9, PL-10). */
+describe("goal and limit writes", () => {
+  const saved = { ...twin, user_id: "alex" } as FinancialTwin;
+
+  function lastCall() {
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    return {
+      url: String(url),
+      method: init?.method,
+      body: init?.body === undefined ? undefined : JSON.parse(init.body as string),
+    };
+  }
+
+  it("patches only the named fields, leaving the other goals alone", async () => {
+    backendReplies(200, saved);
+    await expect(
+      updateGoal("alex", "goal_summer housing", { target_amount: 2500 }),
+    ).resolves.toEqual({ data: saved, source: "api" });
+    const call = lastCall();
+    expect(call.url).toMatch(/\/twin\/alex\/goals\/goal_summer%20housing$/);
+    expect(call.method).toBe("PATCH");
+    expect(call.body).toEqual({ target_amount: 2500 });
+  });
+
+  it("deletes one goal without a body", async () => {
+    backendReplies(200, saved);
+    await deleteGoal("alex", "goal_trip");
+    const call = lastCall();
+    expect(call.url).toMatch(/\/twin\/alex\/goals\/goal_trip$/);
+    expect(call.method).toBe("DELETE");
+    expect(call.body).toBeUndefined();
+  });
+
+  it("puts the emergency reserve, where zero removes it", async () => {
+    backendReplies(200, saved);
+    await setReserve("alex", { amount: 0 });
+    const call = lastCall();
+    expect(call.url).toMatch(/\/twin\/alex\/reserve$/);
+    expect(call.method).toBe("PUT");
+    expect(call.body).toEqual({ amount: 0 });
+  });
+
+  it("throws a rejected edit rather than reporting it saved", async () => {
+    backendReplies(404, { detail: "Unknown goal 'goal_gone'" });
+    await expect(updateGoal("alex", "goal_gone", { target_amount: 10 })).rejects.toThrow(
+      "Unknown goal 'goal_gone'",
+    );
+  });
+
+  describe("when the backend is unreachable", () => {
+    beforeEach(backendDown);
+
+    it("does not pretend a goal or limit write succeeded locally", async () => {
+      await expect(updateGoal("alex", "goal_trip", { target_amount: 10 })).rejects.toThrow(
+        "fetch failed",
+      );
+      await expect(deleteGoal("alex", "goal_trip")).rejects.toThrow("fetch failed");
+      await expect(setReserve("alex", { amount: 1500 })).rejects.toThrow("fetch failed");
+    });
   });
 });
 
