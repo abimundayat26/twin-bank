@@ -156,7 +156,13 @@ def optimize(request: OptimizationRequest) -> OptimizationResponse:
 def compile_goal_text(request: GoalCompileRequest) -> GoalCompileResponse:
     """Drafts only. Saving them is a separate PUT /twin/{user_id}/goals, after the user confirms."""
     twin = twin_for(request.user_id)
-    return compile_goals_auto(twin.user_id, request.text, twin.as_of, accounts=twin.accounts)
+    return compile_goals_auto(
+        twin.user_id,
+        request.text,
+        twin.as_of,
+        accounts=twin.accounts,
+        detected=twin.obligations,
+    )
 
 
 @app.put("/twin/{user_id}/goals", response_model=FinancialTwin)

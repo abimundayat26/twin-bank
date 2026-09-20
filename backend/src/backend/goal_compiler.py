@@ -24,12 +24,23 @@ import re
 from collections.abc import Callable, Sequence
 from datetime import date, timedelta
 
+from backend.intent_router import (
+    CHECKING_WORDS,
+    FLOOR_WORDS,
+    GOAL_WORDS,
+    OBLIGATION_WORDS,
+    RESERVE_WORDS,
+    Routing,
+    route_clause,
+)
 from backend.schemas import (
     Account,
     FinancialConstraint,
+    FinancialObligation,
     Goal,
     GoalClarification,
     GoalCompileResponse,
+    ObligationClassificationDraft,
     OneTimeObligation,
 )
 from backend.simulation.engine import MAX_HORIZON_DAYS
@@ -97,12 +108,6 @@ VAGUE_DEADLINE = re.compile(
     re.I,
 )
 
-RESERVE_WORDS = re.compile(r"\b(?:emergenc(?:y|ies)|reserve|rainy[- ]day|safety net|cushion)\b", re.I)
-CHECKING_WORDS = re.compile(r"\bchecking\b", re.I)
-FLOOR_WORDS = re.compile(
-    r"\b(?:keep|at least|minimum|never\s+(?:drop|go|fall|dip)|below|under|leave)\b", re.I
-)
-GOAL_WORDS = re.compile(r"\b(?:need|save|saving|want|goal|fund|put aside|set aside)\b", re.I)
 NAME = re.compile(
     rf"\bfor\s+(?P<phrase>(?:(?:a|an|the|my|some)\s+)?(?P<name>.+?))"
     rf"(?=\s+{DEADLINE_WORD}\b|\s+(?:in|within)\s+(?:\d+|a|an|one)\s|[,;]|$)",
@@ -110,14 +115,6 @@ NAME = re.compile(
 )
 
 # --- One-time obligations -----------------------------------------------------
-
-# An expense already owed, as opposed to money being saved toward something.
-# "pay" is deliberately in here although it is weak on its own: "I need to pay
-# $400" matches this *and* GOAL_WORDS, and an ambiguous clause must be asked
-# about rather than guessed (frontend/SPEC.md 3.2).
-OBLIGATION_WORDS = re.compile(
-    r"\b(?:owe|owes|owed|due|bill|bills|invoice|premium|tuition|pay|pays|paid)\b", re.I
-)
 
 MONTH_NAMES = "|".join(sorted(MONTHS, key=len, reverse=True))
 # "due 2027-01-15", "due on the 15th of January", "on October 1": timing words the
@@ -244,7 +241,7 @@ def split_clauses(text: str) -> list[str]:
     before it, so "$500 for books and supplies by January" stays one goal."""
     clauses = []
     for sentence in CLAUSE_SPLIT.split(text):
-        parts = [p.strip(" ,") for p in AND_SPLIT.split(sentence) if p.strip(" ,")]
+        parts = [p.strip(" ,\t\r\n") for p in AND_SPLIT.split(sentence) if p.strip(" ,\t\r\n")]
         merged: list[str] = []
         for part in parts:
             if merged and not AMOUNT.search(part) and not RESERVE_WORDS.search(part):
@@ -393,6 +390,29 @@ def dedupe_constraints(
     return constraints
 
 
+def draft_classification(
+    routed: Routing,
+    detected: Sequence[FinancialObligation],
+    drafted: list[ObligationClassificationDraft],
+) -> None:
+    """Read the user's answer back for confirmation. Nothing is declared here.
+
+    The id can only have come from `detected`, so there is no path by which an answer
+    about an obligation the twin does not have reaches the twin.
+    """
+    obligation = next((o for o in detected if o.id == routed.obligation_id), None)
+    if obligation is None or routed.category is None:
+        return
+    drafted.append(
+        ObligationClassificationDraft(
+            obligation_id=obligation.id,
+            obligation_name=obligation.name,
+            category=routed.category,
+            fragment=routed.fragment,
+        )
+    )
+
+
 def draft_obligation(
     clause: str,
     as_of: date,
@@ -450,12 +470,22 @@ def draft_obligation(
 
 
 def compile_goals(
-    user_id: str, text: str, as_of: date, accounts: Sequence[Account] = ()
+    user_id: str,
+    text: str,
+    as_of: date,
+    accounts: Sequence[Account] = (),
+    detected: Sequence[FinancialObligation] = (),
 ) -> GoalCompileResponse:
-    """Drafts only. `accounts` are the twin's, used to resolve which one pays an obligation."""
+    """Drafts only.
+
+    `accounts` are the twin's, used to resolve which one pays an obligation.
+    `detected` are its recurring obligations, so an answer about one is recognised as
+    an answer rather than mistaken for a new declaration.
+    """
     goals: list[Goal] = []
     constraints: list[FinancialConstraint] = []
     obligations: list[OneTimeObligation] = []
+    classifications: list[ObligationClassificationDraft] = []
     clarifications: list[GoalClarification] = []
     unparsed: list[str] = []
     previous_is_floor = False
@@ -536,17 +566,18 @@ def compile_goals(
             )
             continue
 
-        if OBLIGATION_WORDS.search(clause):
-            if GOAL_WORDS.search(clause):
-                # "I need to pay $400": saving toward it and already owing it read the
-                # same. Ask, do not choose (frontend/SPEC.md 3.2).
-                ask(
-                    "intent",
-                    "Is this money you are saving toward, or an expense you already owe?",
-                    clause,
-                )
-            else:
-                draft_obligation(clause, as_of, accounts, obligations, ask)
+        # Constraints are settled above, so by here the only readings left are a goal,
+        # an expense already owed, or an answer about an obligation already detected.
+        # Which of those it is belongs to one place: backend.intent_router.
+        routed = route_clause(clause, detected)
+        if routed.intent == "ambiguous":
+            ask("intent", routed.question or "What kind of thing is this?", clause)
+            continue
+        if routed.intent == "obligation_classification":
+            draft_classification(routed, detected, classifications)
+            continue
+        if routed.intent == "one_time_obligation":
+            draft_obligation(clause, as_of, accounts, obligations, ask)
             continue
 
         named = goal_name(clause)
@@ -584,6 +615,7 @@ def compile_goals(
         goals=goals,
         constraints=constraints,
         one_time_obligations=obligations,
+        classifications=classifications,
         clarifications=clarifications,
         unparsed=unparsed,
         compiler="rules",

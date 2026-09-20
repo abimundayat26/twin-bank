@@ -422,6 +422,21 @@ export interface GoalClarification {
   fragment: string;
 }
 
+/**
+ * A category the user stated in words for an obligation TwinBank detected.
+ *
+ * A draft, like everything else the compiler returns. Read it back and confirm it
+ * through `POST /clarifications/respond`; nothing here has been declared.
+ */
+export interface ObligationClassificationDraft {
+  obligation_id: string;
+  /** As shown to the user, so it can be read back. */
+  obligation_name: string;
+  category: ObligationCategory;
+  /** The part of the text this came from. */
+  fragment: string;
+}
+
 /** Drafts only: nothing is saved until the user confirms them. */
 export interface GoalCompileResponse {
   user_id: string;
@@ -433,6 +448,11 @@ export interface GoalCompileResponse {
    * that predates the contract, so read it as "none drafted", never as an error.
    */
   one_time_obligations?: OneTimeObligation[];
+  /**
+   * Answers about already-detected recurring obligations, read back for confirmation
+   * rather than applied. Absent from a backend that predates the contract.
+   */
+  classifications?: ObligationClassificationDraft[];
   /**
    * Asked instead of guessing. A goal or obligation missing a detail is not drafted
    * at all.
