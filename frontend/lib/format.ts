@@ -26,6 +26,16 @@ const SHORT_DATE = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
 });
 
+const LONG_DATE_TIME = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "UTC",
+  timeZoneName: "short",
+});
+
 export const money = (value: number) => MONEY.format(value);
 
 export const moneyExact = (value: number) => MONEY_EXACT.format(value);
@@ -47,6 +57,23 @@ export function chance(probability: number): string {
 export const longDate = (iso: string) => LONG_DATE.format(new Date(`${iso}T00:00:00Z`));
 
 export const shortDate = (iso: string) => SHORT_DATE.format(new Date(`${iso}T00:00:00Z`));
+
+/** A timestamp that already carries a zone, or is naive. */
+const ZONED = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+
+/**
+ * An ISO 8601 timestamp, rendered in UTC: "September 19, 2026 at 2:32 PM UTC".
+ *
+ * A zone is always shown because the reader has no other way to place the
+ * instant, and a value with none is read as UTC rather than as the viewer's
+ * local time, which would silently move the hour on screen. Returns null for
+ * anything that is not a timestamp, so a caller omits the fact rather than
+ * printing "Invalid Date".
+ */
+export function longDateTime(iso: string): string | null {
+  const parsed = new Date(ZONED.test(iso) ? iso : `${iso}Z`);
+  return Number.isNaN(parsed.getTime()) ? null : LONG_DATE_TIME.format(parsed);
+}
 
 /** 1 -> "1st". Used for `due_day`, which is a day of month, not a date. */
 export function ordinalDay(day: number): string {
