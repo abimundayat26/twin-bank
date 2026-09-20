@@ -33,7 +33,6 @@ TWIN_ANSWERS_PATH='' uv run pytest -q tests/test_demo_story.py
 
 - [ ] Alex's `$800` laptop lowers the projected ending balance.
 - [ ] Goal, reserve, and low-balance risk all worsen in the counterfactual.
-- [ ] The explanation names the busy spending stretch.
 - [ ] Optimization returns at least one limit-preserving alternative and recommends
       the first such candidate.
 
@@ -58,9 +57,6 @@ curl -s -X POST "$API/goals/compile" -H 'content-type: application/json' \
   -d '{"user_id":"alex","text":"I want to save for a car"}'
 SIMULATION=$(curl -s -X POST "$API/simulate" -H 'content-type: application/json' \
   -d '{"user_id":"alex","events":[{"type":"purchase","description":"Laptop","amount":800,"date":"2026-09-20","account_id":"acc_checking"}]}')
-SIMULATION_ID=$(printf '%s' "$SIMULATION" | python3 -c \
-  'import json,sys; print(json.load(sys.stdin)["simulation_id"])')
-curl -s "$API/explain/$SIMULATION_ID"
 curl -s -X POST "$API/optimize" -H 'content-type: application/json' \
   -d '{"user_id":"alex","events":[{"type":"purchase","description":"Laptop","amount":800,"date":"2026-09-20","account_id":"acc_checking"}]}'
 ```
@@ -74,8 +70,6 @@ Expected with the current default fixture and seed:
       and reports `compiler: "rules"`.
 - [ ] `/simulate` reports baseline ending balance `$3,396.06` and laptop ending
       balance `$2,596.06`.
-- [ ] `/explain/{id}` returns five drivers beginning with `Laptop (this purchase)`;
-      every money figure is grounded by the twin or computed result.
 - [ ] `/optimize` recommends `cand_cut_discretionary_50`; two of eight candidates
       meet every declared limit and unsuccessful candidates disclose their violations.
 
