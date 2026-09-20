@@ -1,57 +1,144 @@
 {
   "user_id": "alex",
   "display_name": "Alex",
-  "as_of": "2026-09-19",
+  "as_of": "2026-09-18",
   "accounts": [
-    { "id": "acc_checking", "name": "Everyday Checking", "type": "checking", "balance": 1340.0 },
-    { "id": "acc_savings", "name": "Savings", "type": "savings", "balance": 1800.0 }
+    {
+      "id": "acc_checking",
+      "name": "Everyday Checking",
+      "type": "checking",
+      "balance": 1340.0
+    },
+    {
+      "id": "acc_savings",
+      "name": "Savings",
+      "type": "savings",
+      "balance": 1800.0
+    }
   ],
   "income": [
     {
-      "id": "inc_paycheck",
-      "source": "Campus bookstore paycheck",
-      "expected_amount": 720.0,
+      "id": "inc_campus_bookstore_payroll",
+      "source": "Campus Bookstore Payroll",
+      "expected_amount": 725.21,
       "interval_days": 14,
       "next_date": "2026-09-25",
-      "uncertainty": 60.0,
+      "uncertainty": 58.95,
       "provenance": "observed"
     }
   ],
   "obligations": [
-    { "id": "obl_rent", "name": "Rent", "expected_amount": 650.0, "due_day": 1, "mandatory": true, "confidence": 0.99, "provenance": "observed" },
-    { "id": "obl_utilities", "name": "Utilities", "expected_amount": 60.0, "due_day": 15, "mandatory": true, "confidence": 0.9, "provenance": "observed" },
-    { "id": "obl_phone", "name": "Phone plan", "expected_amount": 40.0, "due_day": 20, "mandatory": true, "confidence": 0.98, "provenance": "observed" },
-    { "id": "obl_subscriptions", "name": "Streaming subscriptions", "expected_amount": 25.0, "due_day": 10, "mandatory": false, "confidence": 0.95, "provenance": "observed" },
-    { "id": "obl_mystery_transfer", "name": "Recurring transfer of unclear purpose (destination unclear — possibly savings or repayment)", "expected_amount": 75.0, "due_day": 5, "mandatory": false, "confidence": 0.55, "provenance": "observed",
+    {
+      "id": "obl_hokie_property_mgmt_rent",
+      "name": "Hokie Property Mgmt Rent",
+      "expected_amount": 650.0,
+      "due_day": 1,
+      "mandatory": true,
+      "confidence": 0.99,
+      "provenance": "observed",
+      "category_candidates": [],
+      "declared_category": null
+    },
+    {
+      "id": "obl_online_transfer_to",
+      "name": "Online Transfer To",
+      "expected_amount": 71.82,
+      "due_day": 5,
+      "mandatory": false,
+      "confidence": 0.54,
+      "provenance": "observed",
       "category_candidates": [
-        { "category": "savings_transfer", "probability": 0.55 },
-        { "category": "debt_repayment", "probability": 0.3 },
-        { "category": "optional_spending", "probability": 0.15 }
-      ]
+        {
+          "category": "savings_transfer",
+          "probability": 0.55
+        },
+        {
+          "category": "debt_repayment",
+          "probability": 0.3
+        },
+        {
+          "category": "optional_spending",
+          "probability": 0.15
+        }
+      ],
+      "declared_category": null
+    },
+    {
+      "id": "obl_spotify_premium",
+      "name": "Spotify Premium",
+      "expected_amount": 25.0,
+      "due_day": 10,
+      "mandatory": false,
+      "confidence": 0.99,
+      "provenance": "observed",
+      "category_candidates": [],
+      "declared_category": null
+    },
+    {
+      "id": "obl_town_electric_utility",
+      "name": "Town Electric Utility",
+      "expected_amount": 59.59,
+      "due_day": 15,
+      "mandatory": true,
+      "confidence": 0.77,
+      "provenance": "observed",
+      "category_candidates": [],
+      "declared_category": null
+    },
+    {
+      "id": "obl_verizon_wireless",
+      "name": "Verizon Wireless",
+      "expected_amount": 40.0,
+      "due_day": 20,
+      "mandatory": true,
+      "confidence": 0.99,
+      "provenance": "observed",
+      "category_candidates": [],
+      "declared_category": null
     }
   ],
   "variable_spending": [
     {
       "category": "groceries",
-      "mean_14d": 150.0,
-      "std_dev_14d": 40.0,
+      "mean_14d": 148.2,
+      "std_dev_14d": 38.42,
       "provenance": "observed",
       "seasonal": {
         "factors": {
-          "1": 1.632, "2": 1.1848, "3": 1.0633, "4": 0.7069, "5": 0.9215, "6": 0.7137,
-          "7": 0.6034, "8": 0.6725, "9": 1.2767, "10": 1.1759, "11": 1.3042, "12": 0.7451
+          "1": 1.632,
+          "2": 1.1848,
+          "3": 1.0633,
+          "4": 0.7069,
+          "5": 0.9215,
+          "6": 0.7137,
+          "7": 0.6034,
+          "8": 0.6725,
+          "9": 1.2767,
+          "10": 1.1759,
+          "11": 1.3042,
+          "12": 0.7451
         }
       }
     },
     {
       "category": "discretionary",
-      "mean_14d": 110.0,
-      "std_dev_14d": 65.0,
+      "mean_14d": 111.26,
+      "std_dev_14d": 48.78,
       "provenance": "observed",
       "seasonal": {
         "factors": {
-          "1": 1.0119, "2": 0.874, "3": 1.228, "4": 0.4888, "5": 0.5527, "6": 0.9292,
-          "7": 0.6004, "8": 0.687, "9": 1.2491, "10": 0.9687, "11": 1.0681, "12": 2.3421
+          "1": 1.0119,
+          "2": 0.874,
+          "3": 1.228,
+          "4": 0.4888,
+          "5": 0.5527,
+          "6": 0.9292,
+          "7": 0.6004,
+          "8": 0.687,
+          "9": 1.2491,
+          "10": 0.9687,
+          "11": 1.0681,
+          "12": 2.3421
         }
       }
     }
@@ -74,5 +161,15 @@
       "description": "Keep at least $1,500 across checking and savings for emergencies.",
       "provenance": "declared"
     }
-  ]
+  ],
+  "forecast": {
+    "method": "seasonal_ewma",
+    "as_of": "2026-09-18",
+    "window_start": "2025-10-04",
+    "observed_fortnights": 25,
+    "half_life_days": 180.0
+  },
+  "source": null,
+  "lineage": null,
+  "total_balance": 3140.0
 }

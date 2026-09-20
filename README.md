@@ -10,6 +10,8 @@ See [`SPEC.md`](SPEC.md) for the product spec and [`CLAUDE.md`](CLAUDE.md) for t
 
 `POST /twin/build` detects the twin's observed half — income, obligations, variable spending — from a year of transactions, and returns it rather than storing it.
 
+It is the one endpoint the frontend does not call, and that is deliberate. Because a build changes nothing, a "Rebuild" control could only show a twin the app is not using, or imply a refresh that did not happen — which [`frontend/SPEC.md`](frontend/SPEC.md) §3.5 rules out until the backend exposes an authenticated, persistent operation. It exists to exercise the ingest pipeline, to log a build to MLflow, and as the seam the Nessie and Databricks paths build through. Giving it a UI needs somewhere for the result to go and something deciding who may ask for it.
+
 With `USE_MOCKS=false` and a `NESSIE_API_KEY`, those transactions and the account balances come from Capital One Nessie instead of the fixtures. Mocks are the default, so a fresh clone runs the whole demo with no credentials, and if Nessie is unreachable the fixture is served with a warning rather than the demo breaking.
 
 ## Layout
