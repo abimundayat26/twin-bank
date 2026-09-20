@@ -136,6 +136,45 @@ def test_an_event_the_engine_rejects_is_a_simulation_error():
         search(event=unknown_account)
 
 
+AFTER_DEADLINE = LAPTOP.model_copy(update={"date": date(2027, 6, 15)})  # goal is due 2027-05-01
+
+
+def test_a_purchase_after_the_deadline_costs_the_goal_nothing():
+    """It used to raise "event date is after horizon_end": the run stopped at the deadline."""
+    result = search(event=AFTER_DEADLINE)
+    assert result.earliest_deadline == result.original_deadline
+    assert result.prob_goal_met_at_earliest == result.baseline_prob_goal_met
+
+
+def test_a_purchase_on_the_deadline_itself_still_costs_the_goal_something():
+    on_deadline = LAPTOP.model_copy(update={"date": date(2027, 5, 1)})
+    result = search(event=on_deadline)
+    assert result.earliest_deadline is not None
+    assert result.earliest_deadline > result.original_deadline
+
+
+def test_chances_at_runs_far_enough_to_hold_a_purchase_after_the_deadline():
+    without, with_purchase = ed.chances_at(
+        load_twin(), GOAL_ID, date(2027, 5, 1), [AFTER_DEADLINE], RUNS, SEED
+    )
+    assert without is not None and with_purchase == without
+
+
+def test_a_purchase_beyond_the_two_year_limit_is_still_rejected():
+    too_far = LAPTOP.model_copy(update={"date": load_twin().as_of + timedelta(days=MAX_HORIZON_DAYS + 1)})
+    with pytest.raises(SimulationError):
+        search(event=too_far)
+
+
+def test_route_accepts_a_purchase_after_the_deadline(monkeypatch):
+    monkeypatch.setattr(ed, "SEARCH_SIMULATIONS", RUNS)
+    body = {"events": [{**LAPTOP_BODY["events"][0], "date": "2027-06-15"}]}
+    response = client.post(f"/twin/alex/goals/{GOAL_ID}/earliest-date", json=body)
+    assert response.status_code == 200
+    result = EarliestDateResponse.model_validate(response.json())
+    assert result.earliest_deadline == result.original_deadline == date(2027, 5, 1)
+
+
 def test_route_returns_the_search(monkeypatch):
     monkeypatch.setattr(ed, "SEARCH_SIMULATIONS", RUNS)
     response = client.post(f"/twin/alex/goals/{GOAL_ID}/earliest-date", json=LAPTOP_BODY)

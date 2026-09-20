@@ -234,7 +234,7 @@ def run_monte_carlo(
     run's daily series in memory, so leave it off when only the metrics are needed.
     """
     validate_simulation_count(n_simulations)
-    end = resolve_horizon_end(twin, horizon_end)
+    end = resolve_horizon_end(twin, horizon_end, events)
     expected = compare(twin, events, end)  # also validates the events
     rng = random.Random(seed)
 

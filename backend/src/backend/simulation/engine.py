@@ -124,13 +124,24 @@ class Comparison:
     counterfactual: ScenarioResult
 
 
-def resolve_horizon_end(twin: FinancialTwin, horizon_end: date | None) -> date:
+def resolve_horizon_end(
+    twin: FinancialTwin, horizon_end: date | None, events: list[SimulationEvent] | None = None
+) -> date:
+    """The last simulated day.
+
+    With no goals and no explicit `horizon_end`, the default window stretches to cover
+    the latest event so a purchase 200 days out is not rejected as "after the horizon".
+    It never stretches past MAX_HORIZON_DAYS; an event beyond that is still rejected.
+    """
     if horizon_end is not None:
         end = horizon_end
     elif twin.goals:
         end = min(g.deadline for g in twin.goals)
     else:
         end = twin.as_of + timedelta(days=DEFAULT_HORIZON_DAYS)
+        if events:
+            latest = max(e.date for e in events)
+            end = min(max(end, latest), twin.as_of + timedelta(days=MAX_HORIZON_DAYS))
     if end <= twin.as_of:
         raise SimulationError(f"horizon_end {end} must be after as_of {twin.as_of}")
     if (end - twin.as_of).days > MAX_HORIZON_DAYS:
@@ -446,7 +457,7 @@ def compare(
     twin: FinancialTwin, events: list[SimulationEvent], horizon_end: date | None = None
 ) -> Comparison:
     """Baseline (no hypothetical events) vs counterfactual (with them)."""
-    end = resolve_horizon_end(twin, horizon_end)
+    end = resolve_horizon_end(twin, horizon_end, events)
     return Comparison(
         horizon_end=end,
         reserve=reserve_amount(twin),
