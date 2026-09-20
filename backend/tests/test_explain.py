@@ -16,6 +16,7 @@ from backend.simulation import run_simulation
 from backend.simulation.engine import low_balance_threshold
 from backend.simulation.monte_carlo import SPENDING_BLOCK_DAYS, run_monte_carlo
 from backend.simulation.explain import (
+    category_assumptions,
     forecast_assumptions,
     money,
     seasonal_assumption,
@@ -112,6 +113,32 @@ def test_simulation_assumptions_include_the_forecast():
 
     assert any(a.startswith("Groceries spending is usually highest in") for a in assumptions)
     assert any(a.startswith("Spending estimates use 26 two-week periods") for a in assumptions)
+
+
+def test_a_paused_declared_bill_is_described_as_excluded_not_mandatory():
+    rent = load_twin().obligations[0].model_copy(
+        update={"active": False, "declared_category": "bill"}
+    )
+    twin = load_twin().model_copy(update={"obligations": [rent]})
+
+    assumptions = category_assumptions(twin)
+
+    assert assumptions == [
+        "Alex paused Hokie Property Mgmt Rent, so it is left out of the projection."
+    ]
+    assert all("mandatory bill" not in assumption for assumption in assumptions)
+
+
+def test_the_catch_all_applies_only_to_active_recurring_payments():
+    rent, transfer = load_twin().obligations[:2]
+    twin = load_twin().model_copy(
+        update={"obligations": [rent.model_copy(update={"active": False}), transfer]}
+    )
+
+    assert category_assumptions(twin) == [
+        "Alex paused Hokie Property Mgmt Rent, so it is left out of the projection.",
+        "Every active recurring bill, including optional ones, is charged in full.",
+    ]
 
 
 # --- Seasonal timing of the purchase --------------------------------------------

@@ -87,7 +87,7 @@
     "The emergency reserve counts checking plus savings.",
     "Goals must be met on top of the emergency reserve.",
     "Income, bills, and everyday spending all flow through checking.",
-    "Every recurring bill, including optional ones, is charged in full.",
+    "Every active recurring bill, including optional ones, is charged in full.",
     "The horizon runs from 2026-09-18 to 2027-05-01."
   ],
   "is_mock": true,
