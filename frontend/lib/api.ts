@@ -27,6 +27,7 @@ import type {
   EarliestDateResponse,
   FinancialTwin,
   ForecastPayload,
+  GoalChanges,
   GoalCompileRequest,
   GoalCompileResponse,
   MinimumBalanceRequest,
@@ -40,6 +41,7 @@ import type {
   ProposalDecisionResponse,
   RecurringObligationChanges,
   RecurringObligationCreate,
+  ReserveRequest,
   SimulationRequest,
   SimulationResponse,
 } from "./types";
@@ -175,6 +177,10 @@ export async function getObligations(
 
 function obligationsPath(userId: string, kind: "recurring" | "one-time"): string {
   return `/twin/${encodeURIComponent(userId)}/obligations/${kind}`;
+}
+
+function goalPath(userId: string, goalId: string): string {
+  return `/twin/${encodeURIComponent(userId)}/goals/${encodeURIComponent(goalId)}`;
 }
 
 export async function createRecurringObligation(
@@ -343,6 +349,49 @@ export async function saveGoals(
   request: DeclaredGoalsRequest,
 ): Promise<Loaded<FinancialTwin>> {
   const data = await getJson<FinancialTwin>(`/twin/${twin.user_id}/goals`, {
+    method: "PUT",
+    body: JSON.stringify(request),
+  });
+  return { data, source: "api" };
+}
+
+/**
+ * Edits one goal (`PATCH /twin/{user_id}/goals/{goal_id}`).
+ *
+ * Partial by design (PL-10): the replace-all `saveGoals` would let a client that
+ * loaded the twin a minute ago wipe a goal the Assistant added since. Only the
+ * named fields move; everything else on the twin is left alone.
+ */
+export async function updateGoal(
+  userId: string,
+  goalId: string,
+  request: GoalChanges,
+): Promise<Loaded<FinancialTwin>> {
+  const data = await getJson<FinancialTwin>(goalPath(userId, goalId), {
+    method: "PATCH",
+    body: JSON.stringify(request),
+  });
+  return { data, source: "api" };
+}
+
+/** Removes one goal (`DELETE /twin/{user_id}/goals/{goal_id}`), leaving the rest. */
+export async function deleteGoal(
+  userId: string,
+  goalId: string,
+): Promise<Loaded<FinancialTwin>> {
+  const data = await getJson<FinancialTwin>(goalPath(userId, goalId), { method: "DELETE" });
+  return { data, source: "api" };
+}
+
+/**
+ * Sets the emergency reserve across checking and savings
+ * (`PUT /twin/{user_id}/reserve`). Zero removes it (PL-9).
+ */
+export async function setReserve(
+  userId: string,
+  request: ReserveRequest,
+): Promise<Loaded<FinancialTwin>> {
+  const data = await getJson<FinancialTwin>(`/twin/${encodeURIComponent(userId)}/reserve`, {
     method: "PUT",
     body: JSON.stringify(request),
   });

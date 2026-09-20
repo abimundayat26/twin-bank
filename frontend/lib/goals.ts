@@ -222,7 +222,7 @@ export type GoalEditErrors = { [K in keyof GoalEdit]?: string };
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Dollars from what was typed: `$1,200` and `1200` are the same number. */
-function parseMoney(raw: string): number | null {
+export function parseMoney(raw: string): number | null {
   const cleaned = raw.replace(/[$,\s]/g, "");
   if (cleaned === "") return null;
   const value = Number(cleaned);
