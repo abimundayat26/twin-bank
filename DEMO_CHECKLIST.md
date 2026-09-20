@@ -44,8 +44,8 @@ TWIN_ANSWERS_PATH='' SIMULATION_SEED=1 \
 ```
 
 - [ ] Use no `--host` argument and no tunnel. Uvicorn must remain on loopback.
-- [ ] Leave `GOAL_COMPILER` unset. The default compiler is deterministic rules.
-- [ ] No model credential is needed or used.
+- [ ] For a deterministic demo, set `GOAL_COMPILER=rules`. The default is `llm`, which only runs where `ANTHROPIC_API_KEY` is set and falls back to rules otherwise.
+- [ ] No model credential is needed for the rules demo.
 
 In a second terminal:
 

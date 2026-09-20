@@ -89,11 +89,11 @@ The user's answers (declared categories, minimum balance, goals and reserve) are
 
 ### Drafting goals with Claude (optional)
 
-`POST /goals/compile` uses the rule-based compiler by default, so no key is needed. To have Claude draft goals from the text instead, set these in `.env`:
+`POST /goals/compile` has Claude draft goals from the text whenever `ANTHROPIC_API_KEY` is set, and uses the rule-based compiler when it is not, so no key is needed to run the demo. Set the key in `.env`:
 
 ```sh
-GOAL_COMPILER=llm
 ANTHROPIC_API_KEY=sk-ant-...
+GOAL_COMPILER=llm           # the default; set rules to force the rule-based compiler
 LLM_MODEL=claude-sonnet-5   # optional; this is the default
 ```
 
