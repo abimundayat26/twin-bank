@@ -407,6 +407,23 @@ class ScenarioMetrics(BaseModel):
     )
 
 
+class ImpactAssessment(BaseModel):
+    """How hard a purchase hits the risk metrics, scored in backend code.
+
+    `frontend/SPEC.md` section 7.3 fixes the thresholds; the Simulator shows
+    `level` as a badge and `reasons` in its tooltip, so the score is never an
+    unexplained number (G-18). Deterministic code only, never a model
+    (`CLAUDE.md`, LLM Responsibilities).
+    """
+
+    level: Literal["low", "moderate", "high"]
+    reasons: list[str] = Field(
+        default_factory=list,
+        max_length=3,
+        description="Plain-language deltas behind the level, most severe first.",
+    )
+
+
 class ExplanationDriver(BaseModel):
     label: str
     impact_amount: float
@@ -452,6 +469,11 @@ class SimulationResponse(BaseModel):
     balance_bands: BalanceBands | None = Field(
         default=None,
         description="Daily p10/median/p90 balances for charts. None when not computed.",
+    )
+    impact: ImpactAssessment | None = Field(
+        default=None,
+        description="How hard this purchase hits the risk metrics. None when not scored, "
+        "so older payloads still validate.",
     )
 
 
