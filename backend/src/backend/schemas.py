@@ -455,6 +455,21 @@ class GoalClarification(BaseModel):
     fragment: str = Field(description="The part of the text the question is about.")
 
 
+class ObligationClassificationDraft(BaseModel):
+    """A category the user stated in words for an obligation TwinBank detected.
+
+    A draft, like everything else the compiler produces. The Assistant reads it back
+    and the user confirms it through POST /clarifications/respond; nothing here has
+    touched `declared_category` (frontend/SPEC.md 3.2 -- the Assistant "must not
+    silently turn a suggestion into a declared fact").
+    """
+
+    obligation_id: str
+    obligation_name: str = Field(description="As shown to the user, so it can be read back.")
+    category: ObligationCategory
+    fragment: str = Field(description="The part of the text this came from.")
+
+
 class GoalCompileResponse(BaseModel):
     """Drafts only: nothing is saved until the user confirms them."""
 
@@ -466,6 +481,11 @@ class GoalCompileResponse(BaseModel):
         default=[],
         description="Drafted one-off expenses the user says they already owe, as opposed "
         "to money they are saving toward.",
+    )
+    classifications: list[ObligationClassificationDraft] = Field(
+        default=[],
+        description="Answers about already-detected recurring obligations, read back for "
+        "confirmation rather than applied.",
     )
     clarifications: list[GoalClarification] = Field(
         description="Asked instead of guessing. A goal or obligation missing a detail is "

@@ -41,6 +41,7 @@ from backend.goal_compiler import (
 from backend.schemas import (
     Account,
     FinancialConstraint,
+    FinancialObligation,
     Goal,
     GoalClarification,
     GoalClarificationField,
@@ -261,15 +262,22 @@ def compile_goals_auto(
     as_of: date,
     extract: Callable[[str, date], LlmDraft | None] = extract_with_claude,
     accounts: Sequence[Account] = (),
+    detected: Sequence[FinancialObligation] = (),
 ) -> GoalCompileResponse:
-    """The LLM compiler when enabled, else (or when it fails) the rules compiler."""
+    """The LLM compiler when enabled, else (or when it fails) the rules compiler.
+
+    Note the LLM path drafts no obligation classifications: its item kinds do not
+    include one, so an answer about a detected obligation is only recognised by the
+    rules compiler. GOAL_COMPILER is "rules" by default, and every fallback below
+    lands there, so the demo is unaffected.
+    """
     if not llm_enabled():
-        return compile_goals(user_id, text, as_of, accounts)
+        return compile_goals(user_id, text, as_of, accounts, detected)
     try:
         draft = extract(text, as_of)
         if draft is None:
             logger.warning("LLM goal compiler returned no draft, using rules")
-            return compile_goals(user_id, text, as_of, accounts)
+            return compile_goals(user_id, text, as_of, accounts, detected)
         return validate_draft(user_id, text, as_of, draft, accounts)
     except (anthropic.APIError, ValidationError) as e:
         logger.warning("LLM goal compiler failed, using rules: %s", e)
@@ -277,4 +285,4 @@ def compile_goals_auto(
         # Anything else (an SDK change, a draft shape validate_draft does not expect)
         # must still not break the demo.
         logger.exception("LLM goal compiler crashed, using rules")
-    return compile_goals(user_id, text, as_of, accounts)
+    return compile_goals(user_id, text, as_of, accounts, detected)
