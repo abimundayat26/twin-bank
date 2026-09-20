@@ -32,6 +32,7 @@ function withMetrics(
   counterfactual: Partial<ScenarioMetrics>,
   simulation: Partial<SimulationResponse> = {},
   twin: Partial<FinancialTwin> = {},
+  planChanged = false,
 ) {
   return render(
     <ScenarioComparison
@@ -42,6 +43,7 @@ function withMetrics(
         counterfactual: { ...BASE, ...counterfactual },
         ...simulation,
       }}
+      planChanged={planChanged}
     />,
   );
 }
@@ -71,6 +73,14 @@ describe("ScenarioComparison", () => {
   it("says what period every number covers", () => {
     withMetrics({}, {});
     expect(screen.getByText("Through May 1, 2027")).toBeInTheDocument();
+  });
+
+  // CM-6: the warning belongs on the stale numbers themselves.
+  it("marks the comparison out of date after the plan changes", () => {
+    withMetrics({}, {}, {}, {}, true);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Out of date: your plan changed. Simulate again.",
+    );
   });
 
   it("lists exactly the rows of section 7.1, in order", () => {

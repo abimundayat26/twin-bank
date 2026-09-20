@@ -139,9 +139,11 @@ function Cell({ row, metrics }: { row: Row; metrics: ScenarioMetrics }) {
 export function ScenarioComparison({
   twin,
   simulation,
+  planChanged,
 }: {
   twin: FinancialTwin;
   simulation: SimulationResponse;
+  planChanged: boolean;
 }) {
   const { baseline, counterfactual, impact } = simulation;
   const purchase = simulation.request.events[0];
@@ -159,6 +161,12 @@ export function ScenarioComparison({
           {impact ? <ImpactBadge impact={impact} /> : null}
         </div>
       </header>
+
+      {planChanged ? (
+        <p role="status" className="mb-4 rounded-lg border border-caution/40 bg-caution/10 px-3 py-2 text-sm text-caution">
+          Out of date: your plan changed. Simulate again.
+        </p>
+      ) : null}
 
       {/* Two columns at every width (SM-4, E-21); the label moves above them
           below the `sm` breakpoint instead of squeezing a third column in. */}
