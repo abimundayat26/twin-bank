@@ -148,20 +148,6 @@ function SimulateWorkspace() {
             ]}
           />
 
-          <CommitActions
-            twin={twin}
-            simulation={simulation}
-            goal={goal}
-            compromise={compromise}
-            isOffline={isOffline}
-            isCommitting={isCommitting}
-            planChanged={planChanged}
-            commitResult={commitResult}
-            commitError={commitError}
-            onCommit={commit}
-            onEarliestDate={earliestDate}
-          />
-
           {simulationSource === "api" ? (
             optimization ? (
               <AlternativesPanel
@@ -191,6 +177,20 @@ function SimulateWorkspace() {
               </Card>
             )
           ) : null}
+
+          <CommitActions
+            twin={twin}
+            simulation={simulation}
+            goal={goal}
+            compromise={compromise}
+            isOffline={isOffline}
+            isCommitting={isCommitting}
+            planChanged={planChanged}
+            commitResult={commitResult}
+            commitError={commitError}
+            onCommit={commit}
+            onEarliestDate={earliestDate}
+          />
         </>
       ) : (
         <Card>

@@ -41,6 +41,46 @@ const NO_OPTIONS: OptimizationResponse = {
   num_simulations: SIMULATION.num_simulations ?? 1000,
 };
 
+const COMPROMISE_OPTIONS: OptimizationResponse = {
+  ...NO_OPTIONS,
+  candidates: [
+    {
+      id: "cand_buy_now",
+      kind: "buy_now",
+      label: "Buy now",
+      detail: "Buy the laptop as entered.",
+      events: SIMULATION.request.events,
+      spending_adjustments: [],
+      metrics: SIMULATION.counterfactual,
+      meets_constraints: false,
+      violations: ["Dips below the reserve"],
+    },
+    {
+      id: "cand_delay",
+      kind: "delay",
+      label: "Wait one month",
+      detail: "Wait one month before buying.",
+      events: [{ ...SIMULATION.request.events[0], date: "2026-10-19" }],
+      spending_adjustments: [],
+      metrics: SIMULATION.counterfactual,
+      meets_constraints: true,
+      violations: [],
+    },
+    {
+      id: "cand_savings",
+      kind: "from_savings",
+      label: "Pay from savings",
+      detail: "Pay for the laptop from savings.",
+      events: [{ ...SIMULATION.request.events[0], account_id: "acc_savings" }],
+      spending_adjustments: [],
+      metrics: SIMULATION.counterfactual,
+      meets_constraints: true,
+      violations: [],
+    },
+  ],
+  recommended_id: "cand_delay",
+};
+
 function renderSimulate() {
   return render(
     <TwinProvider>
@@ -106,6 +146,22 @@ describe("Purchase Simulator", () => {
     expect(
       screen.queryByRole("button", { name: /Compare other ways/ }),
     ).not.toBeInTheDocument();
+  });
+
+  // SM-12 / SM-13: an asynchronously discovered action belongs after its row.
+  it("places Apply Compromise below the alternatives table", async () => {
+    vi.mocked(api.runOptimization).mockResolvedValue({
+      data: COMPROMISE_OPTIONS,
+      source: "api",
+    });
+
+    await simulate();
+
+    const alternatives = await screen.findByRole("heading", { name: "Other ways to do this" });
+    const apply = screen.getByRole("button", { name: "Apply Compromise" });
+    expect(
+      alternatives.compareDocumentPosition(apply) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("shows the backend's error instead of fixture numbers", async () => {
