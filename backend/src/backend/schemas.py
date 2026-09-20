@@ -188,7 +188,11 @@ class ForecastMetadata(BaseModel):
         "seasonal_ewma: recency-weighted, with a per-month seasonal profile."
     )
     as_of: date = Field(description="Last day of observed data behind the estimate.")
-    window_start: date = Field(description="First day of observed data behind the estimate.")
+    window_start: date = Field(
+        description="First day of the fitted window: the start of the oldest whole "
+        "fortnight behind the estimate. Records older than this exist but were not "
+        "fitted to, so window_start to as_of always divides into observed_fortnights."
+    )
     observed_fortnights: int = Field(ge=0, description="14-day blocks the estimate is fitted to.")
     half_life_days: float | None = Field(
         default=None,

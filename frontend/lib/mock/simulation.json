@@ -76,7 +76,7 @@
     "Balances show the middle result across those futures. Probabilities show how often an event happened.",
     "Paychecks vary around their expected amounts using the uncertainty recorded in the twin. Extreme values are capped, and paychecks cannot be negative.",
     "Each spending category varies independently every two weeks using its expected amount and uncertainty. The two-week total is spread evenly across its days; values below $0 are treated as $0, which nudges average spending upward.",
-    "Spending estimates use 25 two-week periods observed from 2025-09-20 to 2026-09-18. Recent periods count more; a period 180 days older gets half the weight.",
+    "Spending estimates use 25 two-week periods observed from 2025-10-04 to 2026-09-18. Recent periods count more; a period 180 days older gets half the weight.",
     "Seasonal categories adjust their typical spending and likely range for the time of year. A two-week period that crosses months blends both months, while the yearly average stays unchanged.",
     "Groceries spending is usually highest in January (1.63× its typical two-week amount) and lowest in July (0.60×).",
     "Discretionary spending is usually highest in December (2.34× its typical two-week amount) and lowest in April (0.49×).",
