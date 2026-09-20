@@ -12,11 +12,12 @@ Nessie -- is `twin_source`'s decision, not this module's. Nothing here
 calculates money.
 """
 
+import hashlib
 import logging
 import os
 import re
 import threading
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 from pydantic import BaseModel, Field, ValidationError
@@ -27,15 +28,21 @@ from backend.schemas import (
     FinancialObligation,
     FinancialTwin,
     Goal,
+    GoalDateChange,
     MAX_MONEY,
     ObligationCategory,
     OneTimeObligation,
     RecurringObligationCreate,
+    SimulationEvent,
 )
 from backend.simulation.engine import MAX_HORIZON_DAYS
 from backend.twin_source import load_source_twin
 
 logger = logging.getLogger(__name__)
+
+# Every write goes through this (PER-7), so a commit that moves a goal and adds a
+# purchase is never half-applied when two requests arrive together.
+_write_lock = threading.RLock()
 
 MINIMUM_BALANCE_ID = "con_minimum_checking"
 DEFAULT_ANSWERS_PATH = Path(__file__).resolve().parents[2] / ".data" / "answers.json"
@@ -413,6 +420,91 @@ def set_goals(
     else:
         _save()
     return get_twin()
+
+
+class UnknownGoal(KeyError):
+    pass
+
+
+class StaleDeadline(ValueError):
+    """The client's `from_deadline` is not the deadline on the twin (CM-4)."""
+
+
+def purchase_obligation(event: SimulationEvent) -> OneTimeObligation:
+    """The one-time obligation a committed purchase becomes (CM-3, A9).
+
+    The id is derived from the purchase itself, so committing the same purchase twice
+    writes one record (G-15). Non-mandatory on purpose: a mandatory one would later
+    count as an unpayable bill and make the plan look worse than it is.
+    """
+    material = "|".join(
+        [event.description, f"{event.amount:.2f}", event.date.isoformat(), event.account_id]
+    )
+    digest = hashlib.sha1(material.encode()).hexdigest()[:10]
+    return OneTimeObligation(
+        id=f"one_purchase_{digest}",
+        name=event.description,
+        amount=event.amount,
+        due_date=event.date,
+        account_id=event.account_id,
+        mandatory=False,
+    )
+
+
+def apply_goal_updates(goals: list[Goal], updates: list[GoalDateChange], as_of: date) -> list[Goal]:
+    """The goals with each update applied, or an exception and no change at all (CM-4)."""
+    latest = as_of + timedelta(days=MAX_HORIZON_DAYS)
+    by_id = {g.id: g for g in goals}
+    if len({u.goal_id for u in updates}) != len(updates):
+        raise InvalidDeclaration("A goal can only be moved once per commit")
+    for update in updates:
+        goal = by_id.get(update.goal_id)
+        if goal is None:
+            raise UnknownGoal(update.goal_id)
+        if goal.deadline != update.from_deadline:
+            raise StaleDeadline(
+                f"Goal '{goal.id}' is now due {goal.deadline}, not {update.from_deadline}. "
+                "Simulate again before moving it."
+            )
+        if update.deadline <= goal.deadline:
+            raise InvalidDeclaration(
+                f"Goal '{goal.id}' can only move later than {goal.deadline}, not to {update.deadline}"
+            )
+        if update.deadline > latest:
+            raise InvalidDeclaration(
+                f"Goal '{goal.id}' deadline {update.deadline} is more than {MAX_HORIZON_DAYS} "
+                f"days after {as_of}"
+            )
+    moved = {u.goal_id: u.deadline for u in updates}
+    return [g.model_copy(update={"deadline": moved[g.id]}) if g.id in moved else g for g in goals]
+
+
+def commit_purchase(
+    events: list[SimulationEvent], goal_updates: list[GoalDateChange] | None = None
+) -> tuple[FinancialTwin, list[str], bool]:
+    """Add a purchase to the plan, optionally moving a goal in the same call (CM-3, CM-4).
+
+    Returns the updated twin, the one-time obligation ids this purchase is on the twin
+    as, and whether it was already there. Everything is validated before anything is
+    written, under one lock, and saved once (PER-7): a rejected commit leaves neither
+    the goal nor the purchase changed.
+    """
+    global declared_goals, declared_one_time_obligations
+    with _write_lock:
+        current = get_twin()
+        (event,) = events
+        obligation = purchase_obligation(event)
+        owed = list(current.one_time_obligations)
+        already_committed = any(o.id == obligation.id for o in owed)
+        if not already_committed:
+            owed.append(obligation)
+        check_one_time_obligations(owed, current)
+        goals = apply_goal_updates(list(current.goals), goal_updates or [], current.as_of)
+
+        declared_goals = goals
+        declared_one_time_obligations = owed
+        _save()
+        return get_twin(), [obligation.id], already_committed
 
 
 def reset() -> None:
