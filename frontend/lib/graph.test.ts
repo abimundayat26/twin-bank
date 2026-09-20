@@ -13,6 +13,7 @@ import {
   columnY,
   declaredX,
   describeIntentGraph,
+  intentStages,
   enforcedReserveConstraint,
   goalFlag,
   isMandatory,
@@ -783,5 +784,88 @@ describe("describeIntentGraph", () => {
       }),
     );
     expect(text).toContain("1 account holds");
+  });
+});
+
+
+describe("reading the graph as a list", () => {
+  // SPEC 5.3 requires a non-canvas representation. It is built from the graph's own
+  // nodes, so these tests are really about it never disagreeing with the picture.
+
+  it("follows the section 5.1 order", () => {
+    const stages = intentStages(buildIntentGraph(makeTwin()));
+    expect(stages.map((s) => s.title)).toEqual([
+      "Accounts",
+      "Income and spending",
+      "Obligations and constraints",
+      "Goals",
+    ]);
+  });
+
+  it("accounts for every node exactly once", () => {
+    const graph = buildIntentGraph(makeTwin());
+    const listed = intentStages(graph).flatMap((s) => s.nodes.map((n) => n.id));
+    expect(listed.slice().sort()).toEqual(graph.nodes.map((n) => n.id).sort());
+    expect(new Set(listed).size).toBe(listed.length);
+  });
+
+  it("leaves out a stage the twin has nothing for", () => {
+    const stages = intentStages(buildIntentGraph(makeTwin({ goals: [] })));
+    expect(stages.map((s) => s.title)).not.toContain("Goals");
+  });
+
+  it("keeps a hypothetical purchase out of the committed money", () => {
+    // The same distinction the explanation drivers make: a purchase under
+    // consideration must not be listed among obligations already owed.
+    const graph = buildIntentGraph(makeTwin(), makeSimulation());
+    const stages = intentStages(graph);
+    const purchase = stages.find((s) => s.title === "Hypothetical purchase");
+    expect(purchase?.nodes).toHaveLength(1);
+    const committed = stages.find((s) => s.title === "Obligations and constraints");
+    expect(committed?.nodes.some((n) => n.data.kind === "purchase")).toBe(false);
+  });
+
+  it("is empty for a twin with nothing to draw", () => {
+    expect(intentStages(buildIntentGraph(makeTwin({ accounts: [] })))).toEqual([]);
+  });
+});
+
+describe("a dense twin", () => {
+  function crowded(): FinancialTwin {
+    const base = makeTwin();
+    return {
+      ...base,
+      obligations: Array.from({ length: 12 }, (_, i) => ({
+        ...base.obligations[0],
+        id: `obl_${i}`,
+        name: `A very long obligation name number ${i}`,
+      })),
+      goals: Array.from({ length: 6 }, (_, i) => ({
+        ...base.goals[0],
+        id: `goal_${i}`,
+        name: `A very long goal name number ${i}`,
+      })),
+    };
+  }
+
+  it("places no two nodes on top of each other", () => {
+    const nodes = buildIntentGraph(crowded()).nodes;
+    expect(nodes.length).toBeGreaterThan(18);
+    for (const a of nodes) {
+      for (const b of nodes) {
+        if (a.id === b.id) continue;
+        const overlaps =
+          Math.abs(a.position.x - b.position.x) < NODE_WIDTH &&
+          Math.abs(a.position.y - b.position.y) < ROW_GAP;
+        expect(overlaps, `${a.id} overlaps ${b.id}`).toBe(false);
+      }
+    }
+  });
+
+  it("puts the same twin in the same places every time", () => {
+    const twin = crowded();
+    const first = buildIntentGraph(twin).nodes.map((n) => [n.id, n.position.x, n.position.y]);
+    const second = buildIntentGraph(twin).nodes.map((n) => [n.id, n.position.x, n.position.y]);
+    expect(second).toEqual(first);
   });
 });

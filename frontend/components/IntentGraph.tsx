@@ -9,13 +9,18 @@
  * rendered this component could not see a thing.
  */
 
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Background, Controls, ReactFlow, useEdgesState, useNodesState } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { buildIntentGraph, describeIntentGraph, type IntentGraph as Graph } from "@/lib/graph";
+import {
+  buildIntentGraph,
+  describeIntentGraph,
+  intentStages,
+  type IntentGraph as Graph,
+} from "@/lib/graph";
 import type { FinancialTwin, SimulationResponse } from "@/lib/types";
 import { IntentNode } from "./IntentNode";
-import { Card } from "./ui";
+import { Card, ProvenanceTag } from "./ui";
 
 // Defined once: a fresh object each render makes React Flow rebuild its node
 // registry and warn about it.
@@ -58,6 +63,59 @@ function Legend() {
       </span>
       <span className="text-faint">Line thickness is relative flow size, not a figure.</span>
     </div>
+  );
+}
+
+/**
+ * The same graph as a list.
+ *
+ * `frontend/SPEC.md` 5.3 requires a non-canvas representation "for accessibility and
+ * for screens where the complete graph would be unreadable". An `sr-only` paragraph
+ * only satisfies the first half: a sighted person on a phone, where the canvas is
+ * hidden, gets nothing. So this is ordinary visible content, and it is the only
+ * representation below the `md` breakpoint.
+ *
+ * Built from the graph's own nodes, so it cannot drift from the picture.
+ */
+function StageList({ graph }: { graph: Graph }) {
+  return (
+    <ol className="grid gap-4">
+      {intentStages(graph).map((stage) => (
+        <li key={stage.title}>
+          <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
+            {stage.title}
+          </h3>
+          <ul className="grid gap-1.5">
+            {stage.nodes.map((node) => (
+              <li
+                key={node.id}
+                className="rounded-lg border border-line bg-raised px-3 py-2"
+              >
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 text-sm font-medium text-ink">
+                    {node.data.title}
+                  </span>
+                  <span className="tnum shrink-0 text-sm font-semibold text-ink">
+                    {node.data.value}
+                  </span>
+                </div>
+                {node.data.hint ? (
+                  <p className="mt-0.5 text-xs text-muted">{node.data.hint}</p>
+                ) : null}
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  {node.data.provenance ? (
+                    <ProvenanceTag provenance={node.data.provenance} />
+                  ) : null}
+                  {node.data.flag ? (
+                    <span className="text-xs text-caution">{node.data.flag.text}</span>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -120,10 +178,13 @@ export function IntentGraph({
   // `Canvas` seeds its state once, so it is remounted whenever the underlying
   // graph changes. Keyed on the twin as well as the simulation: a refreshed twin
   // with no new simulation would otherwise leave a stale picture contradicting
-  // the description beside it.
+  // the description beside it. `resets` extends the same mechanism to the Reset
+  // button -- remounting is what restores the default positions and refits.
+  const [resets, setResets] = useState(0);
+  const reset = useCallback(() => setResets((n) => n + 1), []);
   const canvasKey = `${twin.user_id}:${twin.as_of}:${graph.nodes.length}:${
     simulation?.simulation_id ?? "none"
-  }`;
+  }:${resets}`;
 
   return (
     <Card
@@ -132,11 +193,42 @@ export function IntentGraph({
     >
       {graph.nodes.length ? (
         <div className="grid gap-3">
+          {/* Section 5.2: an introductory sentence saying what the graph represents,
+              in plain words and without graph vocabulary. */}
+          <p className="text-sm text-muted">
+            Money flows left to right: into {twin.display_name}&rsquo;s accounts, out to
+            what is already committed, and on to what {twin.display_name} is saving for.
+          </p>
           <Legend />
-          {/* The canvas is positioned divs a screen reader cannot order, so the
-              same structure is stated once in prose. */}
-          <p className="sr-only">{label}</p>
-          <Canvas key={canvasKey} graph={graph} />
+          <div className="hidden md:grid md:gap-2">
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={reset}
+                className="rounded-lg border border-line px-2.5 py-1 text-xs text-muted hover:text-ink"
+              >
+                Reset layout
+              </button>
+            </div>
+            {/* The canvas is positioned divs a screen reader cannot order, so the
+                same structure is stated once in prose. */}
+            <p className="sr-only">{label}</p>
+            <Canvas key={canvasKey} graph={graph} />
+          </div>
+          {/* Below md the canvas is hidden entirely: at phone width the complete
+              graph is unreadable, and a picture nobody can read is worse than a
+              list. The list is always available above md too, under a disclosure. */}
+          <div className="md:hidden">
+            <StageList graph={graph} />
+          </div>
+          <details className="hidden md:block">
+            <summary className="cursor-pointer text-xs text-muted hover:text-ink">
+              Read the graph as a list
+            </summary>
+            <div className="mt-3">
+              <StageList graph={graph} />
+            </div>
+          </details>
         </div>
       ) : (
         <p className="text-sm text-muted">

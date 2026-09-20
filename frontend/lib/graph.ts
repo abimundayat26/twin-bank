@@ -576,6 +576,38 @@ export function buildIntentGraph(
  * this the panel is opaque to a screen reader. Mirrors the `label` that
  * `BalanceTrajectoryChart` gives its `<svg>`.
  */
+/**
+ * The same graph as an ordered list of stages, for readers who cannot use the canvas.
+ *
+ * `frontend/SPEC.md` 5.3 requires a non-canvas representation "for accessibility and
+ * for screens where the complete graph would be unreadable". Built from the graph's
+ * own nodes rather than from the twin a second time, so the list cannot disagree with
+ * the picture beside it.
+ *
+ * The order is section 5.1's: accounts, then income and spending, then obligations and
+ * constraints, then goals. A hypothetical purchase is its own stage, because it is not
+ * a commitment and must not be listed among them.
+ */
+const STAGES: { title: string; kinds: IntentNodeKind[] }[] = [
+  { title: "Accounts", kinds: ["account"] },
+  { title: "Income and spending", kinds: ["income", "spending"] },
+  { title: "Obligations and constraints", kinds: ["obligation", "reserve", "checking_floor"] },
+  { title: "Goals", kinds: ["goal"] },
+  { title: "Hypothetical purchase", kinds: ["purchase"] },
+];
+
+export interface IntentStage {
+  title: string;
+  nodes: IntentNode[];
+}
+
+export function intentStages(graph: IntentGraph): IntentStage[] {
+  return STAGES.map(({ title, kinds }) => ({
+    title,
+    nodes: graph.nodes.filter((n) => kinds.includes(n.data.kind)),
+  })).filter((stage) => stage.nodes.length > 0);
+}
+
 export function describeIntentGraph(
   twin: FinancialTwin,
   simulation?: SimulationResponse | null,
