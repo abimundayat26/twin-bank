@@ -176,7 +176,7 @@ At every phase, preserve a functioning end-to-end demo.
 
 Phases describe what the demo on `main` does. Workstreams (Section 10) may build later-phase components in parallel, as long as each component stays behind a mock until it is ready.
 
-### Current Status (2026-09-19)
+### Current Status (2026-09-20)
 
 | Phase | State |
 | --- | --- |
@@ -185,15 +185,15 @@ Phases describe what the demo on `main` does. Workstreams (Section 10) may build
 | 3. Nessie data | Done. Alex is seeded in the live sandbox, and `USE_MOCKS=false` plus a key builds the twin from Nessie. Read back from the live sandbox on 2026-09-19, Alex is recognisable (`backend.nessie.readback`, #65); Nessie stores amounts in whole dollars (#68). The demo stays on fixtures by default. |
 | 4. Monte Carlo | Done, including a fan chart in the UI |
 | 5. Goal compilation and optimization | Done. Goal entry and the alternatives panel are in the UI. The rule-based compiler is the default; an LLM compiler sits behind `GOAL_COMPILER=llm` and falls back to rules. |
-| 6. Databricks and MLflow | Not started |
-| 7. Demo polish | Not started |
+| 6. Databricks and MLflow | Done, behind flags. The twin build job runs in Databricks from `backend/databricks.yml`, `TWIN_SOURCE=databricks` serves the twin that job wrote, and `TRACK_TWIN_BUILDS=true` logs each build to MLflow, locally or to a Databricks workspace. All off by default; the demo stays on fixtures. |
+| 7. Demo polish | In progress. The minimalist layout in `frontend/SPEC.md` is built across all six routes, and `docs/demo-walkthrough.md` matches the shipped UI. |
+
+The demo twin now carries the fitted seasonal profiles the simulator, explanations and optimizer read (#72, #75), so the forecast is visible in the demo.
 
 Main gaps, in priority order:
 
-1. The forecast is not in the demo yet. Twins built from transactions carry a recency-weighted, per-month seasonal forecast, and the simulator, explanations and optimizer all use it, but Alex's hand-written demo twin is still flat. Giving it seasonal profiles needs the demo twin rebalanced (#72).
-2. The LLM goal compiler is off by default and explanations are template-based (Section 13).
-3. Databricks and MLflow are not integrated.
-4. There is no scripted demo walkthrough.
+1. The minimalist frontend spec's definition of done is not finished: the 320 to 1440 px light and dark pass over the six routes is still a manual check, and seven comments (six in `backend/`, one in `README.md`) still cite a `frontend/SPEC.md` section 3.5 that the rewrite removed; they mean Section 12, Security.
+2. The LLM goal compiler is off by default and explanations are template-based (Section 13). Simulate no longer shows a written explanation at all (`frontend/SPEC.md` D1); the backend still returns one.
 
 ---
 
@@ -370,38 +370,40 @@ All of these endpoints now exist, and the frontend uses all of them except `POST
 
 Each workstream's focus below targets the gaps in Section 5 (Current Status), in priority order.
 
+Ownership is by subsystem. It is not a split by layer, and it is not who writes the code: for the minimalist frontend build the team lead assigned work per page (`frontend/SPEC.md` Section 14) — frontend core and the Goals panel to mkrishiv, the Assistant to abimundayat26, the Simulator and Trajectory to Jordan12369 — so backend routes and frontend pages have each been built by all three.
+
 ### Workstream 1: Data / Financial Twin (Jordan12369)
 
 Owns Nessie, transaction normalization, recurrence detection, forecasting, Databricks and Financial Twin generation.
 
-Built: normalization, recurrence detection, twin building, the Nessie client, the sandbox seeder, the switch that decides whether a twin comes from the fixture or from Nessie, and the read-back check that Alex comes out of the live sandbox recognisable (#65). The mock feed now carries a known seasonal signal (`SEASONAL_WEIGHTS` in `ingest/generate_transactions.py`), and recurrence detection fits a recency-weighted mean and a per-month seasonal profile per category, recorded on the twin as forecast metadata (#59).
+Built: normalization, recurrence detection, twin building, the Nessie client, the sandbox seeder, the switch that decides whether a twin comes from the fixture or from Nessie, and the read-back check that Alex comes out of the live sandbox recognisable (#65). The mock feed now carries a known seasonal signal (`SEASONAL_WEIGHTS` in `ingest/generate_transactions.py`), and recurrence detection fits a recency-weighted mean and a per-month seasonal profile per category, recorded on the twin as forecast metadata (#59). The demo twin was rebalanced to carry those fitted profiles while keeping its story (#72, #75), and the twin build job now runs in Databricks from an asset bundle, with `TWIN_SOURCE=databricks` serving what it wrote and `TRACK_TWIN_BUILDS` logging each build to MLflow (#79, #83, #90, #92, #93, #129).
 
 Focus:
 
-1. Rebalance Alex's demo twin so it can carry its fitted seasonal profiles and the demo still tells its story: the laptop clearly risky, with at least one alternative that keeps every limit (#72).
-2. Then move data processing into Databricks with MLflow tracking, behind a flag.
+1. Keep the demo fixture's story true if the twin is rebalanced again: the laptop clearly risky, with at least one alternative that keeps every limit.
+2. Keep the Databricks and MLflow paths off by default. Fixtures remain the demo source (`frontend/SPEC.md` Q6).
 
 ### Workstream 2: Simulation / Intelligence (abimundayat26)
 
 Owns the simulator, Monte Carlo, the goal compiler, counterfactual simulation, explainability and optimization. It also owns the alternatives UI.
 
-Built: the deterministic and Monte Carlo simulation, explanations, optimization, the rule-based goal compiler, the LLM goal compiler behind a flag with rules as the fallback, the alternatives panel, and user answers kept across a server restart. Both simulators apply a twin's per-month seasonal spending profile, and a twin without one simulates flat as before (#63). Explanations describe the forecast and a busy or quiet spending stretch after a purchase (#64, #69), and when no single alternative keeps every limit, the optimizer also tries waiting combined with a spending cut (#70).
+Built: the deterministic and Monte Carlo simulation, explanations, optimization, the rule-based goal compiler, the LLM goal compiler behind a flag with rules as the fallback, the alternatives panel, and user answers kept across a server restart. Both simulators apply a twin's per-month seasonal spending profile, and a twin without one simulates flat as before (#63). Explanations describe the forecast and a busy or quiet spending stretch after a purchase (#64, #69), and when no single alternative keeps every limit, the optimizer also tries waiting combined with a spending cut (#70). Added since: the Assistant, which drafts a goal, bill, limit or what-if from a sentence and writes nothing until the user accepts it (#131, #133); the Impact Score (#136, #137); and committing a purchase, with the search for the deadline that pays for it (#139).
 
 Focus:
 
-1. Keep explanations and alternatives useful once Alex's demo twin carries seasonal profiles.
+1. Keep explanations and alternatives useful as the demo fixture changes.
 2. Optionally, and only if the team reverses the Section 13 decision, have the LLM write explanations, rephrasing only the computed results.
 
 ### Workstream 3: Frontend / Integration (mkrishiv)
 
-Owns the Next.js frontend, Twin visualization, the scenario UI, charts, API integration, the Financial Intent Graph and demo polish.
+Owns the Next.js frontend, the app shell and shared components, Twin visualization, the scenario UI, charts, API integration and demo polish.
 
-Built: the twin view, the scenario comparison, explanations, the Financial Intent Graph, the fan chart, goal entry (type a goal, review the compiled draft and clarifications, confirm), and handling of an offline backend.
+Built: the app shell and the six routes of the minimalist layout (`frontend/SPEC.md`) — Overview, Plans & Assistant with the Goals & Limits panel, Obligations, Purchase Simulator, Balance Trajectory, and Forecast & Data with the Sources card that says where the twin's data came from. Also the fan chart, the scenario comparison, goal entry through the Assistant, and handling of an offline backend. The Financial Intent Graph and the written explanation on Simulate were removed by that spec (D1, D2), and the header's data-source chip gave way to the Sources card (D3).
 
 Focus:
 
-1. Show where the twin's data came from (fixture or Nessie), separately from whether the backend is reachable.
-2. Demo polish and a scripted walkthrough from a fresh clone (Phase 7).
+1. Finish the definition of done in `frontend/SPEC.md` Section 18: the 320 to 1440 px light and dark pass, and the comments that still cite a section 3.5 that no longer exists.
+2. Demo polish from a fresh clone (Phase 7), keeping `docs/demo-walkthrough.md` and `DEMO_CHECKLIST.md` matched to the shipped UI.
 
 Ownership means responsibility, not exclusive permission to modify code.
 
