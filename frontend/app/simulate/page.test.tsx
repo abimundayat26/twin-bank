@@ -151,4 +151,22 @@ describe("a what-if the Assistant routed here (PL-6)", () => {
     expect(screen.getByLabelText("Amount")).toHaveValue(800);
     expect(api.runSimulation).not.toHaveBeenCalled();
   });
+
+  it("updates an already-mounted form when Assistant routing changes", async () => {
+    query = "description=Bike&amount=450&date=2026-10-01";
+    const view = renderSimulate();
+    await waitFor(() => expect(screen.getByLabelText("What")).toHaveValue("Bike"));
+
+    query = "description=Phone&amount=900&date=2026-11-15";
+    view.rerender(
+      <TwinProvider>
+        <SimulatePage />
+      </TwinProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText("What")).toHaveValue("Phone"));
+    expect(screen.getByLabelText("Amount")).toHaveValue(900);
+    expect(screen.getByLabelText("Date")).toHaveValue("2026-11-15");
+    expect(api.runSimulation).not.toHaveBeenCalled();
+  });
 });
