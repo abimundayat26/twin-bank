@@ -7,7 +7,7 @@ presenter should describe it as demo data, never as live bank data.
 The story is:
 
 > Alex → Financial Twin → $800 laptop purchase → Simulate → baseline versus counterfactual →
-> explanation and alternatives
+> alternatives and balance trajectory
 
 ## Preflight
 
@@ -89,19 +89,7 @@ Start on **Overview**.
 - Point to the source badge again: this rehearsal is a connected backend serving **Demo fixture**
   data, not a live account.
 
-### 2. Explain the Financial Intent Graph
-
-In **Financial Intent Graph**:
-
-- Use the solid observed links and **Observed** labels for accounts, income, bills, and spending.
-- Use the dashed declared links and **You declared** labels for the housing goal and emergency
-  reserve.
-- State the product rule plainly: transaction history can reveal recurring structure, but it
-  cannot tell TwinBank what Alex personally wants. TwinBank asks instead of inventing intent.
-- The graph has a prose equivalent for assistive technology; it is not the only place the story
-  is stated.
-
-### 3. Review plans and an ambiguous payment
+### 2. Review plans and an ambiguous payment
 
 Open the top-left **Menu**, then **Plans & Assistant**.
 
@@ -114,7 +102,7 @@ Open the top-left **Menu**, then **Plans & Assistant**.
   this?**, the candidate labels, and their probabilities. Do not answer it during the canonical
   run. The choices are possibilities from observed activity, not facts until Alex declares one.
 
-### 4. Demonstrate clarification instead of invention
+### 3. Demonstrate clarification instead of invention
 
 In **Add or change a goal**, enter:
 
@@ -133,7 +121,7 @@ Expected result:
 Choose **Discard**. Do not answer or confirm this sample; the purpose is to show that missing
 financial facts remain missing.
 
-### 5. Run the $800 laptop counterfactual
+### 4. Run the $800 laptop counterfactual
 
 Use **Menu → Purchase Simulator**. The form opens with the canonical scenario:
 
@@ -156,14 +144,7 @@ Expected qualitative result in **Baseline vs. this purchase**:
 
 Do not turn these metrics into a yes/no affordability verdict. The decision remains Alex's.
 
-### 6. Explain the result and alternatives
-
-In **Why?**:
-
-- Read the concise backend-produced summary.
-- Point out the purchase, lowest checking balance, housing goal, seasonal spending stretch, and
-  expected income among the **Biggest drivers**.
-- Explain that the text is template-based from computed results; it is not model-written advice.
+### 5. Compare alternatives
 
 In **Other ways to do this**:
 
@@ -173,7 +154,7 @@ In **Other ways to do this**:
 - Contrast it with one option labelled **Breaks a declared limit** and read the stated violation.
 - Present these as scored tradeoffs, not a recommendation. The choice remains Alex's.
 
-### 7. Open Balance Trajectory
+### 6. Open Balance Trajectory
 
 Choose **See the balance trajectory**.
 
@@ -185,11 +166,10 @@ Choose **See the balance trajectory**.
 - In the default **Total** view, point out the emergency-reserve reference line.
 - Switch to **Checking** and point out the default low-balance reference line. It is labelled as a
   simulator default because Alex did not declare a minimum checking balance.
-- Use **What this projection assumed** as the textual equivalent: it repeats the horizon, path
-  count, purchase, reserve, low-balance line, goal deadline, and uncertainty explanation without
-  requiring the chart.
+- Confirm the chart's visually hidden data table exposes the plotted values to assistive
+  technology.
 
-### 8. Explain Forecast & Data
+### 7. Explain Forecast & Data
 
 Use **Menu → Forecast & Data**.
 
@@ -216,15 +196,14 @@ Before the live presentation, complete these checks on the exact commit being sh
   submit the incomplete goal, discard it, submit the laptop, switch the chart view, and navigate
   to Forecast & Data. Focus must remain visible throughout; Escape must close Menu and return
   focus to its button.
-- At browser widths 320, 375, 768, 1024, and 1440 px, visit all five routes and check the header,
+- At browser widths 320, 375, 768, 1024, and 1440 px, visit all six routes and check the header,
   menu drawer, long ambiguous-transfer label, comparison grid, alternative cards, chart labels,
   seasonal factor grid, and every primary action. There must be no document-level horizontal
   scroll, clipped controls, or overlapping labels.
 - Confirm that **Observed**, **You declared**, **Baseline**, **Counterfactual**, **Current page**,
   **Keeps your declared limits**, and **Breaks a declared limit** remain understandable without
   relying on color alone.
-- Confirm the chart conclusion is also available in its accessible label and the assumptions
-  panel, and that the graph has its prose equivalent.
+- Confirm the chart data is also available in its visually hidden table.
 - Trigger one rejected request in a non-demo rehearsal if practical and confirm **Simulation
   failed** shows the backend message instead of unrelated fixture results.
 
