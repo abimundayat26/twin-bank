@@ -396,7 +396,8 @@ export interface OptimizationResponse {
 /**
  * "type": a goal or a standing reserve. "account": which account pays a one-time
  * obligation. "intent": the text could be a goal or a declared obligation and the
- * Assistant must ask rather than choose.
+ * Assistant must ask rather than choose. "mandatory": the user must explicitly
+ * classify a one-time obligation as mandatory or optional.
  */
 export type GoalClarificationField =
   | "amount"
@@ -404,7 +405,8 @@ export type GoalClarificationField =
   | "name"
   | "type"
   | "account"
-  | "intent";
+  | "intent"
+  | "mandatory";
 
 export interface GoalCompileRequest {
   user_id: string;

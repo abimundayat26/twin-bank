@@ -488,7 +488,7 @@ class OptimizationResponse(BaseModel):
 # obligation. "intent": the text could be a goal or a declared obligation and the
 # Assistant must ask rather than choose (frontend/SPEC.md 3.2).
 GoalClarificationField = Literal[
-    "amount", "deadline", "name", "type", "account", "intent"
+    "amount", "deadline", "name", "type", "account", "intent", "mandatory"
 ]
 
 

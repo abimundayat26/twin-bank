@@ -39,7 +39,7 @@ def fields(result: GoalCompileResponse) -> list[str]:
 
 # --- One-time obligations ------------------------------------------------------
 
-TUITION = "I have $1,200 tuition due 2027-01-15 from checking"
+TUITION = "I have $1,200 tuition due 2027-01-15 from checking, mandatory"
 
 
 def compile_obligation(text: str, accounts=None, as_of: date = AS_OF) -> GoalCompileResponse:
@@ -59,35 +59,52 @@ def test_a_declared_obligation_compiles_with_nothing_left_to_ask():
 
 
 def test_an_obligation_without_an_amount_asks_and_drafts_nothing():
-    result = compile_obligation("I have tuition due 2027-01-15 from checking")
+    result = compile_obligation("I have tuition due 2027-01-15 from checking, mandatory")
     assert result.one_time_obligations == []
     assert fields(result) == ["amount"]
-    assert result.clarifications[0].fragment == "I have tuition due 2027-01-15 from checking"
+    assert result.clarifications[0].fragment == (
+        "I have tuition due 2027-01-15 from checking, mandatory"
+    )
 
 
 def test_an_obligation_without_a_due_date_asks_and_drafts_nothing():
-    result = compile_obligation("I have $1,200 tuition from checking")
+    result = compile_obligation("I have $1,200 tuition from checking, mandatory")
     assert result.one_time_obligations == []
     assert fields(result) == ["deadline"]
 
 
 def test_an_obligation_without_a_name_asks_and_drafts_nothing():
-    result = compile_obligation("I owe $1,200 by 2027-01-15 from checking")
+    result = compile_obligation("I owe $1,200 by 2027-01-15 from checking, mandatory")
     assert result.one_time_obligations == []
     assert fields(result) == ["name"]
 
 
 def test_an_obligation_with_no_funding_account_named_asks_which_one():
-    result = compile_obligation("I have $1,200 tuition due 2027-01-15")
+    result = compile_obligation("I have $1,200 tuition due 2027-01-15, mandatory")
     assert result.one_time_obligations == []
     assert fields(result) == ["account"]
     assert "Everyday Checking" in result.clarifications[0].question
 
 
-def test_one_account_on_file_is_the_only_answer_there_is():
+def test_one_account_on_file_is_still_not_an_answer_the_user_declared():
     only = [Account(id="acc_only", name="Everyday Checking", type="checking", balance=500)]
-    [obligation] = compile_obligation("I have $1,200 tuition due 2027-01-15", only).one_time_obligations
-    assert obligation.account_id == "acc_only"
+    result = compile_obligation("I have $1,200 tuition due 2027-01-15, mandatory", only)
+    assert result.one_time_obligations == []
+    assert fields(result) == ["account"]
+
+
+def test_an_obligation_without_mandatory_status_asks_and_drafts_nothing():
+    result = compile_obligation("I have $1,200 tuition due 2027-01-15 from checking")
+    assert result.one_time_obligations == []
+    assert fields(result) == ["mandatory"]
+
+
+def test_an_optional_obligation_keeps_the_status_the_user_stated():
+    result = compile_obligation(
+        "I have $1,200 tuition due 2027-01-15 from checking, optional"
+    )
+    [obligation] = result.one_time_obligations
+    assert obligation.mandatory is False
 
 
 def test_a_savings_goal_is_still_a_goal_not_an_obligation():
@@ -104,7 +121,9 @@ def test_a_clause_that_reads_as_either_asks_which_it_is():
 
 
 def test_an_obligation_already_past_is_asked_about_not_back_dated():
-    result = compile_obligation("I have $1,200 tuition due 2020-01-15 from checking")
+    result = compile_obligation(
+        "I have $1,200 tuition due 2020-01-15 from checking, mandatory"
+    )
     assert result.one_time_obligations == []
     assert fields(result) == ["deadline"]
     assert "already passed" in result.clarifications[0].question
@@ -112,8 +131,8 @@ def test_an_obligation_already_past_is_asked_about_not_back_dated():
 
 def test_two_obligations_in_one_sentence_split():
     result = compile_obligation(
-        "I have $1,200 tuition due 2027-01-15 from checking "
-        "and $400 car insurance due 2026-11-01 from checking"
+        "I have $1,200 tuition due 2027-01-15 from checking, mandatory "
+        "and $400 car insurance due 2026-11-01 from checking, optional"
     )
     assert [(o.id, o.name, o.amount) for o in result.one_time_obligations] == [
         ("one_tuition", "Tuition", 1200.0),
