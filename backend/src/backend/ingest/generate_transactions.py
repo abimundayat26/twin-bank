@@ -4,10 +4,14 @@ Phase 3 will pull these records from Nessie. Until then we need a year of
 plausible raw events to develop normalization and recurrence detection against,
 and hand-writing ~400 transactions is not practical.
 
-The feed is generated *from* `twin.json`, so the structure the detector is
+The feed is generated *from* `twin_seed.json`, so the structure the detector is
 supposed to rediscover — a $720 paycheck every 14 days, rent on the 1st, ~$150
 of groceries per fortnight — is really present in the data rather than asserted
-alongside it. The generator is seeded, so the committed fixture is reproducible:
+alongside it. The seed is the hand-written input and nothing else reads it;
+`twin.json` is what the detector produces from this feed and what the app
+serves. Keeping them as two files keeps that a real round trip: a generator fed
+from its own output would prove nothing. The generator is seeded, so the
+committed fixture is reproducible:
 
     cd backend && uv run python -m backend.ingest.generate_transactions
 
@@ -33,15 +37,15 @@ import random
 from datetime import date, timedelta
 from pathlib import Path
 
-from backend.fixtures import FIXTURES_DIR, load_twin
+from backend.fixtures import FIXTURES_DIR, load_seed_twin
 from backend.schemas import FinancialTwin
 
 SEED = 20260919
 HISTORY_DAYS = 364  # 26 whole fortnights, so the 14-day blocks divide evenly.
 OUTPUT_PATH = FIXTURES_DIR / "transactions.json"
 
-# How each recurring flow shows up on a statement. Keyed by the id in twin.json;
-# anything missing falls back to the obligation's own name.
+# How each recurring flow shows up on a statement. Keyed by the id in
+# twin_seed.json; anything missing falls back to the obligation's own name.
 DESCRIPTIONS = {
     "inc_paycheck": "CAMPUS BOOKSTORE PAYROLL",
     "obl_rent": "HOKIE PROPERTY MGMT RENT",
@@ -275,7 +279,7 @@ def reorder(event: dict) -> dict:
 
 
 def write_feed(path: Path = OUTPUT_PATH) -> int:
-    feed = build_feed(load_twin())
+    feed = build_feed(load_seed_twin())
     path.write_text(json.dumps(feed, indent=2) + "\n")
     return len(feed)
 
