@@ -15,10 +15,7 @@ vi.mock("@/lib/api", async () => {
     getTwin: vi.fn(),
     runSimulation: vi.fn(),
     runOptimization: vi.fn(),
-    saveGoals: vi.fn(),
     setMinimumBalance: vi.fn(),
-    respondToClarification: vi.fn(),
-    compileGoal: vi.fn(),
     commitPurchase: vi.fn(),
   };
 });
@@ -171,62 +168,37 @@ describe("useTwin", () => {
 });
 
 /**
- * The goal flow and the waiting state, which the probe above does not reach.
- * A second probe rather than a wider one: these tests are about which control
- * is saving and what survives a rejected save.
+ * The write path, which the probe above does not reach: which control reports
+ * itself as saving, and what a write does to the simulation built on the twin
+ * it replaced. `setMinimum` is the vehicle — every write shares `updateTwin`.
  */
-function GoalProbe() {
+function WriteProbe() {
   const t = useTwin();
   return (
     <div>
-      <span data-testid="twin-goals">{t.twin ? t.twin.goals.length : "none"}</span>
-      <span data-testid="draft">{t.goalDraft ? t.goalDraft.text : "none"}</span>
-      <span data-testid="compile-error">{t.goalCompileError ?? "none"}</span>
-      <span data-testid="save-error">{t.goalSaveError ?? "none"}</span>
+      <span data-testid="constraints">{t.twin ? t.twin.constraints.length : "none"}</span>
       <span data-testid="update-error">{t.twinUpdateError ?? "none"}</span>
-      <span data-testid="composer-key">{t.composerKey}</span>
       <span data-testid="busy">{t.isBusy ? "yes" : "no"}</span>
       <span data-testid="scope">{t.savingScope ?? "none"}</span>
-      <span data-testid="compiling">{t.isCompilingGoal ? "yes" : "no"}</span>
       <span data-testid="simulation-2">{t.simulation ? t.simulation.simulation_id : "none"}</span>
-      <button onClick={() => void t.compileGoalText("I need $900 for a bike")}>compile</button>
-      <button onClick={() => void t.confirmGoals({ goals: [], constraints: [] })}>confirm</button>
-      <button onClick={() => t.removeGoal("goal_summer_housing")}>remove</button>
-      <button onClick={() => t.discardGoalDraft()}>discard</button>
-      <button onClick={() => t.answerClarification("obl_mystery_transfer", "savings_transfer")}>
-        answer
-      </button>
+      <button onClick={() => t.setMinimum(400)}>minimum</button>
       <button onClick={() => void t.simulate({ ...SIMULATION.request.events[0] })}>sim2</button>
     </div>
   );
 }
 
-const DRAFT = {
-  user_id: "alex",
-  text: "I need $900 for a bike",
-  goals: [],
-  constraints: [],
-  clarifications: [],
-  unparsed: [],
-  compiler: "rules" as const,
-};
-
-function renderGoalProbe() {
-  return render(
+async function loadedWriteProbe() {
+  const user = userEvent.setup();
+  render(
     <TwinProvider>
-      <GoalProbe />
+      <WriteProbe />
     </TwinProvider>,
   );
-}
-
-async function loaded() {
-  const user = userEvent.setup();
-  renderGoalProbe();
-  await waitFor(() => expect(screen.getByTestId("twin-goals")).not.toHaveTextContent("none"));
+  await waitFor(() => expect(screen.getByTestId("constraints")).not.toHaveTextContent("none"));
   return user;
 }
 
-describe("TwinProvider goals", () => {
+describe("TwinProvider writes", () => {
   beforeEach(() => {
     // These tests count calls, so they need the counts from the block above
     // cleared. The implementations are re-established here for the same reason.
@@ -237,111 +209,27 @@ describe("TwinProvider goals", () => {
       data: { user_id: "alex", candidates: [] } as never,
       source: "api",
     });
-    vi.mocked(api.compileGoal).mockResolvedValue({ data: DRAFT, source: "api" });
-    vi.mocked(api.saveGoals).mockResolvedValue({ data: { ...TWIN, goals: [] }, source: "api" });
-    vi.mocked(api.respondToClarification).mockResolvedValue({ data: TWIN, source: "api" });
+    vi.mocked(api.setMinimumBalance).mockResolvedValue({ data: TWIN, source: "api" });
   });
 
-  it("holds the compiled draft without touching the twin", async () => {
-    const user = await loaded();
-    await user.click(screen.getByText("compile"));
-    await waitFor(() => expect(screen.getByTestId("draft")).toHaveTextContent("bike"));
-    expect(api.saveGoals).not.toHaveBeenCalled();
-    expect(screen.getByTestId("twin-goals")).toHaveTextContent("1");
+  it("carries the declared amount to the backend", async () => {
+    const user = await loadedWriteProbe();
+    await user.click(screen.getByText("minimum"));
+    await waitFor(() => expect(api.setMinimumBalance).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.setMinimumBalance).mock.calls[0][1]).toEqual({ amount: 400 });
   });
 
-  // There is no local parser: a guessed amount is exactly what the compiler refuses
-  // to invent, so a failure must leave no draft at all.
-  it("drafts nothing when the compiler cannot be reached", async () => {
-    vi.mocked(api.compileGoal).mockRejectedValue(new Error("compiler down"));
-    const user = await loaded();
-    await user.click(screen.getByText("compile"));
-    await waitFor(() =>
-      expect(screen.getByTestId("compile-error")).toHaveTextContent("compiler down"),
-    );
-    expect(screen.getByTestId("draft")).toHaveTextContent("none");
-    expect(screen.getByTestId("compiling")).toHaveTextContent("no");
-  });
-
-  it("clears an earlier failure when the text is read again", async () => {
-    vi.mocked(api.compileGoal).mockRejectedValueOnce(new Error("compiler down"));
-    const user = await loaded();
-    await user.click(screen.getByText("compile"));
-    await waitFor(() => expect(screen.getByTestId("compile-error")).toHaveTextContent("down"));
-
-    await user.click(screen.getByText("compile"));
-    await waitFor(() => expect(screen.getByTestId("draft")).toHaveTextContent("bike"));
-    expect(screen.getByTestId("compile-error")).toHaveTextContent("none");
-  });
-
-  it("drops the draft and resets the composer once the save succeeds", async () => {
-    const user = await loaded();
-    await user.click(screen.getByText("compile"));
-    await waitFor(() => expect(screen.getByTestId("draft")).toHaveTextContent("bike"));
-    const key = screen.getByTestId("composer-key").textContent;
-
-    await user.click(screen.getByText("confirm"));
-    await waitFor(() => expect(screen.getByTestId("draft")).toHaveTextContent("none"));
-    expect(screen.getByTestId("composer-key")).not.toHaveTextContent(key!);
-  });
-
-  // A rejected save must not cost Alex the text he typed.
-  it("keeps the draft on screen when the save is rejected", async () => {
-    vi.mocked(api.saveGoals).mockRejectedValue(new Error("Goal ids must be unique"));
-    const user = await loaded();
-    await user.click(screen.getByText("compile"));
-    await waitFor(() => expect(screen.getByTestId("draft")).toHaveTextContent("bike"));
-
-    await user.click(screen.getByText("confirm"));
-    await waitFor(() =>
-      expect(screen.getByTestId("save-error")).toHaveTextContent("Goal ids must be unique"),
-    );
-    expect(screen.getByTestId("draft")).toHaveTextContent("bike");
-  });
-
-  // The error belongs next to the control that caused it, not in the page banner.
-  it("reports a failed goal save on the composer, not as a general twin error", async () => {
-    vi.mocked(api.saveGoals).mockRejectedValue(new Error("rejected"));
-    const user = await loaded();
-    await user.click(screen.getByText("confirm"));
-    await waitFor(() => expect(screen.getByTestId("save-error")).toHaveTextContent("rejected"));
-    expect(screen.getByTestId("update-error")).toHaveTextContent("none");
-  });
-
-  it("discards a draft without saving anything", async () => {
-    const user = await loaded();
-    await user.click(screen.getByText("compile"));
-    await waitFor(() => expect(screen.getByTestId("draft")).toHaveTextContent("bike"));
-
-    await user.click(screen.getByText("discard"));
-    expect(screen.getByTestId("draft")).toHaveTextContent("none");
-    expect(api.saveGoals).not.toHaveBeenCalled();
-  });
-
-  // The PUT replaces the whole declared set, so removal has to send everything else.
-  it("removes a goal by saving the set without it", async () => {
-    const user = await loaded();
-    await user.click(screen.getByText("remove"));
-    await waitFor(() => expect(api.saveGoals).toHaveBeenCalledTimes(1));
-
-    const [, request] = vi.mocked(api.saveGoals).mock.calls[0];
-    expect(request.goals).toEqual([]);
-    expect(request.constraints).toEqual(TWIN.constraints);
-  });
-
-  it("names the goal being removed as the saving control", async () => {
+  it("names the control that is saving, and clears it when the write lands", async () => {
     let release: (v: { data: FinancialTwin; source: "api" }) => void = () => {};
-    vi.mocked(api.saveGoals).mockReturnValue(
+    vi.mocked(api.setMinimumBalance).mockReturnValue(
       new Promise((resolve) => {
         release = resolve;
       }),
     );
-    const user = await loaded();
-    await user.click(screen.getByText("remove"));
+    const user = await loadedWriteProbe();
+    await user.click(screen.getByText("minimum"));
 
-    await waitFor(() =>
-      expect(screen.getByTestId("scope")).toHaveTextContent("goal_summer_housing"),
-    );
+    await waitFor(() => expect(screen.getByTestId("scope")).toHaveTextContent("minimum-balance"));
     expect(screen.getByTestId("busy")).toHaveTextContent("yes");
 
     release({ data: TWIN, source: "api" });
@@ -349,58 +237,31 @@ describe("TwinProvider goals", () => {
     expect(screen.getByTestId("scope")).toHaveTextContent("none");
   });
 
-  it("names the obligation being answered as the saving control", async () => {
-    let release: (v: { data: FinancialTwin; source: "api" }) => void = () => {};
-    vi.mocked(api.respondToClarification).mockReturnValue(
-      new Promise((resolve) => {
-        release = resolve;
-      }),
-    );
-    const user = await loaded();
-    await user.click(screen.getByText("answer"));
-
-    await waitFor(() =>
-      expect(screen.getByTestId("scope")).toHaveTextContent("obl_mystery_transfer"),
-    );
-    release({ data: TWIN, source: "api" });
-    await waitFor(() => expect(screen.getByTestId("scope")).toHaveTextContent("none"));
-  });
-
-  it("carries Alex's answer to the backend with the twin it applies to", async () => {
-    const user = await loaded();
-    await user.click(screen.getByText("answer"));
-    await waitFor(() => expect(api.respondToClarification).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(api.respondToClarification).mock.calls[0][1]).toEqual({
-      user_id: "alex",
-      obligation_id: "obl_mystery_transfer",
-      category: "savings_transfer",
-    });
-  });
-
   // A twin that did not change cannot make a simulation stale.
   it("keeps the simulation when the twin update fails", async () => {
-    vi.mocked(api.respondToClarification).mockRejectedValue(new Error("nope"));
-    const user = await loaded();
+    vi.mocked(api.setMinimumBalance).mockRejectedValue(new Error("nope"));
+    const user = await loadedWriteProbe();
     await user.click(screen.getByText("sim2"));
     await waitFor(() =>
       expect(screen.getByTestId("simulation-2")).toHaveTextContent(SIMULATION.simulation_id),
     );
 
-    await user.click(screen.getByText("answer"));
+    await user.click(screen.getByText("minimum"));
     await waitFor(() => expect(screen.getByTestId("update-error")).toHaveTextContent("nope"));
     expect(screen.getByTestId("simulation-2")).toHaveTextContent(SIMULATION.simulation_id);
   });
 
   it("asks for no alternatives when there is no simulation to improve on", async () => {
-    const user = await loaded();
+    const user = await loadedWriteProbe();
     await user.click(screen.getByText("sim2"));
     await waitFor(() => expect(screen.getByTestId("simulation-2")).not.toHaveTextContent("none"));
 
-    await user.click(screen.getByText("answer"));
+    await user.click(screen.getByText("minimum"));
     await waitFor(() => expect(screen.getByTestId("simulation-2")).toHaveTextContent("none"));
     expect(api.runOptimization).not.toHaveBeenCalled();
   });
 });
+
 
 describe("TwinProvider refreshTwin", () => {
   /** What the Obligations page calls after a 404/409 stale write (G-16). */

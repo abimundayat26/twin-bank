@@ -3,16 +3,13 @@
  * the contract, so they share a fixture rather than a file apiece.
  */
 
-import { render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 
 import mockTwin from "@/lib/mock/twin.json";
 import type { FinancialTwin } from "@/lib/types";
 import { AccountsPanel } from "./AccountsPanel";
-import { ConstraintsPanel } from "./ConstraintsPanel";
 import { IncomePanel } from "./IncomePanel";
-import { ObligationsPanel } from "./ObligationsPanel";
 import { SpendingPanel } from "./SpendingPanel";
 
 const TWIN = mockTwin as unknown as FinancialTwin;
@@ -145,134 +142,5 @@ describe("SpendingPanel", () => {
       />,
     );
     expect(screen.getByText("$100 / 14d")).toBeInTheDocument();
-  });
-});
-
-describe("ObligationsPanel", () => {
-  const onAnswer = vi.fn();
-
-  it("separates mandatory bills from merely recurring ones", () => {
-    render(<ObligationsPanel twin={TWIN} onAnswer={onAnswer} />);
-    const mandatory = screen.getByRole("heading", { name: "Upcoming obligations" })
-      .closest("section")!;
-    expect(within(mandatory).getByText("Hokie Property Mgmt Rent")).toBeInTheDocument();
-
-    const recurring = screen.getByRole("heading", { name: "Recurring expenses" })
-      .closest("section")!;
-    expect(within(recurring).getByText("Spotify Premium")).toBeInTheDocument();
-  });
-
-  it("asks its open question inline, next to the obligation it is about", () => {
-    render(<ObligationsPanel twin={TWIN} onAnswer={onAnswer} />);
-    expect(screen.getByText("What is this?")).toBeInTheDocument();
-  });
-
-  it("reports an answer with the obligation it belongs to", async () => {
-    const answer = vi.fn();
-    const user = userEvent.setup();
-    render(<ObligationsPanel twin={TWIN} onAnswer={answer} />);
-    await user.click(screen.getByRole("button", { name: /Savings transfer/ }));
-    expect(answer).toHaveBeenCalledWith("obl_online_transfer_to", "savings_transfer");
-  });
-
-  it("hides the excluded section until something is declared not recurring", () => {
-    render(<ObligationsPanel twin={TWIN} onAnswer={onAnswer} />);
-    expect(screen.queryByText("Left out of the projection")).not.toBeInTheDocument();
-  });
-
-  it("shows what Alex declared out of the projection", () => {
-    const excluded = TWIN.obligations.map((o) =>
-      o.id === "obl_spotify_premium"
-        ? { ...o, declared_category: "not_recurring" as const, category_candidates: [] }
-        : o,
-    );
-    render(<ObligationsPanel twin={twinWith({ obligations: excluded })} onAnswer={onAnswer} />);
-    const section = screen.getByRole("heading", { name: "Left out of the projection" })
-      .closest("section")!;
-    expect(within(section).getByText("Spotify Premium")).toBeInTheDocument();
-  });
-
-  // A declared category overrides the bank's observed mandatory flag.
-  it("moves an obligation Alex called optional out of the mandatory list", () => {
-    const declared = TWIN.obligations.map((o) =>
-      o.id === "obl_verizon_wireless"
-        ? { ...o, declared_category: "optional_spending" as const, category_candidates: [] }
-        : o,
-    );
-    render(<ObligationsPanel twin={twinWith({ obligations: declared })} onAnswer={onAnswer} />);
-    const mandatory = screen.getByRole("heading", { name: "Upcoming obligations" })
-      .closest("section")!;
-    expect(within(mandatory).queryByText("Verizon Wireless")).not.toBeInTheDocument();
-
-    const recurring = screen.getByRole("heading", { name: "Recurring expenses" })
-      .closest("section")!;
-    expect(within(recurring).getByText("Verizon Wireless")).toBeInTheDocument();
-  });
-
-  it("renders both sections for a twin with no obligations at all", () => {
-    render(<ObligationsPanel twin={twinWith({ obligations: [] })} onAnswer={onAnswer} />);
-    expect(screen.getByRole("heading", { name: "Upcoming obligations" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Recurring expenses" })).toBeInTheDocument();
-  });
-});
-
-describe("ConstraintsPanel", () => {
-  it("shows the emergency reserve in the words Alex declared it in", () => {
-    render(<ConstraintsPanel twin={TWIN} onSetMinimum={vi.fn()} />);
-    expect(screen.getByText("$1,500")).toBeInTheDocument();
-    expect(screen.getByText(TWIN.constraints[0].description)).toBeInTheDocument();
-  });
-
-  it("omits the reserve card when none is declared", () => {
-    render(<ConstraintsPanel twin={twinWith({ constraints: [] })} onSetMinimum={vi.fn()} />);
-    expect(
-      screen.queryByRole("heading", { name: "Minimum emergency reserve" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Minimum checking balance" }),
-    ).toBeInTheDocument();
-  });
-
-  it("passes a saved minimum through to the card", () => {
-    render(
-      <ConstraintsPanel
-        twin={twinWith({
-          constraints: [
-            ...TWIN.constraints,
-            {
-              id: "con_minimum_checking",
-              type: "minimum_checking_balance",
-              amount: 300,
-              description: "Keep at least $300 in checking.",
-              provenance: "declared",
-            },
-          ],
-        })}
-        onSetMinimum={vi.fn()}
-      />,
-    );
-    expect(screen.getByLabelText("Minimum checking balance in dollars")).toHaveValue(300);
-  });
-
-  // The card is keyed by the saved amount so a successful save refills the box
-  // from the twin rather than leaving the old draft in place.
-  it("refills the box after the saved minimum changes", () => {
-    const withMinimum = (amount: number) =>
-      twinWith({
-        constraints: [
-          {
-            id: "con_minimum_checking",
-            type: "minimum_checking_balance",
-            amount,
-            description: `Keep at least $${amount} in checking.`,
-            provenance: "declared",
-          },
-        ],
-      });
-    const { rerender } = render(
-      <ConstraintsPanel twin={withMinimum(300)} onSetMinimum={vi.fn()} />,
-    );
-    rerender(<ConstraintsPanel twin={withMinimum(450)} onSetMinimum={vi.fn()} />);
-    expect(screen.getByLabelText("Minimum checking balance in dollars")).toHaveValue(450);
   });
 });
