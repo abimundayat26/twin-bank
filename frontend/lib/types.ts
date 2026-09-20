@@ -79,6 +79,7 @@ export interface FinancialObligation {
   expected_amount: number;
   /** Day of month the obligation is due. */
   due_day: number;
+  /** Explicitly supplied by the user; the compiler must not invent this status. */
   mandatory: boolean;
   confidence: number;
   provenance: Provenance;
@@ -116,6 +117,29 @@ export interface Goal {
   target_amount: number;
   deadline: IsoDate;
   current_amount: number;
+  provenance: "declared";
+}
+
+/**
+ * A known future expense that happens once: tuition, a deposit, an annual premium.
+ *
+ * Deliberately not a `FinancialObligation`. That one recurs on a day of the month;
+ * this one has a single absolute date and must never repeat.
+ *
+ * Always declared — the user tells TwinBank about it, and it reaches the twin only
+ * after they confirm the draft. A confirmed one belongs to the *baseline* future: it
+ * is a commitment already made, not a hypothetical purchase being simulated.
+ */
+export interface OneTimeObligation {
+  id: string;
+  name: string;
+  /** Always a withdrawal, so the sign is implied. */
+  amount: number;
+  /** The one absolute date it is paid. It does not repeat. */
+  due_date: IsoDate;
+  /** The account it is paid from. */
+  account_id: string;
+  mandatory: boolean;
   provenance: "declared";
 }
 
@@ -190,6 +214,12 @@ export interface FinancialTwin {
   variable_spending: VariableSpendingDistribution[];
   goals: Goal[];
   constraints: FinancialConstraint[];
+  /**
+   * Known one-off future expenses the user declared and confirmed. Absent on a twin
+   * from a backend that predates the contract, so read it through
+   * `oneTimeObligations()` in `lib/twin.ts` rather than indexing it directly.
+   */
+  one_time_obligations?: OneTimeObligation[];
   /** How the observed figures were estimated. Absent/null when not recorded. */
   forecast?: ForecastMetadata | null;
   /**

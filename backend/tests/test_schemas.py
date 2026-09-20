@@ -12,6 +12,7 @@ from backend.schemas import (
     GoalCompileRequest,
     GoalCompileResponse,
     MinimumBalanceRequest,
+    OneTimeObligation,
     OptimizationRequest,
     OptimizationResponse,
     ProcessingLineage,
@@ -363,6 +364,64 @@ def test_twin_source_rejects_an_unknown_source():
     data = load_twin().model_dump(mode="json") | {"source": "spreadsheet"}
     with pytest.raises(ValidationError):
         FinancialTwin.model_validate(data)
+
+
+# --- One-time obligations ------------------------------------------------------
+
+TUITION = {
+    "id": "one_tuition",
+    "name": "Spring tuition",
+    "amount": 1200.0,
+    "due_date": "2027-01-15",
+    "account_id": "acc_checking",
+    "mandatory": True,
+}
+
+
+def test_one_time_obligation_round_trips():
+    obligation = OneTimeObligation.model_validate(TUITION)
+    assert obligation.mandatory is True
+    assert obligation.provenance == "declared"
+    assert OneTimeObligation.model_validate_json(obligation.model_dump_json()) == obligation
+
+
+def test_one_time_obligation_is_always_declared():
+    """It comes from the user, so nothing may label it as read off banking data."""
+    with pytest.raises(ValidationError):
+        OneTimeObligation.model_validate({**TUITION, "provenance": "observed"})
+
+
+def test_one_time_obligation_requires_mandatory_status():
+    data = {key: value for key, value in TUITION.items() if key != "mandatory"}
+    with pytest.raises(ValidationError):
+        OneTimeObligation.model_validate(data)
+
+
+@pytest.mark.parametrize("amount", [0, -1])
+def test_one_time_obligation_amount_must_be_positive(amount):
+    with pytest.raises(ValidationError):
+        OneTimeObligation.model_validate({**TUITION, "amount": amount})
+
+
+@pytest.mark.parametrize("due_date", ["next January", "2027-13-01", ""])
+def test_one_time_obligation_rejects_a_malformed_due_date(due_date):
+    with pytest.raises(ValidationError):
+        OneTimeObligation.model_validate({**TUITION, "due_date": due_date})
+
+
+def test_twin_without_one_time_obligations_still_validates():
+    """The backwards-compatibility assertion the other two workstreams rely on."""
+    data = load_twin().model_dump(mode="json")
+    del data["one_time_obligations"]
+    assert FinancialTwin.model_validate(data).one_time_obligations == []
+
+
+def test_twin_keeps_one_time_obligations_in_order():
+    second = {**TUITION, "id": "one_deposit", "name": "Deposit", "due_date": "2026-11-01"}
+    declared = [OneTimeObligation.model_validate(o) for o in (TUITION, second)]
+    twin = load_twin().model_copy(update={"one_time_obligations": declared})
+    parsed = FinancialTwin.model_validate_json(twin.model_dump_json())
+    assert [o.id for o in parsed.one_time_obligations] == ["one_tuition", "one_deposit"]
 
 
 # --- Processing lineage -------------------------------------------------------
