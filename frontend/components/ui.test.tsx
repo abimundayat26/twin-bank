@@ -51,6 +51,12 @@ describe("Badge", () => {
     const { container } = render(<Badge>Plain</Badge>);
     expect(container.firstChild).toHaveClass("text-muted");
   });
+
+  it("uses a high-contrast treatment on the dark application shell", () => {
+    const { container } = render(<Badge surface="shell">Connected</Badge>);
+    expect(container.firstChild).toHaveClass("border-on-shell/50", "text-on-shell");
+    expect(container.firstChild).not.toHaveClass("text-muted");
+  });
 });
 
 describe("Row", () => {
