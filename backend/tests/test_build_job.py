@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from backend import build_job
 from backend.fixtures import FIXTURES_DIR, load_twin
 from backend.main import app
-from backend.schemas import FinancialTwin
+from backend.schemas import FinancialTwin, OneTimeObligation
 
 TRANSACTIONS = FIXTURES_DIR / "transactions.json"
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -130,3 +130,49 @@ def test_the_bundle_parameters_are_ones_the_job_accepts():
     params = [p.replace("${var.volume}", "/Volumes/v") for p in bundle_task()["parameters"]]
     args = build_job.arg_parser().parse_args(params)
     assert args.twin is not None, "an installed wheel has no fixture twin to fall back on"
+
+
+# --- Declared one-time obligations across a rebuild --------------------------------
+
+TUITION = OneTimeObligation(
+    id="one_tuition",
+    name="Spring tuition",
+    amount=1200,
+    due_date=date(2027, 1, 15),
+    account_id="acc_checking",
+)
+
+
+def test_a_rebuild_keeps_a_confirmed_obligation(tmp_path):
+    """The critical case: these are declared, so recomputing must not wipe them."""
+    twin_file = tmp_path / "twin-on-file.json"
+    owed = load_twin().model_copy(update={"one_time_obligations": [TUITION]})
+    twin_file.write_text(owed.model_dump_json())
+
+    _, rebuilt = run(tmp_path, "--twin", str(twin_file))
+
+    assert rebuilt.one_time_obligations == [TUITION]
+
+
+def test_a_rebuild_never_invents_an_obligation_from_transactions(tmp_path):
+    """A year of rent and tuition-sized transfers must still produce none of these."""
+    _, rebuilt = run(tmp_path)
+    assert rebuilt.one_time_obligations == []
+    # The detector found plenty of *recurring* structure from the same history.
+    assert rebuilt.obligations
+
+
+def test_an_obligation_whose_account_is_gone_is_kept_not_dropped(tmp_path):
+    """C3, undefined in the spec. The money is still owed.
+
+    Dropping it would quietly flatter the forecast; the simulator falls back to
+    checking, and PUT /twin/{id}/goals refuses to accept a new one like this.
+    """
+    twin_file = tmp_path / "twin-on-file.json"
+    dangling = TUITION.model_copy(update={"account_id": "acc_closed"})
+    owed = load_twin().model_copy(update={"one_time_obligations": [dangling]})
+    twin_file.write_text(owed.model_dump_json())
+
+    _, rebuilt = run(tmp_path, "--twin", str(twin_file))
+
+    assert rebuilt.one_time_obligations == [dangling]

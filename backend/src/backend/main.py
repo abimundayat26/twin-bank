@@ -148,6 +148,8 @@ def compile_goal_text(request: GoalCompileRequest) -> GoalCompileResponse:
 def set_goals(user_id: str, request: DeclaredGoalsRequest) -> FinancialTwin:
     twin_for(user_id)
     try:
-        return twin_store.set_goals(request.goals, request.constraints)
+        return twin_store.set_goals(
+            request.goals, request.constraints, request.one_time_obligations
+        )
     except twin_store.InvalidDeclaration as e:
         raise HTTPException(status_code=422, detail=str(e)) from e

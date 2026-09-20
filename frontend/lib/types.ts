@@ -429,6 +429,11 @@ export interface GoalCompileResponse {
 export interface DeclaredGoalsRequest {
   goals: Goal[];
   constraints?: FinancialConstraint[];
+  /**
+   * Confirmed one-off expenses. Omitted keeps the ones already confirmed; an empty
+   * list clears them.
+   */
+  one_time_obligations?: OneTimeObligation[] | null;
 }
 
 /**

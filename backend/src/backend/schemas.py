@@ -501,3 +501,8 @@ class DeclaredGoalsRequest(BaseModel):
 
     goals: list[Goal]
     constraints: list[FinancialConstraint] = []
+    one_time_obligations: list[OneTimeObligation] | None = Field(
+        default=None,
+        description="Confirmed one-off expenses. Omitted keeps the ones already "
+        "confirmed; an empty list clears them.",
+    )

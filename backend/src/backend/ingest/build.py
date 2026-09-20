@@ -5,9 +5,11 @@ plainly, because it is the whole point of the module:
 
 * income, obligations and variable spending are **observed**. They are computed
   here, from the transactions, and recomputing them can change them.
-* goals and constraints are **declared**. They come in from the caller and go
-  out untouched. No amount of transaction history can tell you that someone
-  needs $2,000 for summer housing by May (SPEC section 2).
+* goals, constraints and one-time obligations are **declared**. They come in from
+  the caller and go out untouched. No amount of transaction history can tell you
+  that someone needs $2,000 for summer housing by May, or that they owe tuition in
+  January (SPEC section 2). Recomputing must never invent one, and -- the failure
+  that would actually bite -- must never drop one either.
 * account balances are **reported**, not derived. A statement records what moved,
   not what is left, so balances are an input too.
 
@@ -15,6 +17,7 @@ The forecast behind the observed figures is computed in `backend.forecast`
 during detection; this module only carries its metadata onto the twin.
 """
 
+from collections.abc import Sequence
 from datetime import date
 
 from backend.ingest.recurrence import detect_structure
@@ -23,6 +26,7 @@ from backend.schemas import (
     FinancialConstraint,
     FinancialTwin,
     Goal,
+    OneTimeObligation,
     Transaction,
 )
 
@@ -40,6 +44,7 @@ def build_twin(
     as_of: date,
     goals: list[Goal],
     constraints: list[FinancialConstraint],
+    one_time_obligations: Sequence[OneTimeObligation] = (),
 ) -> FinancialTwin:
     """A twin whose observed half is detected and whose declared half is carried."""
     structure = detect_structure(transactions, as_of)
@@ -53,6 +58,7 @@ def build_twin(
         variable_spending=structure.variable_spending,
         goals=goals,
         constraints=constraints,
+        one_time_obligations=list(one_time_obligations),
         forecast=structure.forecast,
     )
 
@@ -60,8 +66,8 @@ def build_twin(
 def rebuild(twin: FinancialTwin, transactions: list[Transaction], as_of: date) -> FinancialTwin:
     """Rebuild an existing twin's observed half from transactions.
 
-    Its identity, balances, goals and constraints — everything the user told us
-    or the bank reported — carry over unchanged.
+    Its identity, balances, goals, constraints and declared one-time obligations —
+    everything the user told us or the bank reported — carry over unchanged.
     """
     return build_twin(
         user_id=twin.user_id,
@@ -71,4 +77,5 @@ def rebuild(twin: FinancialTwin, transactions: list[Transaction], as_of: date) -
         as_of=as_of,
         goals=twin.goals,
         constraints=twin.constraints,
+        one_time_obligations=twin.one_time_obligations,
     )
