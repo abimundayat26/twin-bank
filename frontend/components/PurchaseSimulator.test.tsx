@@ -2,37 +2,39 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { addDays } from "@/lib/dates";
 import mockTwin from "@/lib/mock/twin.json";
 import type { FinancialTwin } from "@/lib/types";
 import { PurchaseSimulator } from "./PurchaseSimulator";
 
 const TWIN = mockTwin as unknown as FinancialTwin;
-// The mock twin's as_of. The form defaults to it, and nothing earlier is allowed.
 const AS_OF = TWIN.as_of;
+/** G-11: the form's default date, and the earliest one that can be committed. */
+const TOMORROW = addDays(AS_OF, 1);
 
 function renderForm(props: Partial<Parameters<typeof PurchaseSimulator>[0]> = {}) {
   const onSimulate = vi.fn();
   render(
-    <PurchaseSimulator
-      twin={TWIN}
-      isSimulating={false}
-      onSimulate={onSimulate}
-      {...props}
-    />,
+    <PurchaseSimulator twin={TWIN} isSimulating={false} onSimulate={onSimulate} {...props} />,
   );
   return { onSimulate, user: userEvent.setup() };
 }
 
 const submitButton = () => screen.getByRole("button", { name: /Simulate/ });
-const amountBox = () => screen.getByLabelText("Amount (USD)");
-const dateBox = () => screen.getByLabelText("When");
+const amountBox = () => screen.getByLabelText("Amount");
+const dateBox = () => screen.getByLabelText("Date");
 const whatBox = () => screen.getByLabelText("What");
 
+/** The inline message explaining why Simulate is disabled. */
+const problem = () => screen.getByRole("alert").textContent ?? "";
+
 describe("PurchaseSimulator", () => {
-  it("opens on the demo purchase from the spec, ready to submit", () => {
+  // SM-1
+  it("opens on the demo purchase, dated the day after as_of", () => {
     const { onSimulate } = renderForm();
     expect(whatBox()).toHaveValue("Laptop");
     expect(amountBox()).toHaveValue(800);
+    expect(dateBox()).toHaveValue(TOMORROW);
     expect(submitButton()).toBeEnabled();
     expect(onSimulate).not.toHaveBeenCalled();
   });
@@ -44,17 +46,17 @@ describe("PurchaseSimulator", () => {
       type: "purchase",
       description: "Laptop",
       amount: 800,
-      date: AS_OF,
+      date: TOMORROW,
       account_id: "acc_checking",
     });
   });
 
   it("spends from checking by default, not whichever account came first", () => {
     renderForm();
-    expect(screen.getByLabelText("Paid from")).toHaveValue("acc_checking");
+    expect(screen.getByLabelText("Pay from")).toHaveValue("acc_checking");
   });
 
-  it("trims the description rather than sending the user's stray spaces", async () => {
+  it("trims the description rather than sending stray spaces", async () => {
     const { onSimulate, user } = renderForm();
     await user.clear(whatBox());
     await user.type(whatBox(), "  Laptop stand  ");
@@ -62,130 +64,144 @@ describe("PurchaseSimulator", () => {
     expect(onSimulate.mock.calls[0][0].description).toBe("Laptop stand");
   });
 
-  it("refuses a description that is only whitespace", async () => {
-    const { user } = renderForm();
-    await user.clear(whatBox());
-    await user.type(whatBox(), "   ");
-    expect(submitButton()).toBeDisabled();
-  });
-
-  it("refuses an empty amount", async () => {
-    const { user } = renderForm();
-    await user.clear(amountBox());
-    expect(submitButton()).toBeDisabled();
-  });
-
-  it("refuses a zero or negative amount", async () => {
-    const { user } = renderForm();
-    await user.clear(amountBox());
-    await user.type(amountBox(), "0");
-    expect(submitButton()).toBeDisabled();
-
-    await user.clear(amountBox());
-    await user.type(amountBox(), "-800");
-    expect(submitButton()).toBeDisabled();
-  });
-
-  // Number("1e999") is Infinity, which passes `> 0` but JSON.stringify sends as
-  // null, and the engine rejects the whole request.
-  it("refuses an amount that overflows to Infinity", async () => {
-    const { user } = renderForm();
-    await user.clear(amountBox());
-    await user.type(amountBox(), "1e999");
-    expect(submitButton()).toBeDisabled();
-  });
-
-  it("refuses a purchase dated before the twin's as_of", async () => {
-    const { user } = renderForm();
-    await user.clear(dateBox());
-    await user.type(dateBox(), "2020-01-01");
-    expect(submitButton()).toBeDisabled();
-  });
-
-  it("refuses a purchase past the last day the simulation covers", async () => {
-    const { user } = renderForm({ lastDate: "2026-10-01" });
-    await user.clear(dateBox());
-    await user.type(dateBox(), "2026-12-25");
-    expect(submitButton()).toBeDisabled();
-  });
-
-  it("accepts a purchase on the last day of the horizon", async () => {
-    const { onSimulate, user } = renderForm({ lastDate: "2026-10-01" });
-    await user.clear(dateBox());
-    await user.type(dateBox(), "2026-10-01");
-    await user.click(submitButton());
-    expect(onSimulate.mock.calls[0][0].date).toBe("2026-10-01");
-  });
-
-  it("bounds the date picker by the horizon it was given", () => {
-    renderForm({ lastDate: "2026-10-01" });
-    expect(dateBox()).toHaveAttribute("min", AS_OF);
-    expect(dateBox()).toHaveAttribute("max", "2026-10-01");
-  });
-
-  it("says it is working and takes no second submission", () => {
-    const { onSimulate } = renderForm({ isSimulating: true });
-    expect(screen.getByRole("button", { name: "Simulating…" })).toBeDisabled();
+  // PL-6: the Assistant fills the form and leaves the decision to press to the reader.
+  it("takes a prefilled purchase without submitting it", () => {
+    const { onSimulate } = renderForm({
+      prefill: { description: "Bike", amount: "450", date: addDays(AS_OF, 10) },
+    });
+    expect(whatBox()).toHaveValue("Bike");
+    expect(amountBox()).toHaveValue(450);
+    expect(dateBox()).toHaveValue(addDays(AS_OF, 10));
     expect(onSimulate).not.toHaveBeenCalled();
   });
 
-  it("disables simulation offline and explains why", () => {
-    const { onSimulate } = renderForm({ isOffline: true });
+  // E-3
+  it.each([
+    ["an empty amount", ""],
+    ["zero", "0"],
+    ["a negative amount", "-5"],
+    // Number("1e999") is Infinity, which JSON.stringify would send as null.
+    ["an amount that overflows to Infinity", "1e999"],
+    ["an amount over a billion dollars", "1000000001"],
+  ])("refuses %s", async (_label, value) => {
+    const { onSimulate, user } = renderForm();
+    await user.clear(amountBox());
+    if (value) await user.type(amountBox(), value);
+    expect(submitButton()).toBeDisabled();
+    await user.click(submitButton());
+    expect(onSimulate).not.toHaveBeenCalled();
+  });
+
+  // E-18
+  it("refuses a whitespace-only name and one over 80 characters", async () => {
+    const { onSimulate, user } = renderForm();
+    await user.clear(whatBox());
+    await user.type(whatBox(), "   ");
+    expect(problem()).toBe("Say what the purchase is.");
+    expect(onSimulate).not.toHaveBeenCalled();
+    // The field also stops at 80, so the over-length case cannot be typed in.
+    expect(whatBox()).toHaveAttribute("maxLength", "80");
+  });
+
+  // G-11
+  it("refuses a purchase dated before as_of, and one over two years out", async () => {
+    const { user } = renderForm();
+    await user.clear(dateBox());
+    await user.type(dateBox(), addDays(AS_OF, -1));
+    expect(problem()).toBe("A purchase cannot be dated before today.");
+
+    await user.clear(dateBox());
+    await user.type(dateBox(), addDays(AS_OF, 731));
+    expect(problem()).toBe("TwinBank only projects two years ahead.");
+  });
+
+  // E-1: it can be simulated, so the form allows it; only committing refuses.
+  it("allows a purchase dated exactly as_of", async () => {
+    const { onSimulate, user } = renderForm();
+    await user.clear(dateBox());
+    await user.type(dateBox(), AS_OF);
+    await user.click(submitButton());
+    expect(onSimulate.mock.calls[0][0].date).toBe(AS_OF);
+  });
+
+  // E-2
+  it("refuses a purchase past the last day the simulation covers", async () => {
+    const { user } = renderForm({ lastDate: "2027-05-01" });
+    await user.clear(dateBox());
+    await user.type(dateBox(), "2027-05-02");
+    expect(problem()).toBe(
+      "That is after the period this simulation covers.",
+    );
+  });
+
+  it("accepts a purchase on the last day of the horizon", async () => {
+    const { onSimulate, user } = renderForm({ lastDate: "2027-05-01" });
+    await user.clear(dateBox());
+    await user.type(dateBox(), "2027-05-01");
+    await user.click(submitButton());
+    expect(onSimulate.mock.calls[0][0].date).toBe("2027-05-01");
+  });
+
+  it("bounds the date picker by the horizon it was given", () => {
+    renderForm({ lastDate: "2027-05-01" });
+    expect(dateBox()).toHaveAttribute("min", AS_OF);
+    expect(dateBox()).toHaveAttribute("max", "2027-05-01");
+  });
+
+  it("bounds it two years out when the simulation has no horizon yet", () => {
+    renderForm();
+    expect(dateBox()).toHaveAttribute("max", addDays(AS_OF, 730));
+  });
+
+  // SM-2
+  it("cannot be submitted twice while a run is in flight", () => {
+    renderForm({ isSimulating: true });
+    const inFlight = screen.getByRole("button", { name: /Simulat/ });
+    expect(inFlight).toBeDisabled();
+    expect(inFlight).toHaveTextContent("Simulating…");
+  });
+
+  // G-10: nothing may pretend to run against a backend that is not there.
+  it("is disabled offline, with the reason in its tooltip", () => {
+    renderForm({ isOffline: true });
     expect(submitButton()).toBeDisabled();
     expect(submitButton()).toHaveAttribute(
       "title",
       "Backend offline. Showing saved sample data. Changes are disabled.",
     );
-    expect(onSimulate).not.toHaveBeenCalled();
   });
 
-  // A twin with no accounts has nothing to spend from, and the engine would
-  // reject the event with "Unknown account_id ''".
-  it("cannot submit against a twin with no accounts", () => {
-    renderForm({ twin: { ...TWIN, accounts: [] } });
-    expect(submitButton()).toBeDisabled();
+  // SM-3 / API-3 / G-9
+  it("shows the backend's rejection in the form, in its own words", () => {
+    renderForm({ error: "Unknown account_id 'acc_nope'" });
+    expect(screen.getByRole("alert")).toHaveTextContent("Unknown account_id 'acc_nope'");
   });
 
   it("falls back to the only account when none is a checking account", () => {
-    const savingsOnly = {
-      ...TWIN,
-      accounts: [{ id: "acc_savings", name: "Savings", type: "savings" as const, balance: 100 }],
-    };
-    renderForm({ twin: savingsOnly });
-    expect(screen.getByLabelText("Paid from")).toHaveValue("acc_savings");
+    const savings = TWIN.accounts.filter((a) => a.type !== "checking");
+    renderForm({ twin: { ...TWIN, accounts: savings } });
+    expect(screen.getByLabelText("Pay from")).toHaveValue(savings[0].id);
   });
 
-  // Edge case: a horizon that ends before the twin's as_of leaves no valid day at
-  // all, so the form must not offer a Simulate the backend would reject.
-  it("cannot submit when the horizon ends before the twin's as_of", () => {
-    renderForm({ lastDate: "2026-01-01" });
-    expect(submitButton()).toBeDisabled();
+  it("says so rather than offering a simulation a twin with no account cannot run", () => {
+    renderForm({ twin: { ...TWIN, accounts: [] } });
+    expect(problem()).toBe("This twin has no account to spend from.");
   });
 
-  // The presenter drives this form with the keyboard. SPEC section 11 asks for a
-  // visible focus indicator, and a recoloured 1px border is not one.
+  // G-17
   it("keeps a focus ring on every field rather than suppressing the outline", () => {
     renderForm();
-    for (const name of ["What", "Amount (USD)", "When", "Paid from"]) {
-      const control = screen.getByLabelText(name);
-      expect(control).not.toHaveClass("outline-none");
-      expect(control).toHaveClass("focus-visible:outline");
-      expect(control).toHaveClass("focus-visible:outline-2");
+    for (const element of [whatBox(), amountBox(), dateBox(), screen.getByLabelText("Pay from")]) {
+      expect(element.className).toContain("focus-visible:outline");
     }
   });
 
   it("moves focus through the whole form with Tab alone", async () => {
     const { user } = renderForm();
-    const order = ["What", "Amount (USD)", "When", "Paid from"].map((n) =>
-      screen.getByLabelText(n),
-    );
-    order[0].focus();
-    expect(order[0]).toHaveFocus();
-    for (let i = 1; i < order.length; i += 1) {
+    whatBox().focus();
+    for (const next of [amountBox(), dateBox(), screen.getByLabelText("Pay from"), submitButton()]) {
       await user.tab();
-      expect(order[i]).toHaveFocus();
+      expect(next).toHaveFocus();
     }
-    await user.tab();
-    expect(submitButton()).toHaveFocus();
   });
 });

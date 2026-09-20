@@ -19,6 +19,7 @@ vi.mock("@/lib/api", async () => {
     setMinimumBalance: vi.fn(),
     respondToClarification: vi.fn(),
     compileGoal: vi.fn(),
+    commitPurchase: vi.fn(),
   };
 });
 
@@ -39,9 +40,13 @@ function Probe() {
       <span data-testid="error">{t.twinError ?? "none"}</span>
       <span data-testid="simulation">{t.simulation ? t.simulation.simulation_id : "none"}</span>
       <span data-testid="optimization">{t.optimization ? "some" : "none"}</span>
+      <span data-testid="stale">{t.planChanged ? "stale" : "current"}</span>
+      <span data-testid="commit-result">{t.commitResult ?? "none"}</span>
+      <span data-testid="commit-error">{t.commitError ?? "none"}</span>
       <button onClick={() => void t.simulate({ ...SIMULATION.request.events[0] })}>sim</button>
       <button onClick={() => t.setMinimum(300)}>min</button>
       <button onClick={() => void t.optimize()}>opt</button>
+      <button onClick={() => void t.commit([{ ...SIMULATION.request.events[0] }])}>commit</button>
     </div>
   );
 }
@@ -391,5 +396,85 @@ describe("TwinProvider goals", () => {
     await user.click(screen.getByText("answer"));
     await waitFor(() => expect(screen.getByTestId("simulation-2")).toHaveTextContent("none"));
     expect(api.runOptimization).not.toHaveBeenCalled();
+  });
+});
+
+describe("TwinProvider commits", () => {
+  async function ready() {
+    const user = userEvent.setup();
+    renderProbe();
+    await waitFor(() => expect(screen.getByTestId("twin")).toHaveTextContent("alex"));
+    return user;
+  }
+
+  // API-2: the write route answers with the whole twin, so nothing re-reads it.
+  it("takes the twin from the commit response and marks the comparison stale", async () => {
+    vi.mocked(api.commitPurchase).mockResolvedValue({
+      twin: { ...TWIN, user_id: "alex-after" },
+      created_ids: ["one_purchase_abc1234567"],
+      already_committed: false,
+    });
+    const user = await ready();
+    const reads = vi.mocked(api.getTwin).mock.calls.length;
+    await user.click(screen.getByText("commit"));
+
+    await waitFor(() => expect(screen.getByTestId("twin")).toHaveTextContent("alex-after"));
+    expect(screen.getByTestId("stale")).toHaveTextContent("stale");
+    expect(screen.getByTestId("commit-result")).toHaveTextContent("Added to your plan");
+    expect(vi.mocked(api.getTwin).mock.calls).toHaveLength(reads);
+  });
+
+  // G-15: the second press of a double-click gets the same record back.
+  it("says a repeated commit changed nothing", async () => {
+    vi.mocked(api.commitPurchase).mockResolvedValue({
+      twin: TWIN,
+      created_ids: ["one_purchase_abc1234567"],
+      already_committed: true,
+    });
+    const user = await ready();
+    await user.click(screen.getByText("commit"));
+    await waitFor(() =>
+      expect(screen.getByTestId("commit-result")).toHaveTextContent(
+        "That purchase was already in your plan.",
+      ),
+    );
+  });
+
+  // G-16
+  it("asks the reader to look again when the plan moved under them", async () => {
+    vi.mocked(api.commitPurchase).mockRejectedValue(new api.ApiError("stale deadline", 409));
+    const user = await ready();
+    const reads = vi.mocked(api.getTwin).mock.calls.length;
+    await user.click(screen.getByText("commit"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("commit-error")).toHaveTextContent(
+        "That changed. Please review and try again.",
+      ),
+    );
+    // The twin is re-read, because whatever moved is in it.
+    expect(vi.mocked(api.getTwin).mock.calls).toHaveLength(reads + 1);
+    expect(screen.getByTestId("stale")).toHaveTextContent("current");
+  });
+
+  it("shows any other failure in the backend's own words", async () => {
+    vi.mocked(api.commitPurchase).mockRejectedValue(new Error("Unknown account_id 'acc_nope'"));
+    const user = await ready();
+    await user.click(screen.getByText("commit"));
+    await waitFor(() =>
+      expect(screen.getByTestId("commit-error")).toHaveTextContent("Unknown account_id"),
+    );
+  });
+
+  // CM-6: the next run is against the plan as it now stands.
+  it("clears the stale mark and the notice on the next simulation", async () => {
+    vi.mocked(api.commitPurchase).mockResolvedValue({ twin: TWIN, already_committed: false });
+    const user = await ready();
+    await user.click(screen.getByText("commit"));
+    await waitFor(() => expect(screen.getByTestId("stale")).toHaveTextContent("stale"));
+
+    await user.click(screen.getByText("sim"));
+    await waitFor(() => expect(screen.getByTestId("stale")).toHaveTextContent("current"));
+    expect(screen.getByTestId("commit-result")).toHaveTextContent("none");
   });
 });
