@@ -8,7 +8,7 @@ from backend.schemas import FinancialTwin, SimulationResponse
 
 client = TestClient(app)
 
-TRANSFER = "obl_mystery_transfer"
+TRANSFER = "obl_online_transfer_to"
 LAPTOP_REQUEST = {
     "user_id": "alex",
     "events": [
