@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TwinBank frontend
 
-## Getting Started
-
-First, run the development server:
+Next.js (App Router), React 19, TypeScript and Tailwind. Setup, the backend it talks to and the offline
+behaviour are in the [root README](../README.md); the product rules for every page are in [`SPEC.md`](SPEC.md).
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # http://localhost:3000
+npm run lint
+npm run typecheck  # generates Next's route types first, so it works on a fresh clone
+npm test           # Vitest
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Requires Node 22. The backend URL comes from `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Pages
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Route | Page |
+| --- | --- |
+| `/` | Overview |
+| `/plans` | Plans & Assistant: the chat and the Goals & Limits panel |
+| `/obligations` | Obligations |
+| `/simulate` | Purchase Simulator |
+| `/trajectory` | Balance Trajectory |
+| `/insights` | Forecast & Data |
 
-## Learn More
+## Layout
 
-To learn more about Next.js, take a look at the following resources:
+| Path | What it holds |
+| --- | --- |
+| `app/` | One folder per route, each with a `page.tsx` |
+| `components/` | Panels and charts. Subfolders: `assistant/`, `insights/`, `twin/` |
+| `lib/api.ts` | The only module that talks to the backend, including the offline fallback |
+| `lib/types.ts` | TypeScript mirror of `backend/src/backend/schemas.py`. Change the schema first |
+| `lib/state/` | `TwinProvider`, the shared twin state |
+| `lib/mock/` | Copies of the backend fixtures for offline use. Generated: run `uv run python -m backend.sync_frontend_mocks` in `backend/`, do not edit by hand |
+| `lib/navigation.ts` | The menu destinations |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The frontend never calculates a balance, a probability or an impact level; it displays what the backend
+returns.
