@@ -22,6 +22,8 @@ from backend.schemas import Goal, OneTimeObligation
 client = TestClient(app)
 
 TRIP = "I want to save $2,000 for a trip by next June"
+RENT_ID = "obl_hokie_property_mgmt_rent"
+RENT_NAME = "Hokie Property Mgmt Rent"
 
 
 def twin():
@@ -181,12 +183,21 @@ def test_updating_with_no_new_value_is_a_question():
     assert [q["field"] for q in payload["questions"]] == ["amount"]
 
 
-def test_a_detected_recurring_payment_is_edited_on_the_obligations_page():
-    """Until the twin_store overrides of PER-1 land, the chat says so plainly."""
+def test_a_detected_recurring_update_is_a_proposal_not_a_change():
+    before = twin().model_dump()
     payload = send("rent went up to 1050")
-    assert payload["proposals"] == []
-    [question] = payload["questions"]
-    assert "Obligations page" in question["text"]
+    [proposal] = payload["proposals"]
+    assert proposal["action_type"] == "UPDATE_OBLIGATION"
+    assert proposal["obligation_name"] == RENT_NAME
+    assert proposal["kind"] == "recurring"
+    assert proposal["recurring_changes"] == {
+        "name": None,
+        "amount": 1050,
+        "due_day": None,
+        "active": None,
+    }
+    assert payload["questions"] == []
+    assert twin().model_dump() == before
 
 
 def test_which_one_when_two_things_share_a_word():
@@ -301,6 +312,24 @@ def test_accepting_an_update_changes_only_that_goal():
     assert goal["deadline"] == "2027-05-01"
 
 
+def test_accepting_a_detected_recurring_update_stores_the_override():
+    [proposal] = send("rent went up to 1050")["proposals"]
+    payload = decide(proposal["proposal_id"], "accept").json()
+    rent = next(o for o in payload["twin"]["obligations"] if o["id"] == RENT_ID)
+    assert rent["expected_amount"] == 1050
+    assert rent["provenance"] == "declared"
+    assert twin_store.recurring_overrides[RENT_ID].expected_amount == 1050
+
+
+def test_a_recurring_update_that_is_already_true_is_not_proposed():
+    twin_store.override_recurring(
+        RENT_ID, twin_store.RecurringOverride(expected_amount=1050)
+    )
+    payload = send("rent went up to 1050")
+    assert payload["proposals"] == []
+    assert payload["reply"] == assistant.REPLY_DUPLICATE
+
+
 def test_rejecting_changes_nothing():
     before = twin().model_dump()
     [proposal] = send(TRIP)["proposals"]
@@ -343,6 +372,18 @@ def test_a_proposal_whose_target_vanished_no_longer_applies():
     twin_store.set_goals(
         [g for g in twin().goals if g.id != goal.id], twin().constraints
     )
+    response = decide(proposal["proposal_id"], "accept")
+    assert response.status_code == 409
+    assert response.json()["detail"] == "That no longer applies. Ask again."
+
+
+def test_a_recurring_update_whose_target_vanished_no_longer_applies(monkeypatch):
+    [proposal] = send("rent went up to 1050")["proposals"]
+    source = twin_store.load_source_twin()
+    without_rent = source.model_copy(
+        update={"obligations": [o for o in source.obligations if o.id != RENT_ID]}
+    )
+    monkeypatch.setattr(twin_store, "load_source_twin", lambda: without_rent)
     response = decide(proposal["proposal_id"], "accept")
     assert response.status_code == 409
     assert response.json()["detail"] == "That no longer applies. Ask again."

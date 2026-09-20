@@ -95,7 +95,7 @@ def key_fields(proposal: dict) -> dict:
         return {
             "action_type": action,
             "obligation_name": proposal["obligation_name"],
-            "changes": proposal["one_time_changes"] or {},
+            "changes": proposal["recurring_changes"] or proposal["one_time_changes"] or {},
         }
     return {
         "action_type": action,

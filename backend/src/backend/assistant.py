@@ -17,10 +17,6 @@ Two things the compiler does not do are done here, because they are the
 Assistant's job rather than the goal compiler's: routing a what-if to the Purchase
 Simulator without running it (AS-8), and turning "change my summer housing goal to
 $2,500" into an update of something the twin already has (V7, V8).
-
-Updating a **detected recurring** payment is not in this version. It needs the
-`twin_store` overrides of PER-1, which are a separate gate PR; until those land a
-clause that names one is answered with `RECURRING_ELSEWHERE` rather than drafted.
 """
 
 import re
@@ -57,6 +53,7 @@ from backend.schemas import (
     ObligationCategory,
     OneTimeObligationChanges,
     Proposal,
+    RecurringObligationChanges,
     SetConstraintProposal,
     SimulatePrefill,
     UpdateGoalProposal,
@@ -79,15 +76,6 @@ REPLY_NOTHING = (
 REPLY_DUPLICATE = "That's already in your plan."
 MODEL_FALLBACK_PREFIX = "The model was unavailable, so this was read by rules. "
 OVER_FIVE_SUFFIX = " I read the first five."
-
-# Not one of the rows in 8.3: that table assumes a detected payment can be edited
-# from the chat, and in this version it cannot (PER-1 is a separate PR). Saying so
-# is better than a "which one do you mean" that lists everything except the one
-# the user named.
-RECURRING_ELSEWHERE = (
-    'I can only change goals and one-off expenses here. "{name}" is a monthly payment '
-    "TwinBank detected; you can edit it on the Obligations page."
-)
 
 QUESTION_WHICH_ONE = "Which one do you mean: {names}?"
 QUESTION_CATEGORY = "What is {name} ({amount} a month)?"
@@ -257,7 +245,7 @@ def new_value(
 
 
 def read_update(clause: str, twin: FinancialTwin) -> tuple[Proposal | None, AssistantQuestion | None]:
-    """An update to a goal or a one-off expense, or the question to ask instead.
+    """An update to a goal or obligation, or the question to ask instead.
 
     (None, None) means this clause is not an update and belongs to the compiler.
     """
@@ -266,13 +254,9 @@ def read_update(clause: str, twin: FinancialTwin) -> tuple[Proposal | None, Assi
 
     goals = named_in(clause, twin.goals)
     one_time = named_in(clause, twin.one_time_obligations)
-    targets = goals + one_time
+    recurring = named_in(clause, twin.obligations)
+    targets = goals + one_time + recurring
     if not targets:
-        recurring = named_in(clause, twin.obligations)
-        if recurring:
-            return None, _ask(
-                "which_one", RECURRING_ELSEWHERE.format(name=recurring[0].name), clause
-            )
         return None, None
     if len(targets) > 1:
         names = ", ".join(t.name for t in targets)
@@ -309,21 +293,40 @@ def read_update(clause: str, twin: FinancialTwin) -> tuple[Proposal | None, Assi
             None,
         )
 
-    question = check_due_date(when, None, f"the {target.name.lower()}", twin.as_of) if when else None
-    if question:
-        return None, _ask("deadline", question, clause)
-    changes = OneTimeObligationChanges(
-        **({"amount": amount} if amount is not None else {})
-        | ({"due_date": when} if when is not None else {})
-    )
+    if one_time:
+        question = (
+            check_due_date(when, None, f"the {target.name.lower()}", twin.as_of)
+            if when
+            else None
+        )
+        if question:
+            return None, _ask("deadline", question, clause)
+        changes = OneTimeObligationChanges(
+            **({"amount": amount} if amount is not None else {})
+            | ({"due_date": when} if when is not None else {})
+        )
+        return (
+            UpdateObligationProposal(
+                proposal_id=new_id("prop"),
+                source_fragment=clause,
+                obligation_id=target.id,
+                obligation_name=target.name,
+                kind="one_time",
+                one_time_changes=changes,
+            ),
+            None,
+        )
+
+    if amount is None:
+        return None, _ask("amount", f"How much should {target.name} be?", clause)
     return (
         UpdateObligationProposal(
             proposal_id=new_id("prop"),
             source_fragment=clause,
             obligation_id=target.id,
             obligation_name=target.name,
-            kind="one_time",
-            one_time_changes=changes,
+            kind="recurring",
+            recurring_changes=RecurringObligationChanges(amount=amount),
         ),
         None,
     )
@@ -446,6 +449,17 @@ def already_true(proposal: Proposal, twin: FinancialTwin) -> bool:
         goal = next((g for g in twin.goals if g.id == proposal.goal_id), None)
         changes = proposal.changes.model_dump(exclude_unset=True)
         return goal is not None and all(getattr(goal, k) == v for k, v in changes.items())
+    if proposal.kind == "recurring":
+        obligation = next(
+            (o for o in twin.obligations if o.id == proposal.obligation_id), None
+        )
+        if obligation is None or proposal.recurring_changes is None:
+            return False
+        changes = proposal.recurring_changes.model_dump(exclude_unset=True)
+        return all(
+            getattr(obligation, "expected_amount" if key == "amount" else key) == value
+            for key, value in changes.items()
+        )
     obligation = next(
         (o for o in twin.one_time_obligations if o.id == proposal.obligation_id), None
     )
@@ -607,8 +621,15 @@ def apply_proposal(proposal: Proposal) -> FinancialTwin:
             )
 
         if proposal.action_type == "UPDATE_OBLIGATION":
-            if proposal.kind != "one_time":
-                raise NotApplicable(proposal.obligation_id)
+            if proposal.kind == "recurring":
+                if proposal.recurring_changes is None:
+                    raise NotApplicable(proposal.obligation_id)
+                changes = proposal.recurring_changes.model_dump(exclude_unset=True)
+                if "amount" in changes:
+                    changes["expected_amount"] = changes.pop("amount")
+                return twin_store.override_recurring(
+                    proposal.obligation_id, twin_store.RecurringOverride(**changes)
+                )
             owed = list(twin.one_time_obligations)
             index = next(
                 (i for i, o in enumerate(owed) if o.id == proposal.obligation_id), None
