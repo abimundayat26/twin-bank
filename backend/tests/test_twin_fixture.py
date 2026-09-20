@@ -7,9 +7,30 @@ reads the seed, dates itself from the feed, and carries declared data through
 untouched.
 """
 
-from backend.fixtures import load_raw_transactions, load_seed_twin
+import json
+
+from backend.fixtures import FIXTURES_DIR, load_raw_transactions, load_seed_twin, load_twin
 from backend.ingest import normalize_all
 from backend.regenerate_twin_fixture import build
+
+
+def test_fixture_is_the_generator_output():
+    """Fails when the detector moves the numbers but the fixture is not regenerated.
+
+    Fix by running: uv run python -m backend.regenerate_twin_fixture
+    """
+    committed = json.loads((FIXTURES_DIR / "twin.json").read_text())
+    assert committed == build().model_dump(mode="json")
+
+
+def test_the_served_twin_records_how_it_was_estimated():
+    """The demo twin can say where its figures came from, which is what /insights shows."""
+    forecast = load_twin().forecast
+    assert forecast is not None
+    assert forecast.method == "seasonal_ewma"
+    assert forecast.as_of.isoformat() == "2026-09-18"
+    assert forecast.window_start.isoformat() == "2025-09-20"
+    assert forecast.observed_fortnights == 25
 
 
 def test_the_seed_is_loadable_and_is_alex():
