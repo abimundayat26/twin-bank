@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 
 from backend.fixtures import load_simulation, load_twin
+from backend.overview import build_overview
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 FRONTEND_MOCK_DIR = REPO_ROOT / "frontend" / "lib" / "mock"
@@ -20,7 +21,12 @@ FRONTEND_MOCK_DIR = REPO_ROOT / "frontend" / "lib" / "mock"
 
 def sync() -> list[Path]:
     """Write each fixture as the API serializes it. Returns the paths written."""
-    payloads = {"twin.json": load_twin(), "simulation.json": load_simulation()}
+    twin = load_twin()
+    payloads = {
+        "twin.json": twin,
+        "simulation.json": load_simulation(),
+        "overview.json": build_overview(twin),
+    }
     written = []
     for name, model in payloads.items():
         path = FRONTEND_MOCK_DIR / name

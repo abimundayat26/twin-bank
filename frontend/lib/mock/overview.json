@@ -1,0 +1,66 @@
+{
+  "user_id": "alex",
+  "as_of": "2026-09-18",
+  "total_balance": 3140.0,
+  "monthly_net_cash_flow": 729.2,
+  "goal_progress": 0.0,
+  "accounts": [
+    {
+      "id": "acc_checking",
+      "name": "Everyday Checking",
+      "balance": 1340.0
+    },
+    {
+      "id": "acc_savings",
+      "name": "Savings",
+      "balance": 1800.0
+    }
+  ],
+  "spending": [
+    {
+      "label": "Fixed bills",
+      "monthly_amount": 846.41
+    },
+    {
+      "label": "groceries",
+      "monthly_amount": 321.98
+    },
+    {
+      "label": "discretionary",
+      "monthly_amount": 241.73
+    }
+  ],
+  "total_monthly_spending": 1410.12,
+  "upcoming": [
+    {
+      "name": "Verizon Wireless",
+      "amount": -40.0,
+      "date": "2026-09-20",
+      "kind": "recurring_bill"
+    },
+    {
+      "name": "Campus Bookstore Payroll",
+      "amount": 725.21,
+      "date": "2026-09-25",
+      "kind": "income"
+    },
+    {
+      "name": "Hokie Property Mgmt Rent",
+      "amount": -650.0,
+      "date": "2026-10-01",
+      "kind": "recurring_bill"
+    },
+    {
+      "name": "Online Transfer To",
+      "amount": -71.82,
+      "date": "2026-10-05",
+      "kind": "recurring_bill"
+    },
+    {
+      "name": "Campus Bookstore Payroll",
+      "amount": 725.21,
+      "date": "2026-10-09",
+      "kind": "income"
+    }
+  ]
+}
