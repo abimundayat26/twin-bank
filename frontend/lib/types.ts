@@ -304,6 +304,16 @@ export interface ScenarioMetrics {
   prob_savings_sweep?: number | null;
 }
 
+/**
+ * How hard a purchase hits the risk metrics. Scored in the backend
+ * (frontend/SPEC.md section 7.3); the frontend never computes it (G-6).
+ */
+export interface ImpactAssessment {
+  level: "low" | "moderate" | "high";
+  /** Plain-language deltas behind the level, most severe first, at most 3. */
+  reasons: string[];
+}
+
 export interface ExplanationDriver {
   label: string;
   impact_amount: number;
@@ -346,6 +356,8 @@ export interface SimulationResponse {
   num_simulations?: number | null;
   /** Daily p10/median/p90 balances for charts. Absent/null when not computed. */
   balance_bands?: BalanceBands | null;
+  /** How hard this purchase hits the risk metrics. Absent/null when not scored. */
+  impact?: ImpactAssessment | null;
 }
 
 // --- Optimization -----------------------------------------------------------
