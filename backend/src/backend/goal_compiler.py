@@ -55,6 +55,10 @@ RESERVE_ID = "con_emergency_reserve"
 # Same id as twin_store.MINIMUM_BALANCE_ID, so a confirmed draft replaces the saved answer.
 CHECKING_FLOOR_ID = "con_minimum_checking"
 
+# frontend/SPEC.md V2: an amount over this is not drafted, it is asked about. A
+# figure this large in a student's message is a typo far more often than a plan.
+MAX_AMOUNT = 1_000_000.0
+
 MONTHS = {name.lower(): i for i, name in enumerate(calendar.month_name) if name}
 MONTHS |= {name.lower(): i for i, name in enumerate(calendar.month_abbr) if name}
 MONTH = r"(?P<month>" + "|".join(sorted(MONTHS, key=len, reverse=True)) + r")\.?"
@@ -234,6 +238,11 @@ def is_money(match: re.Match[str], text: str) -> bool:
     after a word, and only the words around them say which is dollars.
     """
     if match.group("mon"):  # "Jan 15", "May 2027": the month name was consumed
+        return False
+    if match.group("c") and (
+        text[: match.start()].endswith("(") or text[match.end() :].startswith(")")
+    ):
+        # "alert(1)", "(4)": bracketed, so it is a reference or code, not dollars.
         return False
     if match.group("c") and 1900 <= float(match.group("c").replace(",", "")) <= 2100:
         if YEAR_AFTER_TIMING.search(text[: match.start()]):
@@ -603,6 +612,11 @@ def compile_goals(
 
         if any(a <= 0 for a in amounts):
             ask("amount", "An amount here is zero. How much do you mean?", clause)
+            continue
+
+        if any(a > MAX_AMOUNT for a in amounts):
+            # V2 again: too large to take at face value, so ask rather than draft.
+            ask("amount", f"That is over {money(MAX_AMOUNT)}. How much do you mean?", clause)
             continue
 
         if len(amounts) > 1:
