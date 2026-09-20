@@ -282,6 +282,17 @@ def test_compile_endpoint_returns_drafts_and_saves_nothing():
     assert get_twin().goals == load_twin().goals
 
 
+def test_compile_endpoint_resolves_a_relative_month_without_clarifying():
+    response = compile_api("I want to save $2,000 for a trip by next June")
+    assert response.status_code == 200
+    result = GoalCompileResponse.model_validate(response.json())
+    assert [(goal.name, goal.target_amount, goal.deadline) for goal in result.goals] == [
+        ("Trip", 2000.0, date(2027, 6, 1))
+    ]
+    assert result.clarifications == []
+    assert result.compiler == "rules"
+
+
 def test_compile_endpoint_survives_an_out_of_range_date():
     response = compile_api("Save $500 for a trip in 99999 years")
     assert response.status_code == 200
