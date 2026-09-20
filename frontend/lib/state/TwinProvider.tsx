@@ -32,6 +32,7 @@ import {
   type Loaded,
 } from "@/lib/api";
 import { withoutGoal } from "@/lib/goals";
+import { withoutOneTimeObligation } from "@/lib/oneTimeObligations";
 import { GOALS_SCOPE, MINIMUM_BALANCE_SCOPE } from "@/lib/scopes";
 import type {
   DeclaredGoalsRequest,
@@ -77,6 +78,7 @@ export interface TwinState {
   compileGoalText: (text: string) => Promise<void>;
   confirmGoals: (request: DeclaredGoalsRequest) => Promise<void>;
   removeGoal: (goalId: string) => void;
+  removeOneTimeObligation: (obligationId: string) => void;
   discardGoalDraft: () => void;
   simulate: (event: SimulationEvent) => Promise<void>;
   optimize: () => Promise<void>;
@@ -224,6 +226,15 @@ export function TwinProvider({ children }: { children: ReactNode }) {
     void updateTwin(saveGoals(twin, withoutGoal(twin, goalId)), goalId);
   }
 
+  /**
+   * The same PUT as a goal removal, carrying the goals and constraints back
+   * untouched: the endpoint replaces the whole declared set.
+   */
+  function removeOneTimeObligation(obligationId: string) {
+    if (!twin) return;
+    void updateTwin(saveGoals(twin, withoutOneTimeObligation(twin, obligationId)), obligationId);
+  }
+
   function discardGoalDraft() {
     setGoalDraft(null);
     setGoalSaveError(undefined);
@@ -296,6 +307,7 @@ export function TwinProvider({ children }: { children: ReactNode }) {
     compileGoalText,
     confirmGoals,
     removeGoal,
+    removeOneTimeObligation,
     discardGoalDraft,
     simulate,
     optimize,

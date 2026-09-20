@@ -10,18 +10,23 @@
  * visibly separate panels so combining the workflows does not turn them into
  * one undifferentiated list.
  *
- * The TwinBank Assistant conversation and one-time obligations are specified
- * but not built: both need a shared backend contract first, and this page must
- * not pretend the goal compiler already handles them.
+ * One-time obligations are built here now that the contract exists: the compiler
+ * drafts them, the review step below reads them back, and a confirmed one is
+ * listed beside the detected recurring bills it must never be confused with.
+ *
+ * The TwinBank Assistant conversation is still specified but not built. This page
+ * has the review-first workflow it describes, not the conversation layout.
  */
 
 import { GoalCard } from "@/components/GoalCard";
 import { GoalComposer } from "@/components/GoalComposer";
 import { ConstraintsPanel } from "@/components/twin/ConstraintsPanel";
 import { ObligationsPanel } from "@/components/twin/ObligationsPanel";
+import { OneTimeObligationsPanel } from "@/components/twin/OneTimeObligationsPanel";
 import { Card } from "@/components/ui";
 import { openQuestions } from "@/lib/obligations";
 import { useTwin } from "@/lib/state/TwinProvider";
+import { oneTimeObligations } from "@/lib/twin";
 
 export default function PlansPage() {
   const {
@@ -40,6 +45,7 @@ export default function PlansPage() {
     compileGoalText,
     confirmGoals,
     removeGoal,
+    removeOneTimeObligation,
     discardGoalDraft,
   } = useTwin();
 
@@ -123,6 +129,8 @@ export default function PlansPage() {
             key={composerKey}
             goals={twin.goals}
             constraints={twin.constraints}
+            owed={oneTimeObligations(twin)}
+            accounts={twin.accounts}
             asOf={twin.as_of}
             draft={goalDraft}
             isCompiling={isCompilingGoal}
@@ -167,6 +175,15 @@ export default function PlansPage() {
             isBusy={isBusy}
             savingScope={savingScope}
             onAnswer={answerClarification}
+          />
+
+          {/* Declared, one-off, already owed: kept below the detected recurring
+              bills rather than mixed into them (SPEC §3.2). */}
+          <OneTimeObligationsPanel
+            twin={twin}
+            isBusy={isBusy}
+            savingScope={savingScope}
+            onRemove={removeOneTimeObligation}
           />
         </section>
       </div>

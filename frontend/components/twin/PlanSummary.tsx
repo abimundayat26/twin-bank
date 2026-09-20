@@ -9,6 +9,8 @@
 import Link from "next/link";
 import { longDate, money } from "@/lib/format";
 import { groupObligations, openQuestions } from "@/lib/obligations";
+import { byDueDate } from "@/lib/oneTimeObligations";
+import { oneTimeObligations } from "@/lib/twin";
 import type { FinancialTwin } from "@/lib/types";
 import { Badge, Card, ProvenanceTag, Row } from "../ui";
 
@@ -61,11 +63,15 @@ export function ObligationsSummary({ twin }: { twin: FinancialTwin }) {
   const questions = openQuestions(twin);
   // Soonest in the month first, which is the order they will be paid in.
   const next = [...upcoming].sort((a, b) => a.due_day - b.due_day)[0];
+  // Declared one-offs, read through the helper so a backend without the field
+  // means "none" rather than a crash. Counted even at zero, so this page never
+  // leaves the reader guessing whether it simply does not show them.
+  const owed = byDueDate(oneTimeObligations(twin));
 
   return (
     <Card
       title="Upcoming obligations"
-      subtitle={`${upcoming.length} mandatory · ${recurring.length} recurring`}
+      subtitle={`${upcoming.length} mandatory · ${recurring.length} recurring · ${owed.length} one-time`}
     >
       {next ? (
         <Row
@@ -77,6 +83,30 @@ export function ObligationsSummary({ twin }: { twin: FinancialTwin }) {
       ) : (
         <p className="text-sm text-muted">No mandatory bills detected.</p>
       )}
+
+      {owed.length > 0 ? (
+        // Its own block: a one-time obligation is already committed, so it sits
+        // in the baseline — unlike the purchase the simulator asks about, and
+        // unlike the recurring bills above, which TwinBank detected.
+        <div className="mt-4 border-t border-line pt-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted">
+            One-time, already committed
+          </p>
+          <ul>
+            <Row
+              label={owed[0].name}
+              hint={`Due ${longDate(owed[0].due_date)}${owed[0].mandatory ? " · mandatory" : ""}`}
+              value={money(owed[0].amount)}
+              meta={<ProvenanceTag provenance={owed[0].provenance} />}
+            />
+          </ul>
+          {owed.length > 1 ? (
+            <p className="mt-2 text-sm text-faint">
+              and {owed.length - 1} more in <PlansLink>Plans &amp; Assistant</PlansLink>.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {questions.length > 0 ? (
         <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted">

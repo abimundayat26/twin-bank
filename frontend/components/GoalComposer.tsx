@@ -16,6 +16,12 @@
  * text did not mention stay read-only, so confirming cannot rewrite a goal the
  * user was not talking about.
  *
+ * One-time obligations are drafted from the same text and reviewed in their own
+ * block below the goals. They stay visibly separate because they are a different
+ * kind of fact (SPEC section 3.2): a confirmed one is a commitment already made
+ * and belongs to the baseline, not the hypothetical purchase the simulator asks
+ * about.
+ *
  * `onConfirm` is handed the *complete* declared set, merged and edited here. The
  * endpoint behind it replaces everything it is sent, so confirming a bare draft
  * would erase the user's other goals and their emergency reserve — `lib/goals`
@@ -40,19 +46,33 @@ import {
   type GoalEdit,
   type GoalEdits,
 } from "@/lib/goals";
+import {
+  accountName,
+  applyOneTimeEdits,
+  describeObligationChange,
+  isOneTimeEditValid,
+  mergeOneTimeObligations,
+  validateOneTimeEdit,
+  type OneTimeEdit,
+  type OneTimeEdits,
+} from "@/lib/oneTimeObligations";
 import type {
+  Account,
   DeclaredGoalsRequest,
   FinancialConstraint,
   Goal,
   GoalClarification,
   GoalCompileResponse,
   IsoDate,
+  OneTimeObligation,
 } from "@/lib/types";
 import { Badge, Card } from "./ui";
 
 /** Names this card's save, so only this button says "Saving…". */
 
-const PLACEHOLDER = "I need $1,600 for summer housing by May 1st, and keep $300 in checking.";
+const PLACEHOLDER =
+  "I need $1,600 for summer housing by May 1st, and keep $300 in checking. " +
+  "I owe $450 for car insurance on October 15 from checking, and it is mandatory.";
 
 const CHANGE_TONE = {
   new: "info",
@@ -80,6 +100,8 @@ const inputClass =
 export function GoalComposer({
   goals,
   constraints,
+  owed,
+  accounts,
   asOf,
   draft,
   isCompiling,
@@ -95,6 +117,10 @@ export function GoalComposer({
   goals: Goal[];
   /** The constraints the twin holds now, including the emergency reserve. */
   constraints: FinancialConstraint[];
+  /** The one-time obligations the twin holds now. Drafts merge into these. */
+  owed: OneTimeObligation[];
+  /** The twin's accounts: an obligation must be paid from one it holds. */
+  accounts: Account[];
   /** The twin's as_of date: every deadline must be after it. */
   asOf: IsoDate;
   /** The compiler's answer, or null while composing. */
@@ -130,12 +156,12 @@ export function GoalComposer({
 
   return (
     <Card
-      title="Add or change a goal"
-      subtitle="Say it in your own words. TwinBank asks about anything it will not guess."
+      title="Add or change a goal or obligation"
+      subtitle="Say it in your own words. TwinBank works out which it is, and asks about anything it will not guess."
     >
       <form onSubmit={submit} className="grid gap-3">
         <label className="sr-only" htmlFor="goal-text">
-          Describe the goal
+          Describe the goal or obligation
         </label>
         <textarea
           id="goal-text"
@@ -169,8 +195,8 @@ export function GoalComposer({
 
       {compileError ? (
         <p className="mt-3 text-sm text-bad">
-          Could not read that: {compileError}. Goals are compiled by the backend, so nothing
-          was drafted.
+          Could not read that: {compileError}. Goals and obligations are compiled by the
+          backend, so nothing was drafted.
         </p>
       ) : null}
 
@@ -181,6 +207,8 @@ export function GoalComposer({
           key={draft.text}
           goals={goals}
           constraints={constraints}
+          owed={owed}
+          accounts={accounts}
           asOf={asOf}
           draft={draft}
           isCompiling={isCompiling}
@@ -198,6 +226,8 @@ export function GoalComposer({
 function Review({
   goals,
   constraints,
+  owed,
+  accounts,
   asOf,
   draft,
   isCompiling,
@@ -209,6 +239,8 @@ function Review({
 }: {
   goals: Goal[];
   constraints: FinancialConstraint[];
+  owed: OneTimeObligation[];
+  accounts: Account[];
   asOf: IsoDate;
   draft: GoalCompileResponse;
   isCompiling: boolean;
@@ -221,6 +253,9 @@ function Review({
   // Corrections typed into the rows, keyed by goal id and kept as raw strings:
   // a half-typed amount is not a number yet.
   const [edits, setEdits] = useState<GoalEdits>({});
+  // The same, for the one-time obligation rows. Kept apart so an id shared by a
+  // goal and an obligation could never cross-apply a correction.
+  const [obligationEdits, setObligationEdits] = useState<OneTimeEdits>({});
 
   // Computed once and both shown and sent, so the list below cannot describe one
   // set while a different one is saved.
@@ -237,10 +272,36 @@ function Review({
   // Which constraint rows the text is responsible for; the rest are carried through.
   const fromText = new Set(draft.constraints.map((c) => c.type));
 
-  const parsedNothing = draft.goals.length === 0 && draft.constraints.length === 0;
+  // A backend that predates the contract omits the field entirely. That is "none
+  // drafted", never an error, so it reads as an empty list and the block below
+  // simply shows whatever the twin already holds.
+  const draftedObligations = draft.one_time_obligations ?? [];
+  const mergedObligations = mergeOneTimeObligations(owed, draftedObligations);
+  const obligationChanges = describeObligationChange(owed, mergedObligations);
+  const obligationErrors = new Map(
+    mergedObligations.map(
+      (o) => [o.id, validateOneTimeEdit(obligationEdits[o.id], asOf, accounts)] as const,
+    ),
+  );
+  const editedObligations = applyOneTimeEdits(mergedObligations, obligationEdits, asOf, accounts);
+  const obligationInvalid = [...obligationErrors.values()].some((row) => !isOneTimeEditValid(row));
+
+  const parsedNothing =
+    draft.goals.length === 0 && draft.constraints.length === 0 && draftedObligations.length === 0;
 
   function setField(goalId: string, field: keyof GoalEdit, value: string) {
     setEdits((previous) => ({ ...previous, [goalId]: { ...previous[goalId], [field]: value } }));
+  }
+
+  function setObligationField<K extends keyof OneTimeEdit>(
+    obligationId: string,
+    field: K,
+    value: OneTimeEdit[K],
+  ) {
+    setObligationEdits((previous) => ({
+      ...previous,
+      [obligationId]: { ...previous[obligationId], [field]: value },
+    }));
   }
 
   return (
@@ -357,6 +418,128 @@ function Review({
         </>
       )}
 
+      {!parsedNothing && mergedObligations.length > 0 ? (
+        // Its own block, under its own heading: an obligation is money already
+        // owed, not money being saved toward, and SPEC section 3.2 refuses to let
+        // the two become one undifferentiated list.
+        <section aria-labelledby="one-time-review" className="mb-4 rounded-lg border border-line p-3">
+          <h4
+            id="one-time-review"
+            className="text-xs font-semibold uppercase tracking-wider text-muted"
+          >
+            One-time obligations
+          </h4>
+          <p className="mt-1 text-xs text-faint">
+            Expenses you already owe. Once confirmed they are part of your baseline future, not a
+            purchase you are trying out.
+          </p>
+          <ul className="mt-2">
+            {editedObligations.map((obligation) => {
+              const change = obligationChanges.get(obligation.id) ?? "unchanged";
+              const editable = change !== "unchanged";
+              const rowErrors = obligationErrors.get(obligation.id) ?? {};
+              const edit = obligationEdits[obligation.id];
+              return (
+                <li key={obligation.id} className="border-b border-line py-2 last:border-0">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+                    <p className="min-w-0 break-words text-sm text-ink">{obligation.name}</p>
+                    <div className="flex flex-wrap items-center gap-2 self-end sm:shrink-0 sm:self-auto">
+                      <Badge tone={CHANGE_TONE[change]}>{change}</Badge>
+                      {/* Never "detected": a one-time obligation is always declared. */}
+                      <Badge tone="info">You declared</Badge>
+                      {editable ? null : (
+                        <span className="tnum text-sm text-ink">{money(obligation.amount)}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {editable ? (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <Field id={`${obligation.id}-name`} label="What it is" error={rowErrors.name}>
+                        <input
+                          id={`${obligation.id}-name`}
+                          type="text"
+                          value={edit?.name ?? obligation.name}
+                          onChange={(e) => setObligationField(obligation.id, "name", e.target.value)}
+                          className={inputClass}
+                        />
+                      </Field>
+                      <Field id={`${obligation.id}-owed`} label="Amount" error={rowErrors.amount}>
+                        <input
+                          id={`${obligation.id}-owed`}
+                          type="number"
+                          min={0}
+                          step={25}
+                          inputMode="decimal"
+                          value={edit?.amount ?? String(obligation.amount)}
+                          onChange={(e) =>
+                            setObligationField(obligation.id, "amount", e.target.value)
+                          }
+                          className={`${inputClass} tnum`}
+                        />
+                      </Field>
+                      <Field id={`${obligation.id}-due`} label="Due date" error={rowErrors.due_date}>
+                        <input
+                          id={`${obligation.id}-due`}
+                          type="date"
+                          min={asOf}
+                          value={edit?.due_date ?? obligation.due_date}
+                          onChange={(e) =>
+                            setObligationField(obligation.id, "due_date", e.target.value)
+                          }
+                          className={`${inputClass} tnum`}
+                        />
+                      </Field>
+                      <Field
+                        id={`${obligation.id}-account`}
+                        label="Paid from"
+                        error={rowErrors.account_id}
+                      >
+                        <select
+                          id={`${obligation.id}-account`}
+                          value={edit?.account_id ?? obligation.account_id}
+                          onChange={(e) =>
+                            setObligationField(obligation.id, "account_id", e.target.value)
+                          }
+                          className={inputClass}
+                        >
+                          {accounts.map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.name}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      <label
+                        htmlFor={`${obligation.id}-mandatory`}
+                        className="flex items-center gap-2 text-xs text-faint sm:col-span-2"
+                      >
+                        <input
+                          id={`${obligation.id}-mandatory`}
+                          type="checkbox"
+                          checked={edit?.mandatory ?? obligation.mandatory}
+                          onChange={(e) =>
+                            setObligationField(obligation.id, "mandatory", e.target.checked)
+                          }
+                          className="size-4 accent-counter focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-counter"
+                        />
+                        This one is mandatory
+                      </label>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-faint">
+                      due {longDate(obligation.due_date)} · from{" "}
+                      {accountName(accounts, obligation.account_id)} ·{" "}
+                      {obligation.mandatory ? "mandatory" : "optional"}
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+
       {draft.clarifications.length > 0 ? (
         <div className="mb-4 rounded-lg border border-caution/70 bg-raised p-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-caution">
@@ -379,7 +562,7 @@ function Review({
       {draft.unparsed.length > 0 ? (
         <div className="mb-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted">
-            Not read as a goal
+            Not read as a goal or obligation
           </p>
           <ul className="mt-1 grid gap-1">
             {draft.unparsed.map((fragment, index) => (
@@ -395,13 +578,22 @@ function Review({
 
       <button
         type="button"
-        onClick={() => onConfirm({ goals: editedGoals, constraints: mergedConstraints })}
-        disabled={parsedNothing || invalid || isBusy}
+        onClick={() =>
+          onConfirm({
+            goals: editedGoals,
+            constraints: mergedConstraints,
+            // Always the complete set, for the same reason the goals are: the
+            // field replaces rather than appends, so a partial list would drop
+            // the obligations the user confirmed earlier.
+            one_time_obligations: editedObligations,
+          })
+        }
+        disabled={parsedNothing || invalid || obligationInvalid || isBusy}
         className="rounded-lg bg-baseline px-4 py-2 text-sm font-semibold text-canvas transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isSaving ? "Saving…" : "Confirm and update my twin"}
       </button>
-      {invalid ? (
+      {invalid || obligationInvalid ? (
         <p className="mt-2 text-xs text-caution">Fix the highlighted field before saving.</p>
       ) : null}
     </div>

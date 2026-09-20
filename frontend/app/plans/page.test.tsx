@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { FinancialTwin } from "@/lib/types";
+import type { FinancialTwin, GoalCompileResponse, OneTimeObligation } from "@/lib/types";
 import mockTwin from "@/lib/mock/twin.json";
 
 vi.mock("@/lib/api", async () => {
@@ -194,5 +194,146 @@ describe("Plans wiring", () => {
       expect(screen.getByText("Could not save your answer")).toBeInTheDocument(),
     );
     expect(screen.getByText("save rejected")).toBeInTheDocument();
+  });
+});
+
+/**
+ * End to end on the page: a drafted one-time obligation used to be compiled by
+ * the backend, dropped by Confirm and shown nowhere. These cover the whole path
+ * — draft, review, confirm, list, remove.
+ */
+describe("one-time obligations", () => {
+  const INSURANCE: OneTimeObligation = {
+    id: "one_car_insurance",
+    name: "Car insurance",
+    amount: 450,
+    due_date: "2026-10-15",
+    account_id: "acc_checking",
+    mandatory: true,
+    provenance: "declared",
+  };
+
+  const DRAFT: GoalCompileResponse = {
+    user_id: "alex",
+    text: "I owe $450 for car insurance on October 15",
+    goals: [],
+    constraints: [],
+    one_time_obligations: [INSURANCE],
+    clarifications: [],
+    unparsed: [],
+    compiler: "rules",
+  };
+
+  function twinOwing(owed: OneTimeObligation[] | undefined) {
+    return { ...TWIN, one_time_obligations: owed } as FinancialTwin;
+  }
+
+  // `Card` renders an unnamed <section>, so the panel is found by its subtitle.
+  // The composer's review block carries its own aria-labelledby and is the only
+  // named region, which is what keeps the two apart while a draft is open.
+  const panel = () => screen.getByText(/Known one-off expenses you declared/).closest("section")!;
+  const reviewBlock = () => screen.getByRole("region", { name: "One-time obligations" });
+
+  async function describeOne(user: ReturnType<typeof userEvent.setup>) {
+    vi.mocked(api.compileGoal).mockResolvedValue({ data: DRAFT, source: "api" });
+    await user.type(
+      screen.getByLabelText("Describe the goal or obligation"),
+      "I owe $450 for car insurance on October 15",
+    );
+    await user.click(screen.getByRole("button", { name: "Read this back to me" }));
+  }
+
+  it("lists a confirmed obligation in its own panel", async () => {
+    vi.mocked(api.getTwin).mockResolvedValue({ data: twinOwing([INSURANCE]), source: "api" });
+    renderPlans();
+    await waitFor(() => expect(screen.getByText("Car insurance")).toBeInTheDocument());
+    expect(within(panel()).getByText("Car insurance")).toBeInTheDocument();
+    expect(within(panel()).getByText("$450")).toBeInTheDocument();
+  });
+
+  // The detected recurring bills and the declared one-offs are different kinds
+  // of fact and must not become one list (SPEC §3.2).
+  it("keeps it out of the detected recurring panels", async () => {
+    vi.mocked(api.getTwin).mockResolvedValue({ data: twinOwing([INSURANCE]), source: "api" });
+    renderPlans();
+    await waitFor(() => expect(screen.getByText("Car insurance")).toBeInTheDocument());
+    const detected = screen.getByText("Mandatory bills TwinBank must cover").closest("section")!;
+    expect(within(detected).queryByText("Car insurance")).not.toBeInTheDocument();
+  });
+
+  it("says plainly when none are declared", async () => {
+    vi.mocked(api.getTwin).mockResolvedValue({ data: twinOwing([]), source: "api" });
+    renderPlans();
+    await waitFor(() => expect(screen.getByText(/None declared/)).toBeInTheDocument());
+  });
+
+  // An older backend omits the field entirely: "none", not a broken page.
+  it("renders a twin without the field rather than failing", async () => {
+    vi.mocked(api.getTwin).mockResolvedValue({ data: twinOwing(undefined), source: "api" });
+    renderPlans();
+    await waitFor(() => expect(screen.getByText(/None declared/)).toBeInTheDocument());
+    expect(within(panel()).getByText(/None declared/)).toBeInTheDocument();
+  });
+
+  it("reads a drafted obligation back before anything is saved", async () => {
+    const user = userEvent.setup();
+    renderPlans();
+    await waitFor(() => expect(screen.getByRole("textbox")).toBeInTheDocument());
+    await describeOne(user);
+
+    await waitFor(() => expect(reviewBlock()).toBeInTheDocument());
+    expect(within(reviewBlock()).getByText("Car insurance")).toBeInTheDocument();
+    // SPEC §4: nothing reaches the twin before the confirmation, and the panel
+    // of confirmed ones still says there are none.
+    expect(within(panel()).getByText(/None declared/)).toBeInTheDocument();
+    expect(api.saveGoals).not.toHaveBeenCalled();
+  });
+
+  // The regression this whole change exists for: Confirm used to send only
+  // `{ goals, constraints }`, so the drafted obligation was silently dropped.
+  it("sends the drafted obligation when Confirm is pressed", async () => {
+    const user = userEvent.setup();
+    renderPlans();
+    await waitFor(() => expect(screen.getByRole("textbox")).toBeInTheDocument());
+    await describeOne(user);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Confirm and update my twin/ })).toBeEnabled(),
+    );
+    await user.click(screen.getByRole("button", { name: /Confirm and update my twin/ }));
+
+    await waitFor(() => expect(api.saveGoals).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.saveGoals).mock.calls[0][1].one_time_obligations).toEqual([INSURANCE]);
+  });
+
+  // Removing sends the whole declared set back minus that one: the endpoint
+  // replaces rather than appends, so the goals have to travel with it.
+  it("removes one without dropping the goals or the reserve", async () => {
+    vi.mocked(api.getTwin).mockResolvedValue({ data: twinOwing([INSURANCE]), source: "api" });
+    const user = userEvent.setup();
+    renderPlans();
+    await waitFor(() => expect(screen.getByText("Car insurance")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "Remove Car insurance" }));
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+
+    await waitFor(() => expect(api.saveGoals).toHaveBeenCalledTimes(1));
+    const request = vi.mocked(api.saveGoals).mock.calls[0][1];
+    expect(request.one_time_obligations).toEqual([]);
+    expect(request.goals).toEqual(TWIN.goals);
+    expect(request.constraints).toEqual(TWIN.constraints);
+  });
+
+  it("reports a failed removal where the page can show it", async () => {
+    vi.mocked(api.getTwin).mockResolvedValue({ data: twinOwing([INSURANCE]), source: "api" });
+    vi.mocked(api.saveGoals).mockRejectedValue(new Error("obligation save rejected"));
+    const user = userEvent.setup();
+    renderPlans();
+    await waitFor(() => expect(screen.getByText("Car insurance")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "Remove Car insurance" }));
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+    await waitFor(() =>
+      expect(screen.getByText("obligation save rejected")).toBeInTheDocument(),
+    );
   });
 });

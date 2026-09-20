@@ -10,10 +10,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import { GOALS_SCOPE } from "@/lib/scopes";
 import type {
+  Account,
   FinancialConstraint,
   Goal,
   GoalClarification,
   GoalCompileResponse,
+  OneTimeObligation,
 } from "@/lib/types";
 import { GoalComposer } from "./GoalComposer";
 
@@ -25,6 +27,21 @@ const HOUSING: Goal = {
   target_amount: 1600,
   deadline: "2027-05-01",
   current_amount: 250,
+  provenance: "declared",
+};
+
+const ACCOUNTS: Account[] = [
+  { id: "acc_checking", name: "Everyday Checking", type: "checking", balance: 1340 },
+  { id: "acc_savings", name: "Savings", type: "savings", balance: 1800 },
+];
+
+const INSURANCE: OneTimeObligation = {
+  id: "one_car_insurance",
+  name: "Car insurance",
+  amount: 450,
+  due_date: "2026-10-15",
+  account_id: "acc_checking",
+  mandatory: true,
   provenance: "declared",
 };
 
@@ -66,6 +83,8 @@ function renderComposer(props: Partial<Parameters<typeof GoalComposer>[0]> = {})
     <GoalComposer
       goals={[HOUSING]}
       constraints={[RESERVE]}
+      owed={[]}
+      accounts={ACCOUNTS}
       asOf={AS_OF}
       draft={null}
       isCompiling={false}
@@ -79,7 +98,7 @@ function renderComposer(props: Partial<Parameters<typeof GoalComposer>[0]> = {})
   return { ...view, onCompile, onConfirm, onDiscard, user: userEvent.setup() };
 }
 
-const box = () => screen.getByLabelText("Describe the goal");
+const box = () => screen.getByLabelText("Describe the goal or obligation");
 const readBack = () => screen.getByRole("button", { name: /Read (this back to me|it again)/ });
 const confirm = () => screen.getByRole("button", { name: /Confirm and update my twin|Saving…/ });
 
@@ -128,6 +147,8 @@ describe("composing", () => {
       <GoalComposer
         goals={[HOUSING]}
         constraints={[RESERVE]}
+        owed={[]}
+        accounts={ACCOUNTS}
         asOf={AS_OF}
         draft={draftOf()}
         isCompiling={false}
@@ -161,6 +182,8 @@ describe("reviewing a draft", () => {
       <GoalComposer
         goals={[HOUSING]}
         constraints={[RESERVE]}
+        owed={[]}
+        accounts={ACCOUNTS}
         asOf={AS_OF}
         draft={draftOf({ compiler: "llm" })}
         isCompiling={false}
@@ -270,7 +293,7 @@ describe("reviewing a draft", () => {
 
   it("lists the fragments it could not read as a goal", () => {
     renderComposer({ draft: draftOf({ unparsed: ["and something about a car"] }) });
-    expect(screen.getByText("Not read as a goal")).toBeInTheDocument();
+    expect(screen.getByText("Not read as a goal or obligation")).toBeInTheDocument();
     expect(screen.getByText("“and something about a car”")).toBeInTheDocument();
   });
 
@@ -291,6 +314,8 @@ describe("reviewing a draft", () => {
       <GoalComposer
         goals={[HOUSING]}
         constraints={[RESERVE]}
+        owed={[]}
+        accounts={ACCOUNTS}
         asOf={AS_OF}
         draft={draftOf()}
         isCompiling={false}
@@ -377,6 +402,8 @@ describe("correcting a drafted goal", () => {
       <GoalComposer
         goals={[HOUSING]}
         constraints={[RESERVE]}
+        owed={[]}
+        accounts={ACCOUNTS}
         asOf={AS_OF}
         draft={draftOf({ goals: [{ ...HOUSING, target_amount: 1800 }] })}
         isCompiling={false}
@@ -396,6 +423,8 @@ describe("correcting a drafted goal", () => {
       <GoalComposer
         goals={[HOUSING]}
         constraints={[RESERVE]}
+        owed={[]}
+        accounts={ACCOUNTS}
         asOf={AS_OF}
         draft={draftOf({ text: "a different sentence" })}
         isCompiling={false}
@@ -520,5 +549,245 @@ describe("answering a clarification", () => {
     expect(confirm()).toBeEnabled();
     await user.click(confirm());
     expect(onConfirm.mock.calls[0][0].goals).toHaveLength(2);
+  });
+});
+
+/**
+ * A drafted one-time obligation is the case that used to be thrown away: the
+ * backend compiled it correctly and Confirm sent only `{ goals, constraints }`,
+ * so it never reached the twin and nothing on screen said so.
+ */
+describe("reviewing a drafted one-time obligation", () => {
+  const DRAFTED = draftOf({
+    text: "I owe $450 for car insurance on October 15",
+    goals: [],
+    one_time_obligations: [INSURANCE],
+  });
+
+  const block = () => screen.getByRole("region", { name: "One-time obligations" });
+
+  it("reads the drafted obligation back", () => {
+    renderComposer({ draft: DRAFTED });
+    expect(within(block()).getByText("Car insurance")).toBeInTheDocument();
+  });
+
+  // SPEC §3.2: combining the workflows must not turn them into one list.
+  it("keeps it out of the goal and constraint list", () => {
+    renderComposer({ draft: draftOf({ one_time_obligations: [INSURANCE] }) });
+    const goalRow = screen.getByText("Summer housing").closest("ul")!;
+    expect(within(goalRow).queryByText("Car insurance")).not.toBeInTheDocument();
+  });
+
+  it("says these are already committed, not a purchase being tried out", () => {
+    renderComposer({ draft: DRAFTED });
+    expect(within(block()).getByText(/part of your baseline future/)).toBeInTheDocument();
+  });
+
+  // SPEC §2: provenance is always declared; it is never detected.
+  it("never presents it as something TwinBank detected", () => {
+    renderComposer({ draft: DRAFTED });
+    expect(within(block()).getByText("You declared")).toBeInTheDocument();
+    expect(within(block()).queryByText("Observed")).not.toBeInTheDocument();
+  });
+
+  it("labels a drafted obligation new", () => {
+    renderComposer({ draft: DRAFTED });
+    expect(within(block()).getByText("new")).toBeInTheDocument();
+  });
+
+  it("marks a re-described obligation as an update rather than a duplicate", () => {
+    renderComposer({
+      owed: [INSURANCE],
+      draft: draftOf({ one_time_obligations: [{ ...INSURANCE, amount: 500 }] }),
+    });
+    expect(within(block()).getByText("updated")).toBeInTheDocument();
+    expect(within(block()).getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  // The whole set is sent, so a confirmed obligation the text never mentioned
+  // has to be on screen too, or the list would describe less than it saves.
+  it("carries an obligation the text did not mention, read-only", () => {
+    renderComposer({ owed: [INSURANCE], draft: draftOf() });
+    const row = within(block()).getByText("Car insurance").closest("li")!;
+    expect(within(row).getByText("unchanged")).toBeInTheDocument();
+    expect(within(row).getByText(/due October 15, 2026 · from Everyday Checking · mandatory/))
+      .toBeInTheDocument();
+  });
+
+  it("shows nothing at all when there is no obligation on either side", () => {
+    renderComposer({ draft: draftOf() });
+    expect(screen.queryByRole("region", { name: "One-time obligations" })).not.toBeInTheDocument();
+  });
+
+  // An older backend omits the field. That is "none drafted", never an error.
+  it("treats a response without the field as none drafted", () => {
+    const older: GoalCompileResponse = draftOf();
+    delete older.one_time_obligations;
+    renderComposer({ draft: older });
+    expect(screen.queryByRole("region", { name: "One-time obligations" })).not.toBeInTheDocument();
+    expect(confirm()).toBeEnabled();
+  });
+
+  // Text that drafted only an obligation used to count as "parsed nothing",
+  // because that test only looked at goals and constraints.
+  it("is saveable on its own, with no goal in the text", () => {
+    renderComposer({ draft: DRAFTED });
+    expect(screen.queryByText(/Nothing here is complete enough to save yet/)).toBeNull();
+    expect(confirm()).toBeEnabled();
+  });
+});
+
+describe("confirming a one-time obligation", () => {
+  it("sends the drafted obligation with the goals", async () => {
+    const { onConfirm, user } = renderComposer({
+      draft: draftOf({ one_time_obligations: [INSURANCE] }),
+    });
+    await user.click(confirm());
+    expect(onConfirm.mock.calls[0][0].one_time_obligations).toEqual([INSURANCE]);
+  });
+
+  // The field replaces rather than appends, so a partial list would silently
+  // delete the obligations confirmed earlier.
+  it("sends the complete set, not only what was drafted", async () => {
+    const tuition: OneTimeObligation = {
+      ...INSURANCE,
+      id: "one_tuition",
+      name: "Tuition",
+      amount: 2400,
+      due_date: "2027-01-05",
+    };
+    const { onConfirm, user } = renderComposer({
+      owed: [tuition],
+      draft: draftOf({ one_time_obligations: [INSURANCE] }),
+    });
+    await user.click(confirm());
+    expect(
+      onConfirm.mock.calls[0][0].one_time_obligations.map((o: OneTimeObligation) => o.id),
+    ).toEqual(["one_tuition", "one_car_insurance"]);
+  });
+
+  it("sends the ones already confirmed even when the text drafted none", async () => {
+    const { onConfirm, user } = renderComposer({ owed: [INSURANCE], draft: draftOf() });
+    await user.click(confirm());
+    expect(onConfirm.mock.calls[0][0].one_time_obligations).toEqual([INSURANCE]);
+  });
+
+  it("sends an empty list when there is nothing owed, rather than omitting it", async () => {
+    const { onConfirm, user } = renderComposer({ draft: draftOf() });
+    await user.click(confirm());
+    expect(onConfirm.mock.calls[0][0].one_time_obligations).toEqual([]);
+  });
+});
+
+describe("correcting a drafted one-time obligation", () => {
+  const drafted = (overrides: Partial<OneTimeObligation> = {}) =>
+    draftOf({ goals: [], one_time_obligations: [{ ...INSURANCE, ...overrides }] });
+
+  it("opens the drafted row for editing", () => {
+    renderComposer({ draft: drafted() });
+    expect(screen.getByLabelText("Amount")).toHaveValue(450);
+    expect(screen.getByLabelText("Due date")).toHaveValue("2026-10-15");
+    expect(screen.getByLabelText("Paid from")).toHaveValue("acc_checking");
+    expect(screen.getByLabelText("This one is mandatory")).toBeChecked();
+  });
+
+  it("leaves a carried-through obligation read-only", () => {
+    renderComposer({ owed: [INSURANCE], draft: draftOf() });
+    expect(screen.queryByLabelText("Amount")).not.toBeInTheDocument();
+  });
+
+  it("saves the corrected amount rather than the one that was read", async () => {
+    const { onConfirm, user } = renderComposer({ draft: drafted() });
+    await user.clear(screen.getByLabelText("Amount"));
+    await user.type(screen.getByLabelText("Amount"), "500");
+    await user.click(confirm());
+    expect(onConfirm.mock.calls[0][0].one_time_obligations[0].amount).toBe(500);
+  });
+
+  it("saves a corrected name", async () => {
+    const { onConfirm, user } = renderComposer({ draft: drafted() });
+    await user.clear(screen.getByLabelText("What it is"));
+    await user.type(screen.getByLabelText("What it is"), "Insurance premium");
+    await user.click(confirm());
+    expect(onConfirm.mock.calls[0][0].one_time_obligations[0].name).toBe("Insurance premium");
+  });
+
+  it("saves a corrected funding account", async () => {
+    const { onConfirm, user } = renderComposer({ draft: drafted() });
+    await user.selectOptions(screen.getByLabelText("Paid from"), "acc_savings");
+    await user.click(confirm());
+    expect(onConfirm.mock.calls[0][0].one_time_obligations[0].account_id).toBe("acc_savings");
+  });
+
+  it("offers only the accounts the twin holds", () => {
+    renderComposer({ draft: drafted() });
+    const options = within(screen.getByLabelText("Paid from")).getAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual(["Everyday Checking", "Savings"]);
+  });
+
+  it("saves a corrected mandatory flag", async () => {
+    const { onConfirm, user } = renderComposer({ draft: drafted() });
+    await user.click(screen.getByLabelText("This one is mandatory"));
+    await user.click(confirm());
+    expect(onConfirm.mock.calls[0][0].one_time_obligations[0].mandatory).toBe(false);
+  });
+
+  it("refuses an amount of zero, as the backend does", async () => {
+    const { user } = renderComposer({ draft: drafted() });
+    await user.clear(screen.getByLabelText("Amount"));
+    await user.type(screen.getByLabelText("Amount"), "0");
+    expect(screen.getByText("Enter an amount above $0.")).toBeInTheDocument();
+    expect(confirm()).toBeDisabled();
+  });
+
+  it("refuses a due date that is not after the twin's as_of", async () => {
+    const { user } = renderComposer({ draft: drafted() });
+    await user.clear(screen.getByLabelText("Due date"));
+    await user.type(screen.getByLabelText("Due date"), "2026-01-01");
+    expect(screen.getByText(`Pick a date after ${AS_OF}.`)).toBeInTheDocument();
+    expect(confirm()).toBeDisabled();
+  });
+
+  it("says which field to fix before saving", async () => {
+    const { user } = renderComposer({ draft: drafted() });
+    await user.clear(screen.getByLabelText("Amount"));
+    expect(screen.getByText("Fix the highlighted field before saving.")).toBeInTheDocument();
+  });
+
+  // Blocked, so nothing half-typed is ever sent.
+  it("sends nothing at all while a row is invalid", async () => {
+    const { onConfirm, user } = renderComposer({ draft: drafted() });
+    await user.clear(screen.getByLabelText("Amount"));
+    await user.click(confirm());
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  // A correction typed against one reading must not carry over to the next.
+  it("drops corrections when the text is read again", async () => {
+    const { rerender, user } = renderComposer({ draft: drafted() });
+    await user.clear(screen.getByLabelText("Amount"));
+    await user.type(screen.getByLabelText("Amount"), "999");
+    expect(screen.getByLabelText("Amount")).toHaveValue(999);
+
+    rerender(
+      <GoalComposer
+        goals={[HOUSING]}
+        constraints={[RESERVE]}
+        owed={[]}
+        accounts={ACCOUNTS}
+        asOf={AS_OF}
+        draft={draftOf({
+          text: "a different sentence",
+          goals: [],
+          one_time_obligations: [INSURANCE],
+        })}
+        isCompiling={false}
+        isBusy={false}
+        onCompile={vi.fn()}
+        onConfirm={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText("Amount")).toHaveValue(450);
   });
 });
