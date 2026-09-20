@@ -9,8 +9,9 @@ the LLM must not invent goals or financial facts):
   rules can read from the fragment wins over the LLM's reading.
 Anything that fails a check becomes a clarification question instead of a guess.
 
-Off by default. GOAL_COMPILER=llm plus ANTHROPIC_API_KEY turns it on; without them,
-or when the call fails, /goals/compile uses the rules compiler (compiler="rules").
+On by default, but only where ANTHROPIC_API_KEY is set. Without a key, with
+GOAL_COMPILER=rules, or when the call fails, /goals/compile uses the rules compiler
+(compiler="rules"), so a fresh clone with no credentials still runs.
 """
 
 import logging
@@ -102,7 +103,7 @@ Put parts of the text that ask for nothing in unparsed, copied exactly."""
 
 
 def llm_enabled() -> bool:
-    return os.getenv("GOAL_COMPILER", "rules").lower() == "llm" and bool(os.getenv("ANTHROPIC_API_KEY"))
+    return os.getenv("GOAL_COMPILER", "llm").lower() == "llm" and bool(os.getenv("ANTHROPIC_API_KEY"))
 
 
 def extract_with_claude(text: str, as_of: date) -> LlmDraft | None:
@@ -285,8 +286,9 @@ def compile_goals_auto(
 
     Note the LLM path drafts no obligation classifications: its item kinds do not
     include one, so an answer about a detected obligation is only recognised by the
-    rules compiler. GOAL_COMPILER is "rules" by default, and every fallback below
-    lands there, so the demo is unaffected.
+    rules compiler. GOAL_COMPILER is "llm" by default, but it only takes effect when a
+    key is set, and every fallback below lands on the rules compiler, so the demo
+    still runs without one.
     """
     if not llm_enabled():
         return compile_goals(user_id, text, as_of, accounts, detected)
