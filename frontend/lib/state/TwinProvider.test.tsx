@@ -40,6 +40,7 @@ function Probe() {
       <span data-testid="error">{t.twinError ?? "none"}</span>
       <span data-testid="simulation">{t.simulation ? t.simulation.simulation_id : "none"}</span>
       <span data-testid="optimization">{t.optimization ? "some" : "none"}</span>
+      <span data-testid="name">{t.twin?.display_name ?? "none"}</span>
       <span data-testid="stale">{t.planChanged ? "stale" : "current"}</span>
       <span data-testid="commit-result">{t.commitResult ?? "none"}</span>
       <span data-testid="commit-error">{t.commitError ?? "none"}</span>
@@ -47,6 +48,8 @@ function Probe() {
       <button onClick={() => t.setMinimum(300)}>min</button>
       <button onClick={() => void t.optimize()}>opt</button>
       <button onClick={() => void t.commit([{ ...SIMULATION.request.events[0] }])}>commit</button>
+      {/* `refreshTwin` rejects to its caller, exactly as the Obligations page handles it. */}
+      <button onClick={() => t.refreshTwin().catch(() => {})}>refresh</button>
     </div>
   );
 }
@@ -396,6 +399,63 @@ describe("TwinProvider goals", () => {
     await user.click(screen.getByText("answer"));
     await waitFor(() => expect(screen.getByTestId("simulation-2")).toHaveTextContent("none"));
     expect(api.runOptimization).not.toHaveBeenCalled();
+  });
+});
+
+describe("TwinProvider refreshTwin", () => {
+  /** What the Obligations page calls after a 404/409 stale write (G-16). */
+  const RELOADED = { ...TWIN, display_name: "Alex reloaded" } as FinancialTwin;
+
+  it("replaces the canonical twin and its source", async () => {
+    const user = userEvent.setup();
+    renderProbe();
+    await waitFor(() => expect(screen.getByTestId("twin")).toHaveTextContent("alex"));
+    vi.mocked(api.getTwin).mockResolvedValue({ data: RELOADED, source: "api" });
+
+    await user.click(screen.getByText("refresh"));
+
+    await waitFor(() => expect(screen.getByTestId("name")).toHaveTextContent("Alex reloaded"));
+    expect(screen.getByTestId("source")).toHaveTextContent("api");
+    expect(api.getTwin).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears the simulation and alternatives built on the twin it replaced", async () => {
+    const user = userEvent.setup();
+    renderProbe();
+    await waitFor(() => expect(screen.getByTestId("twin")).toHaveTextContent("alex"));
+
+    await user.click(screen.getByText("sim"));
+    await waitFor(() => expect(screen.getByTestId("simulation")).not.toHaveTextContent("none"));
+    await user.click(screen.getByText("opt"));
+    await waitFor(() => expect(screen.getByTestId("optimization")).toHaveTextContent("some"));
+
+    await user.click(screen.getByText("refresh"));
+
+    await waitFor(() => expect(screen.getByTestId("simulation")).toHaveTextContent("none"));
+    expect(screen.getByTestId("optimization")).toHaveTextContent("none");
+  });
+
+  it("goes offline when the reload can only reach the fixture", async () => {
+    const user = userEvent.setup();
+    renderProbe();
+    await waitFor(() => expect(screen.getByTestId("offline")).toHaveTextContent("no"));
+    vi.mocked(api.getTwin).mockResolvedValue({ data: TWIN, source: "fixture" });
+
+    await user.click(screen.getByText("refresh"));
+
+    await waitFor(() => expect(screen.getByTestId("offline")).toHaveTextContent("yes"));
+  });
+
+  it("rejects to its caller rather than blanking the twin on screen", async () => {
+    const user = userEvent.setup();
+    renderProbe();
+    await waitFor(() => expect(screen.getByTestId("twin")).toHaveTextContent("alex"));
+    vi.mocked(api.getTwin).mockRejectedValue(new Error("still down"));
+
+    await user.click(screen.getByText("refresh"));
+
+    await waitFor(() => expect(api.getTwin).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("twin")).toHaveTextContent("alex");
   });
 });
 

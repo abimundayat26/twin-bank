@@ -30,11 +30,16 @@ import type {
   GoalCompileRequest,
   GoalCompileResponse,
   MinimumBalanceRequest,
+  ObligationsPayload,
+  OneTimeObligationChanges,
+  OneTimeObligationCreate,
   OptimizationRequest,
   OptimizationResponse,
   OverviewPayload,
   ProposalDecisionRequest,
   ProposalDecisionResponse,
+  RecurringObligationChanges,
+  RecurringObligationCreate,
   SimulationRequest,
   SimulationResponse,
 } from "./types";
@@ -155,6 +160,87 @@ export async function getForecast(userId: string): Promise<Loaded<ForecastPayloa
 export async function getOverview(userId: string): Promise<Loaded<OverviewPayload>> {
   const data = await getJson<OverviewPayload>(
     `/twin/${encodeURIComponent(userId)}/overview`,
+  );
+  return { data, source: "api" };
+}
+
+export async function getObligations(
+  userId: string,
+): Promise<Loaded<ObligationsPayload>> {
+  const data = await getJson<ObligationsPayload>(
+    `/twin/${encodeURIComponent(userId)}/obligations`,
+  );
+  return { data, source: "api" };
+}
+
+function obligationsPath(userId: string, kind: "recurring" | "one-time"): string {
+  return `/twin/${encodeURIComponent(userId)}/obligations/${kind}`;
+}
+
+export async function createRecurringObligation(
+  userId: string,
+  request: RecurringObligationCreate,
+): Promise<Loaded<FinancialTwin>> {
+  const data = await getJson<FinancialTwin>(obligationsPath(userId, "recurring"), {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+  return { data, source: "api" };
+}
+
+export async function updateRecurringObligation(
+  userId: string,
+  obligationId: string,
+  request: RecurringObligationChanges,
+): Promise<Loaded<FinancialTwin>> {
+  const data = await getJson<FinancialTwin>(
+    `${obligationsPath(userId, "recurring")}/${encodeURIComponent(obligationId)}`,
+    { method: "PUT", body: JSON.stringify(request) },
+  );
+  return { data, source: "api" };
+}
+
+export async function deleteRecurringObligation(
+  userId: string,
+  obligationId: string,
+): Promise<Loaded<FinancialTwin>> {
+  const data = await getJson<FinancialTwin>(
+    `${obligationsPath(userId, "recurring")}/${encodeURIComponent(obligationId)}`,
+    { method: "DELETE" },
+  );
+  return { data, source: "api" };
+}
+
+export async function createOneTimeObligation(
+  userId: string,
+  request: OneTimeObligationCreate,
+): Promise<Loaded<FinancialTwin>> {
+  const data = await getJson<FinancialTwin>(obligationsPath(userId, "one-time"), {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+  return { data, source: "api" };
+}
+
+export async function updateOneTimeObligation(
+  userId: string,
+  obligationId: string,
+  request: OneTimeObligationChanges,
+): Promise<Loaded<FinancialTwin>> {
+  const data = await getJson<FinancialTwin>(
+    `${obligationsPath(userId, "one-time")}/${encodeURIComponent(obligationId)}`,
+    { method: "PUT", body: JSON.stringify(request) },
+  );
+  return { data, source: "api" };
+}
+
+export async function deleteOneTimeObligation(
+  userId: string,
+  obligationId: string,
+): Promise<Loaded<FinancialTwin>> {
+  const data = await getJson<FinancialTwin>(
+    `${obligationsPath(userId, "one-time")}/${encodeURIComponent(obligationId)}`,
+    { method: "DELETE" },
   );
   return { data, source: "api" };
 }
