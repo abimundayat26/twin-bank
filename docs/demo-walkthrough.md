@@ -286,3 +286,9 @@ the form, correct the invalid amount, account, date, or declaration, and submit 
 canonical laptop story, restore the defaults listed in step 5. If the backend itself is no longer
 reachable, use the clearly labelled offline recovery path instead of presenting the saved example
 as a response to new input.
+
+## Rehearsal screenshots
+
+- [Checking trajectory at 375 px](screenshots/trajectory-checking-375.png)
+- [Checking trajectory at 1440 px](screenshots/trajectory-checking-1440.png)
+- [Forecast & Data with the long ambiguous-transfer label at 320 px](screenshots/forecast-data-320.png)

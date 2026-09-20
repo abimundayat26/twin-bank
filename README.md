@@ -2,7 +2,8 @@
 
 A personal financial digital twin: *your bank knows what happened; TwinBank shows what happens next.*
 
-See [`SPEC.md`](SPEC.md) for the product spec and [`CLAUDE.md`](CLAUDE.md) for team and Claude Code working rules.
+See [`SPEC.md`](SPEC.md) for the product spec, [`docs/demo-walkthrough.md`](docs/demo-walkthrough.md)
+for the repeatable Alex presentation, and [`CLAUDE.md`](CLAUDE.md) for team and Claude Code working rules.
 
 ## Status
 
