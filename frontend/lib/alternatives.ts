@@ -64,7 +64,7 @@ export function alternativeRows(
   // is rather than recommended (G-9's honesty applied to a ranking).
   const best = recommended_id
     ? candidates.find((c) => c.id === recommended_id)
-    : candidates[0];
+    : candidates.find((c) => !used.has(c.id));
   add("best", recommended_id ? "Best alternative" : "Closest to your limits", best);
 
   // A different lever, not a slightly different version of the same one.
