@@ -11,6 +11,7 @@ from backend.fixtures import load_raw_transactions
 from backend.ingest.build import latest_transaction_date, rebuild
 from backend.ingest.normalize import normalize_all
 from backend.llm_goal_compiler import compile_goals_auto
+from backend.overview import build_overview
 from backend.schemas import (
     AssistantMessageRequest,
     AssistantMessageResponse,
@@ -23,6 +24,7 @@ from backend.schemas import (
     MinimumBalanceRequest,
     OptimizationRequest,
     OptimizationResponse,
+    OverviewPayload,
     ProposalDecisionRequest,
     ProposalDecisionResponse,
     SimulationRequest,
@@ -61,6 +63,11 @@ def twin_for(user_id: str) -> FinancialTwin:
 @app.get("/twin/{user_id}", response_model=FinancialTwin)
 def get_twin(user_id: str) -> FinancialTwin:
     return twin_for(user_id)
+
+
+@app.get("/twin/{user_id}/overview", response_model=OverviewPayload)
+def get_overview(user_id: str) -> OverviewPayload:
+    return build_overview(twin_for(user_id))
 
 
 @app.post("/twin/build", response_model=FinancialTwin)
