@@ -77,6 +77,8 @@ export interface TwinState {
   answerClarification: (obligationId: string, category: ObligationCategory) => void;
   /** Replaces the twin with one the backend has already saved (see `applyTwin`). */
   applyTwin: (next: FinancialTwin) => void;
+  /** Reloads the canonical twin after a stale 404/409 write. */
+  refreshTwin: () => Promise<void>;
   setMinimum: (amount: number) => void;
   compileGoalText: (text: string) => Promise<void>;
   confirmGoals: (request: DeclaredGoalsRequest) => Promise<void>;
@@ -203,6 +205,16 @@ export function TwinProvider({ children }: { children: ReactNode }) {
     latestRequest.current += 1;
     setTwin(next);
     setSource("api");
+    setSimulation(null);
+    setSimulationError(undefined);
+    clearOptimization();
+  }
+
+  async function refreshTwin() {
+    const loaded = await getTwin(DEMO_USER_ID);
+    latestRequest.current += 1;
+    setTwin(loaded.data);
+    setSource(loaded.source);
     setSimulation(null);
     setSimulationError(undefined);
     clearOptimization();
@@ -343,6 +355,7 @@ export function TwinProvider({ children }: { children: ReactNode }) {
     optimizationError,
     answerClarification,
     applyTwin,
+    refreshTwin,
     setMinimum,
     compileGoalText,
     confirmGoals,
