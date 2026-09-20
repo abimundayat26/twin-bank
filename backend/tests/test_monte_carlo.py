@@ -3,6 +3,7 @@ from datetime import date
 
 import pytest
 
+from backend.fixtures import load_twin
 from backend.schemas import SeasonalProfile, SimulationEvent, SimulationRequest, VariableSpendingDistribution
 from backend.simulation import run_simulation
 from backend.simulation.engine import SimulationError, compare, simulate_scenario
@@ -140,8 +141,17 @@ def test_baseline_and_counterfactual_share_sampled_conditions(twin):
 # --- Alex scenarios -------------------------------------------------------------------
 
 
-def test_laptop_increases_downside(twin):
-    mc = run_monte_carlo(twin, [purchase(800)], seed=11)
+def test_laptop_increases_downside():
+    """Against Alex's own twin, seasonal profiles and all, because that is the claim.
+
+    Every other test in this module takes the flat twin so its arithmetic can be
+    checked by hand. This one cannot: the laptop lands in the busy autumn, and it
+    is that concentration of spending in the months right after the purchase that
+    takes the summer housing goal out of reach. Flatten the same annual spending
+    and the median future still makes the goal, which would leave this test
+    asserting the opposite of what the demo shows.
+    """
+    mc = run_monte_carlo(load_twin(), [purchase(800)], seed=11)
     base, cf = mc.baseline, mc.counterfactual
     assert cf.ending_balance < base.ending_balance
     assert cf.prob_low_balance > base.prob_low_balance + 0.5
