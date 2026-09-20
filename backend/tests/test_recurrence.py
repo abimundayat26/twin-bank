@@ -29,6 +29,7 @@ from backend.ingest.recurrence import (
     detect_obligations,
     detect_structure,
     detect_variable_spending,
+    display_name,
     fortnight_blocks,
     merchant_key,
     slug,
@@ -90,6 +91,37 @@ def test_merchant_key_keeps_an_all_numeric_payee_distinct() -> None:
 
 def test_slug_is_id_safe() -> None:
     assert slug("ONLINE TRANSFER TO ***4471") == "online_transfer_to_4471"
+
+
+def test_display_name_keeps_the_numbering_the_key_drops() -> None:
+    """Grouping ignores the account number; the name the user reads must not.
+
+    "Online Transfer To" trails off mid-sentence and says less than the
+    statement did.
+    """
+    transfers = monthly_series(5, 75.0, "ONLINE TRANSFER TO ***4471", "transfer", [1, 3, 5])
+    assert merchant_key(transfers[0].description) == "ONLINE TRANSFER TO"
+    assert display_name(transfers) == "Online Transfer To ***4471"
+
+
+def test_display_name_takes_the_commonest_line_and_breaks_ties_alphabetically() -> None:
+    """A rebuild must name a merchant the same way twice."""
+    visits = [
+        txn(date(2026, 1, 4), -22.0, "KROGER #418", "groceries", index=1),
+        txn(date(2026, 2, 4), -22.0, "KROGER #212", "groceries", index=2),
+        txn(date(2026, 3, 4), -22.0, "KROGER #418", "groceries", index=3),
+    ]
+    assert display_name(visits) == "Kroger #418"
+    assert display_name(visits[:2]) == "Kroger #212"
+
+
+def test_an_obligation_is_named_after_the_statement_line() -> None:
+    transfers = monthly_series(5, 75.0, "ONLINE TRANSFER TO ***4471", "transfer", [1, 3, 4, 7, 9])
+    (obligation,) = detect_obligations(transfers, date(2026, 1, 1), AS_OF)[0]
+
+    # The id still comes from the key, so overrides and answers survive a rebuild.
+    assert obligation.id == "obl_online_transfer_to"
+    assert obligation.name == "Online Transfer To ***4471"
 
 
 # --- Cadence ------------------------------------------------------------------
