@@ -6,13 +6,15 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend import simulation_store
-from backend import twin_store
+from backend import assistant, assistant_store, simulation_store, twin_store
 from backend.fixtures import load_raw_transactions
 from backend.ingest.build import latest_transaction_date, rebuild
 from backend.ingest.normalize import normalize_all
 from backend.llm_goal_compiler import compile_goals_auto
 from backend.schemas import (
+    AssistantMessageRequest,
+    AssistantMessageResponse,
+    AssistantOpening,
     ClarificationResponseRequest,
     DeclaredGoalsRequest,
     FinancialTwin,
@@ -21,6 +23,8 @@ from backend.schemas import (
     MinimumBalanceRequest,
     OptimizationRequest,
     OptimizationResponse,
+    ProposalDecisionRequest,
+    ProposalDecisionResponse,
     SimulationRequest,
     SimulationResponse,
     TwinBuildRequest,
@@ -177,3 +181,81 @@ def set_goals(user_id: str, request: DeclaredGoalsRequest) -> FinancialTwin:
         )
     except twin_store.InvalidDeclaration as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+# --- Assistant ----------------------------------------------------------------
+#
+# The chat drafts and asks; it never writes. Accepting a card is the only thing
+# here that touches the twin (frontend/SPEC.md AS-1, AS-15).
+
+
+@app.get("/assistant/opening/{user_id}", response_model=AssistantOpening)
+def assistant_opening(user_id: str) -> AssistantOpening:
+    """At most two questions about detected payments TwinBank cannot categorise (AS-9)."""
+    return AssistantOpening(questions=assistant.opening_questions(twin_for(user_id)))
+
+
+@app.post("/assistant/message", response_model=AssistantMessageResponse)
+def assistant_message(request: AssistantMessageRequest) -> AssistantMessageResponse:
+    """Read one message into drafts and questions. The twin is unchanged (AS-1)."""
+    twin = twin_for(request.user_id)
+    text = request.text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="Type something for me to read.")
+    conversation = assistant_store.conversation(request.conversation_id)
+    if request.in_reply_to is not None:
+        # AS-11: only the frontend decides a message is an answer, and only a question
+        # this process still holds can be answered.
+        earlier = assistant_store.text_behind(conversation, request.in_reply_to)
+        if earlier is None:
+            raise HTTPException(
+                status_code=422,
+                detail="That question has expired. Please type the full request again.",
+            )
+        text = f"{earlier} {text}"
+    reading = assistant.read_message(twin, text)
+    message_id = assistant_store.new_id("msg")
+    conversation.remember(text)
+    if reading.questions:
+        conversation.leave_open(message_id, text)
+    assistant_store.save_proposals(reading.proposals, twin.user_id)
+    return AssistantMessageResponse(
+        conversation_id=conversation.conversation_id,
+        message_id=message_id,
+        reply=reading.reply,
+        read_by=reading.read_by,
+        proposals=reading.proposals,
+        questions=reading.questions,
+        simulate_prefill=reading.simulate_prefill,
+        unparsed=reading.unparsed,
+    )
+
+
+@app.post("/assistant/proposals/{proposal_id}/decision", response_model=ProposalDecisionResponse)
+def decide_proposal(
+    proposal_id: str, request: ProposalDecisionRequest
+) -> ProposalDecisionResponse:
+    """Accept or reject one draft. Deciding twice the same way changes nothing (AS-15)."""
+    stored = assistant_store.get_proposal(proposal_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="That suggestion has expired.")
+    wanted = "accepted" if request.decision == "accept" else "rejected"
+    if stored.status != "pending":
+        if stored.status != wanted:
+            raise HTTPException(
+                status_code=409, detail=f"You already {stored.status[:-1]} that suggestion."
+            )
+        return ProposalDecisionResponse(
+            proposal_id=proposal_id,
+            status=stored.status,
+            twin=twin_store.get_twin() if wanted == "accepted" else None,
+        )
+    if wanted == "rejected":
+        assistant_store.set_status(proposal_id, "rejected")
+        return ProposalDecisionResponse(proposal_id=proposal_id, status="rejected", twin=None)
+    try:
+        twin = assistant.apply_proposal(stored.proposal)
+    except assistant.NotApplicable as e:
+        raise HTTPException(status_code=409, detail="That no longer applies. Ask again.") from e
+    assistant_store.set_status(proposal_id, "accepted")
+    return ProposalDecisionResponse(proposal_id=proposal_id, status="accepted", twin=twin)
