@@ -10,11 +10,14 @@
  * visibly separate panels so combining the workflows does not turn them into
  * one undifferentiated list.
  *
- * The TwinBank Assistant conversation and one-time obligations are specified
- * but not built: both need a shared backend contract first, and this page must
- * not pretend the goal compiler already handles them.
+ * The Assistant chat above the panels is the new way in (frontend/SPEC.md
+ * section 9.2): it drafts goals, limits, bills and what-ifs from a sentence and
+ * writes nothing until a card is accepted. The panels below it stay for now
+ * because they are still how a goal is edited and a bill is classified; the
+ * spec's Goals & Limits side-panel replaces them in its own PR.
  */
 
+import { AssistantChat } from "@/components/assistant/AssistantChat";
 import { GoalCard } from "@/components/GoalCard";
 import { GoalComposer } from "@/components/GoalComposer";
 import { ConstraintsPanel } from "@/components/twin/ConstraintsPanel";
@@ -78,6 +81,10 @@ export default function PlansPage() {
           What {twin.display_name} declared, and what TwinBank still needs to ask. Nothing
           here reaches the Financial Twin until it is confirmed.
         </p>
+      </div>
+
+      <div className="mb-6">
+        <AssistantChat />
       </div>
 
       {twinUpdateError ? (

@@ -6,6 +6,10 @@ import type { FinancialTwin, OptimizationResponse, SimulationResponse } from "@/
 import mockSimulation from "@/lib/mock/simulation.json";
 import mockTwin from "@/lib/mock/twin.json";
 
+/** The query string the page is visited with; a what-if arrives through it (PL-6). */
+let query = "";
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(query) }));
+
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
   return {
@@ -55,6 +59,7 @@ async function simulate() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  query = "";
   vi.mocked(api.getTwin).mockResolvedValue({ data: TWIN, source: "api" });
   vi.mocked(api.runSimulation).mockResolvedValue({ data: SIMULATION, source: "api" });
   vi.mocked(api.runOptimization).mockResolvedValue({ data: NO_OPTIONS, source: "api" });
@@ -117,5 +122,27 @@ describe("Purchase Simulator", () => {
     await simulate();
     await waitFor(() => expect(screen.getByText(/optimizer down/)).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+  });
+});
+
+describe("a what-if the Assistant routed here (PL-6)", () => {
+  it("fills the form and waits, rather than running the simulation", async () => {
+    query = "description=Bike&amount=450&date=2026-10-01";
+    renderSimulate();
+
+    await waitFor(() => expect(screen.getByLabelText("What")).toHaveValue("Bike"));
+    expect(screen.getByLabelText("Amount (USD)")).toHaveValue(450);
+    expect(screen.getByLabelText("When")).toHaveValue("2026-10-01");
+    // AS-8: the Assistant hands the purchase over; the user still presses Simulate.
+    expect(api.runSimulation).not.toHaveBeenCalled();
+  });
+
+  it("keeps its defaults when the link carries nothing usable", async () => {
+    query = "amount=free";
+    renderSimulate();
+
+    await waitFor(() => expect(screen.getByLabelText("What")).toHaveValue("Laptop"));
+    expect(screen.getByLabelText("Amount (USD)")).toHaveValue(800);
+    expect(api.runSimulation).not.toHaveBeenCalled();
   });
 });

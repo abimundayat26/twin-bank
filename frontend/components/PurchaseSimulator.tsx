@@ -13,6 +13,17 @@ import { Card } from "./ui";
 /** The demo scenario from SPEC.md section 3. */
 const DEFAULT_PURCHASE = { description: "Laptop", amount: "800" };
 
+/**
+ * A purchase the Assistant read out of a what-if, handed over filled in but not
+ * run (PL-6, AS-8). Every field is optional: whatever is missing keeps the
+ * default, and nothing here is submitted until the user presses Simulate.
+ */
+export interface PurchasePrefill {
+  description?: string;
+  amount?: string;
+  date?: string;
+}
+
 // A 1px border recolour is not a focus indicator on its own: it is the same
 // shape as the unfocused state and reads as colour alone. SPEC section 11
 // wants focus visible, so the ring is kept alongside the border change.
@@ -24,6 +35,7 @@ export function PurchaseSimulator({
   twin,
   lastDate,
   isSimulating,
+  prefill,
   isOffline = false,
   onSimulate,
 }: {
@@ -31,12 +43,16 @@ export function PurchaseSimulator({
   /** Last day the simulation covers; later purchases would be rejected. */
   lastDate?: string;
   isSimulating: boolean;
+  /** Starting values from a what-if the Assistant routed here (PL-6). */
+  prefill?: PurchasePrefill;
   isOffline?: boolean;
   onSimulate: (event: SimulationEvent) => void;
 }) {
-  const [description, setDescription] = useState(DEFAULT_PURCHASE.description);
-  const [amount, setAmount] = useState(DEFAULT_PURCHASE.amount);
-  const [date, setDate] = useState(twin.as_of);
+  const [description, setDescription] = useState(
+    prefill?.description ?? DEFAULT_PURCHASE.description,
+  );
+  const [amount, setAmount] = useState(prefill?.amount ?? DEFAULT_PURCHASE.amount);
+  const [date, setDate] = useState(prefill?.date ?? twin.as_of);
   const [accountId, setAccountId] = useState(
     twin.accounts.find((a) => a.type === "checking")?.id ?? twin.accounts[0]?.id ?? "",
   );
