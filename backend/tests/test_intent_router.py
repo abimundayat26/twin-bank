@@ -1,7 +1,5 @@
 """Intent routing: which kind of declaration a clause is, decided in code. No network."""
 
-from datetime import date
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -12,7 +10,7 @@ from backend.main import app
 from backend.schemas import FinancialTwin, GoalCompileResponse
 
 client = TestClient(app)
-AS_OF = date(2026, 9, 19)
+AS_OF = load_twin().as_of
 
 
 @pytest.fixture
@@ -22,6 +20,10 @@ def detected():
 
 def intent(clause: str, detected=()) -> str:
     return route_clause(clause, detected).intent
+
+
+def obligation_id(detected, word: str) -> str:
+    return next(obligation.id for obligation in detected if word in obligation.name.lower())
 
 
 # --- one phrase per intent ------------------------------------------------------
@@ -36,7 +38,9 @@ def test_a_standing_limit_is_a_constraint(detected):
 
 
 def test_an_expense_already_owed_is_a_one_time_obligation(detected):
-    assert intent("I have $1,200 tuition due 2027-01-15 from checking", detected) == (
+    assert intent(
+        "I have $1,200 tuition due 2027-01-15 from checking, mandatory", detected
+    ) == (
         "one_time_obligation"
     )
 
@@ -44,7 +48,7 @@ def test_an_expense_already_owed_is_a_one_time_obligation(detected):
 def test_an_answer_about_a_detected_payment_is_a_classification(detected):
     routed = route_clause("the recurring transfer is savings", detected)
     assert routed.intent == "obligation_classification"
-    assert routed.obligation_id == "obl_mystery_transfer"
+    assert routed.obligation_id == obligation_id(detected, "transfer")
     assert routed.category == "savings_transfer"
 
 
@@ -86,11 +90,7 @@ def test_a_category_with_no_obligation_named_is_not_a_classification(detected):
 
 
 def test_a_category_word_inside_an_obligations_own_name_is_not_a_reference(detected):
-    """obl_mystery_transfer is literally named "... possibly savings or repayment".
-
-    Matching the user's word "savings" against that name would classify an obligation
-    the user never mentioned.
-    """
+    """A category word by itself names no detected obligation."""
     assert route_clause("that thing is savings", detected).obligation_id is None
 
 
@@ -103,7 +103,7 @@ def test_a_routed_classification_always_names_a_real_obligation(detected):
     clauses = [
         "the recurring transfer is savings",
         "the rent is a bill",
-        "the streaming subscriptions are optional",
+        "Spotify is optional",
         "that transfer is a loan repayment",
     ]
     for routed in route_clauses(clauses, detected):
@@ -116,7 +116,8 @@ def test_a_word_that_is_both_the_category_and_an_obligation_word_is_counted_once
     an ambiguity between classifying a payment and declaring a new one."""
     routed = route_clause("the rent is a bill", detected)
     assert routed.intent == "obligation_classification"
-    assert routed.obligation_id == "obl_rent" and routed.category == "bill"
+    assert routed.obligation_id == obligation_id(detected, "rent")
+    assert routed.category == "bill"
 
 
 # --- through the compiler and the API --------------------------------------------
@@ -125,9 +126,9 @@ def test_a_word_that_is_both_the_category_and_an_obligation_word_is_counted_once
 def test_the_compiler_reads_a_classification_back_instead_of_applying_it(detected):
     result = compile_goals("alex", "the recurring transfer is savings", AS_OF, (), detected)
     [draft] = result.classifications
-    assert draft.obligation_id == "obl_mystery_transfer"
+    assert draft.obligation_id == obligation_id(detected, "transfer")
     assert draft.category == "savings_transfer"
-    assert draft.obligation_name.startswith("Recurring transfer")
+    assert "Transfer" in draft.obligation_name
     assert draft.fragment == "the recurring transfer is savings"
     assert result.goals == [] and result.one_time_obligations == []
 
@@ -135,12 +136,14 @@ def test_the_compiler_reads_a_classification_back_instead_of_applying_it(detecte
 def test_one_message_can_carry_a_classification_and_a_goal(detected):
     result = compile_goals(
         "alex",
-        "the streaming subscriptions are optional and I want $500 for books by 2027-01-15",
+        "Spotify is optional and I want $500 for books by 2027-01-15",
         AS_OF,
         (),
         detected,
     )
-    assert [c.obligation_id for c in result.classifications] == ["obl_subscriptions"]
+    assert [c.obligation_id for c in result.classifications] == [
+        obligation_id(detected, "spotify")
+    ]
     assert [g.name for g in result.goals] == ["Books"]
     assert result.clarifications == []
 
@@ -154,7 +157,7 @@ def test_nothing_is_declared_without_a_confirmation():
     assert [c.category for c in result.classifications] == ["savings_transfer"]
     assert result.compiler == "rules"
     twin = FinancialTwin.model_validate(client.get("/twin/alex").json())
-    obligation = next(o for o in twin.obligations if o.id == "obl_mystery_transfer")
+    obligation = next(o for o in twin.obligations if "transfer" in o.name.lower())
     assert obligation.declared_category is None
 
 
@@ -163,7 +166,9 @@ def test_routing_never_needs_a_model(monkeypatch, detected):
     monkeypatch.delenv("GOAL_COMPILER", raising=False)
     result = compile_goals("alex", "the rent is a bill", AS_OF, (), detected)
     assert result.compiler == "rules"
-    assert [c.obligation_id for c in result.classifications] == ["obl_rent"]
+    assert [c.obligation_id for c in result.classifications] == [
+        obligation_id(detected, "rent")
+    ]
 
 
 @pytest.mark.parametrize(("length", "status"), [(2000, 200), (2001, 422)])
