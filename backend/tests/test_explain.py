@@ -1,4 +1,6 @@
-from datetime import date
+import re
+from dataclasses import fields, is_dataclass
+from datetime import date, timedelta
 
 import pytest
 
@@ -11,6 +13,8 @@ from backend.schemas import (
     SimulationRequest,
 )
 from backend.simulation import run_simulation
+from backend.simulation.engine import low_balance_threshold
+from backend.simulation.monte_carlo import SPENDING_BLOCK_DAYS, run_monte_carlo
 from backend.simulation.explain import (
     forecast_assumptions,
     money,
@@ -247,3 +251,116 @@ def test_a_twin_with_no_commitments_explains_exactly_as_before():
     result = explain(load_twin())
     assert not [d for d in result.drivers if "already owed" in d.label]
     assert "already declared" not in result.summary
+
+
+# --- F5: an explanation may not state a number the simulator did not compute -------
+#
+# frontend/SPEC.md 15:884 -- explanations "translate computed results ... without
+# changing the numbers". CLAUDE.md -- financial calculation belongs in deterministic
+# code, and an explanation is not where a figure gets invented.
+#
+# Standing guard rather than a habit. Seasonal twins and one-time obligations both
+# change what the simulator sees, and every one of those changes is a chance for a
+# sentence to quote something nothing computed.
+
+# Deliberately not `[\d,]+`: that swallows the comma in "$0, versus" and turns a
+# clean match into a miss.
+MONEY_IN_TEXT = re.compile(r"-?\$\d{1,3}(?:,\d{3})*(?:\.\d+)?")
+
+
+def figures_stated(result) -> set[str]:
+    """Every money figure the explanation puts in front of the user."""
+    said: set[str] = set()
+    texts = [result.summary, *result.assumptions]
+    texts += [d.label for d in result.drivers]
+    texts += [d.detail for d in result.drivers]
+    for text in texts:
+        said |= set(MONEY_IN_TEXT.findall(text))
+    return said
+
+
+def figures_computed(twin, events, mc) -> set[str]:
+    """Every money figure the simulator or the twin actually holds.
+
+    The Monte Carlo comparison is walked whole rather than field by field, so a new
+    computed figure is allowed automatically while an invented one still fails. The
+    two window-spending averages are added explicitly: they are the only figures
+    `explain` derives itself, and naming them here is what keeps that list to two.
+    """
+    allowed: set[str] = set()
+
+    def add(value: float) -> None:
+        allowed.add(money(value))
+        allowed.add(money(-value))
+
+    def walk(obj) -> None:
+        if isinstance(obj, bool) or obj is None:
+            return
+        if isinstance(obj, (int, float)):
+            add(float(obj))
+        elif is_dataclass(obj):
+            for field in fields(obj):
+                walk(getattr(obj, field.name))
+        elif isinstance(obj, dict):
+            for value in obj.values():
+                walk(value)
+        elif isinstance(obj, (list, tuple)):
+            for item in obj:
+                walk(item)
+
+    walk(mc)
+    walk(twin.model_dump())
+    walk([e.model_dump() for e in events])
+    add(low_balance_threshold(twin))
+    if events:
+        # The one derivation `explain` makes for itself, mirrored here on purpose:
+        # the same window `seasonal_timing_driver` uses, and the two sums it prints.
+        first = min(events, key=lambda e: e.date)
+        end = min(first.date + timedelta(days=SPENDING_BLOCK_DAYS - 1), mc.horizon_end)
+        by_category = window_spending(twin, first.date, end)
+        add(sum(expected for expected, _ in by_category.values()))
+        add(sum(average for _, average in by_category.values()))
+    return allowed
+
+
+def assert_invents_nothing(twin, events, n: int = 60, seed: int = 3) -> None:
+    mc = run_monte_carlo(twin, events, None, n, seed, bands=True)
+    result = run_simulation(
+        twin, SimulationRequest(user_id=twin.user_id, events=events), n_simulations=n, seed=seed
+    )
+    invented = figures_stated(result) - figures_computed(twin, events, mc)
+    assert invented == set(), f"explanation states figures nothing computed: {sorted(invented)}"
+
+
+def test_the_demo_explanation_invents_no_figure():
+    assert_invents_nothing(load_twin(), [LAPTOP])
+
+
+def test_a_flat_twin_explanation_invents_no_figure(flat_twin):
+    assert_invents_nothing(flat_twin, [LAPTOP])
+
+
+def test_a_seasonal_twin_explanation_invents_no_figure():
+    """#59/#63/#72: seasonal profiles change every figure the explanation describes."""
+    assert_invents_nothing(with_groceries_seasonal(TERM_START), [LAPTOP])
+
+
+def test_an_explanation_with_a_declared_commitment_invents_no_figure():
+    assert_invents_nothing(owing(load_twin()), [LAPTOP])
+
+
+def test_an_explanation_of_a_purchase_nothing_can_cover_invents_no_figure():
+    """The unhappy path prints the most figures, so it is the most exposed."""
+    broke = load_twin().model_copy(
+        update={"accounts": [a.model_copy(update={"balance": 50.0}) for a in load_twin().accounts]}
+    )
+    assert_invents_nothing(broke, [LAPTOP])
+
+
+def test_the_guard_catches_an_invented_figure():
+    """A test that cannot fail is not a guard. This proves the comparison bites."""
+    twin = load_twin()
+    mc = run_monte_carlo(twin, [LAPTOP], None, 60, 3, bands=True)
+    computed = figures_computed(twin, [LAPTOP], mc)
+    assert "$987,654" not in computed
+    assert set(MONEY_IN_TEXT.findall("we project $987,654 by May")) - computed == {"$987,654"}
