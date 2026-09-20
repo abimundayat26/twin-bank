@@ -89,14 +89,14 @@ export function Row({
   meta?: ReactNode;
 }) {
   return (
-    <li className="flex items-baseline justify-between gap-4 border-b border-line py-2 last:border-0">
+    <li className="flex flex-col gap-2 border-b border-line py-2 last:border-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
       <div className="min-w-0">
-        <p className="truncate text-sm text-ink">{label}</p>
+        <p className="break-words text-sm text-ink">{label}</p>
         {hint ? <p className="text-xs text-faint">{hint}</p> : null}
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:shrink-0">
         {meta}
-        <span className="tnum text-sm text-ink">{value}</span>
+        <span className="tnum break-words text-right text-sm text-ink">{value}</span>
       </div>
     </li>
   );

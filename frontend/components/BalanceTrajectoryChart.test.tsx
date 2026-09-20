@@ -119,6 +119,31 @@ describe("BalanceTrajectoryChart", () => {
     expect(screen.queryByText("Reserve $1,500")).not.toBeInTheDocument();
   });
 
+  it("shows the simulator-default low-balance line only on checking", async () => {
+    const user = userEvent.setup();
+    render(
+      <BalanceTrajectoryChart
+        bands={bands(30)}
+        checkingMinimum={200}
+        checkingMinimumIsDefault
+      />,
+    );
+    expect(screen.queryByText("Default low-balance $200")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Checking" }));
+    expect(screen.getByText("Default low-balance $200")).toBeInTheDocument();
+    expect(plot()).toHaveAccessibleName(/Default low-balance \$200 reference line is shown/);
+  });
+
+  it("identifies Alex's declared checking minimum instead of calling it a default", async () => {
+    const user = userEvent.setup();
+    render(<BalanceTrajectoryChart bands={bands(30)} checkingMinimum={350} />);
+    await user.click(screen.getByRole("button", { name: "Checking" }));
+
+    expect(screen.getByText("Minimum $350")).toBeInTheDocument();
+    expect(screen.queryByText(/Default low-balance/)).not.toBeInTheDocument();
+  });
+
   it("marks the dates it was given", () => {
     render(
       <BalanceTrajectoryChart

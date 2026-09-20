@@ -58,12 +58,18 @@ export interface ChartMarker {
 export function BalanceTrajectoryChart({
   bands,
   reserve,
+  checkingMinimum,
+  checkingMinimumIsDefault = false,
   simulations,
   markers = [],
   counterfactualLabel = "With the purchase",
 }: {
   bands?: BalanceBands | null;
   reserve?: number;
+  /** The threshold behind `prob_low_balance`, drawn on the checking view. */
+  checkingMinimum?: number;
+  /** Distinguishes the simulator's fallback from a limit the user declared. */
+  checkingMinimumIsDefault?: boolean;
   /** `num_simulations`, so the fan can say how many futures it summarises. */
   simulations?: number | null;
   markers?: ChartMarker[];
@@ -92,7 +98,19 @@ export function BalanceTrajectoryChart({
   const counter = toTrack(counterfactualPoints, count);
   const dates = base.dates;
 
-  const hasReserve = typeof reserve === "number" && reserve > 0 && metric === "total";
+  const reference =
+    metric === "total" && typeof reserve === "number" && reserve > 0
+      ? { value: reserve, label: `Reserve ${money(reserve)}` }
+      : metric === "checking" &&
+          typeof checkingMinimum === "number" &&
+          checkingMinimum >= 0
+        ? {
+            value: checkingMinimum,
+            label: checkingMinimumIsDefault
+              ? `Default low-balance ${money(checkingMinimum)}`
+              : `Minimum ${money(checkingMinimum)}`,
+          }
+        : null;
   const identical = areIdentical(base.median, counter.median);
 
   const kept = keepIndices(count, [
@@ -112,7 +130,7 @@ export function BalanceTrajectoryChart({
 
   const domain = yDomain(
     [baseLo, baseHi, counterLo, counterHi],
-    hasReserve ? [reserve] : [],
+    reference ? [reference.value] : [],
   );
   const scaleX = makeScaleX(kept.length, PAD.left, PLOT_W);
   const scaleY = makeScaleY(domain, PAD.top, PLOT_H);
@@ -138,7 +156,8 @@ export function BalanceTrajectoryChart({
     `${longDate(dates[count - 1])}, as the median across ${runs}. Baseline ends at ` +
     `${money(endBaseline)}, with the purchase ${money(endCounterfactual)}, ` +
     `a difference of ${signedMoney(endCounterfactual - endBaseline)}. ` +
-    `Shaded areas span the 10th to 90th percentile.`;
+    `Shaded areas span the 10th to 90th percentile.` +
+    (reference ? ` ${reference.label} reference line is shown.` : "");
 
   const hoverX = hover === null ? 0 : scaleX(hover);
   const hoverPercent = Math.min(Math.max((hoverX / W) * 100, 8), 92);
@@ -246,24 +265,24 @@ export function BalanceTrajectoryChart({
             aria-hidden="true"
           />
 
-          {hasReserve ? (
+          {reference ? (
             <g aria-hidden="true">
               <line
                 x1={PAD.left}
                 x2={W - PAD.right}
-                y1={scaleY(reserve)}
-                y2={scaleY(reserve)}
+                y1={scaleY(reference.value)}
+                y2={scaleY(reference.value)}
                 className="stroke-caution"
                 strokeWidth={1}
                 strokeDasharray="5 4"
               />
               <text
                 x={W - PAD.right}
-                y={scaleY(reserve) - 5}
+                y={scaleY(reference.value) - 5}
                 textAnchor="end"
                 className="tnum fill-caution text-[10px]"
               >
-                Reserve {money(reserve)}
+                {reference.label}
               </text>
             </g>
           ) : null}

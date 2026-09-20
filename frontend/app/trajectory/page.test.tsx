@@ -84,6 +84,24 @@ describe("Balance Trajectory", () => {
     expect(screen.getByText("Emergency reserve")).toBeInTheDocument();
   });
 
+  it("states the default checking threshold behind its low-balance risk", async () => {
+    const user = userEvent.setup();
+    render(
+      <TwinProvider>
+        <SimulatePage />
+        <TrajectoryPage />
+      </TwinProvider>,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: /Simulate/ })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: /Simulate/ }));
+
+    await waitFor(() =>
+      expect(screen.getByText("What this projection assumed")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("Low-balance line")).toBeInTheDocument();
+    expect(screen.getByText(/Simulator default; Alex has not set/)).toBeInTheDocument();
+  });
+
   it("explains the uncertainty band in words, not only as a shape", async () => {
     const user = userEvent.setup();
     render(
