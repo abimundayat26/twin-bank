@@ -1,9 +1,13 @@
 """The seasonal shape in the mock feed.
 
 The feed exists so that things which claim to find structure can be tested on
-finding it. Recurrence detection is tested on recovering the twin; a forecast
-will be tested on recovering the seasonal levels, and that is only meaningful if
-they are really in the data and really recoverable.
+finding it. Recurrence detection is tested on recovering the seed twin; a
+forecast is tested on recovering the seasonal levels, and that is only
+meaningful if they are really in the data and really recoverable.
+
+The expected levels come from `twin_seed.json`, the hand-written structure the
+generator planted, rather than from `twin.json`, which is what the detector
+recovered. Comparing a detector run to its own output would assert nothing.
 
 So the load-bearing test here is `test_the_seasonal_levels_are_recoverable`. It
 fails if someone flattens the signal, weakens it past the point a simple
@@ -17,12 +21,12 @@ from datetime import date, timedelta
 
 import pytest
 
-from backend.fixtures import load_raw_transactions, load_twin
+from backend.fixtures import load_raw_transactions, load_seed_twin
 from backend.ingest.generate_transactions import SEASONAL_WEIGHTS, seasonal_factor
 from backend.ingest.normalize import normalize_all
 from backend.ingest.recurrence import BLOCK_DAYS, detect_structure, fortnight_blocks
 
-TWIN = load_twin()
+TWIN = load_seed_twin()
 TRANSACTIONS = normalize_all(load_raw_transactions())
 SEASONAL_CATEGORIES = sorted(SEASONAL_WEIGHTS)
 

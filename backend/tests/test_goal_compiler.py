@@ -404,7 +404,8 @@ def test_goals_put_keeps_the_checking_minimum_unless_given_one():
 @pytest.mark.parametrize(
     "goals",
     [
-        [{"id": "g", "name": "Past", "target_amount": 100, "deadline": "2026-09-19"}],
+        # Not after the twin's as_of, so there is no future left to save in.
+        [{"id": "g", "name": "Past", "target_amount": 100, "deadline": "2026-09-18"}],
         [{"id": "g", "name": "Far", "target_amount": 100, "deadline": "2030-01-01"}],
         [
             {"id": "g", "name": "A", "target_amount": 100, "deadline": "2027-01-01"},
