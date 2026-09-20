@@ -97,4 +97,11 @@ describe("MinimumBalanceCard", () => {
     );
     expect(screen.getByRole("button", { name: "Saving…" })).toBeInTheDocument();
   });
+
+  // SPEC section 11: focus stays visible. A recoloured border is not a ring.
+  it("keeps a focus ring on the amount box", () => {
+    render(<MinimumBalanceCard isBusy={false} onSave={vi.fn()} />);
+    expect(box()).not.toHaveClass("outline-none");
+    expect(box()).toHaveClass("focus-visible:outline");
+  });
 });

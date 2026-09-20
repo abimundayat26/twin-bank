@@ -89,6 +89,9 @@ export function Row({
   meta?: ReactNode;
 }) {
   return (
+    // Stacks on a narrow viewport and wraps rather than truncating: a clipped
+    // account, obligation or goal name is unrecoverable for a sighted user, and
+    // SPEC section 7.1 requires these rows to survive long financial labels.
     <li className="flex flex-col gap-2 border-b border-line py-2 last:border-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
       <div className="min-w-0">
         <p className="break-words text-sm text-ink">{label}</p>

@@ -151,4 +151,31 @@ describe("PurchaseSimulator", () => {
     renderForm({ lastDate: "2026-01-01" });
     expect(submitButton()).toBeDisabled();
   });
+
+  // The presenter drives this form with the keyboard. SPEC section 11 asks for a
+  // visible focus indicator, and a recoloured 1px border is not one.
+  it("keeps a focus ring on every field rather than suppressing the outline", () => {
+    renderForm();
+    for (const name of ["What", "Amount (USD)", "When", "Paid from"]) {
+      const control = screen.getByLabelText(name);
+      expect(control).not.toHaveClass("outline-none");
+      expect(control).toHaveClass("focus-visible:outline");
+      expect(control).toHaveClass("focus-visible:outline-2");
+    }
+  });
+
+  it("moves focus through the whole form with Tab alone", async () => {
+    const { user } = renderForm();
+    const order = ["What", "Amount (USD)", "When", "Paid from"].map((n) =>
+      screen.getByLabelText(n),
+    );
+    order[0].focus();
+    expect(order[0]).toHaveFocus();
+    for (let i = 1; i < order.length; i += 1) {
+      await user.tab();
+      expect(order[i]).toHaveFocus();
+    }
+    await user.tab();
+    expect(submitButton()).toHaveFocus();
+  });
 });

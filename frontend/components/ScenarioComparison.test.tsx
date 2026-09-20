@@ -205,4 +205,21 @@ describe("ScenarioComparison", () => {
       screen.getByText("Chance of dipping into the emergency reserve"),
     ).toBeInTheDocument();
   });
+
+  // SPEC 7.1 names long purchase names. This is the narrowest of the three
+  // columns, so it is where a long one clips first.
+  it("wraps a long purchase name in the counterfactual column", () => {
+    const description = "Refurbished 16-inch developer laptop with extended warranty";
+    const simulation = {
+      ...SIMULATION,
+      request: {
+        ...SIMULATION.request,
+        events: [{ ...SIMULATION.request.events[0], description }],
+      },
+    } as SimulationResponse;
+    render(<ScenarioComparison simulation={simulation} goal={GOAL} />);
+    const caption = screen.getByText(new RegExp(description));
+    expect(caption).not.toHaveClass("truncate");
+    expect(caption).toHaveClass("break-words");
+  });
 });

@@ -59,7 +59,7 @@ export function MinimumBalanceCard({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder={String(DEFAULT_LOW_BALANCE_THRESHOLD)}
-          className="tnum w-full rounded-lg border border-line bg-raised px-3 py-2 text-sm text-ink outline-none placeholder:text-faint focus:border-counter"
+          className="tnum w-full rounded-lg border border-line bg-raised px-3 py-2 text-sm text-ink placeholder:text-faint focus:border-counter focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-counter"
         />
         <button
           type="submit"

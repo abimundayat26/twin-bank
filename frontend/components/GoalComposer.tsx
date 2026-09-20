@@ -71,8 +71,11 @@ const ANSWER_HINT: Record<GoalClarification["field"], string> = {
   mandatory: "Say mandatory or optional",
 };
 
+// A 1px border recolour is not a focus indicator on its own: it is the same
+// shape as the unfocused state and reads as colour alone. SPEC section 11
+// wants focus visible, so the ring is kept alongside the border change.
 const inputClass =
-  "w-full rounded-lg border border-line bg-raised px-3 py-2 text-sm text-ink outline-none placeholder:text-faint focus:border-counter";
+  "w-full rounded-lg border border-line bg-raised px-3 py-2 text-sm text-ink placeholder:text-faint focus:border-counter focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-counter";
 
 export function GoalComposer({
   goals,

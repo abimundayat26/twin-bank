@@ -12,8 +12,11 @@ import { Card } from "./ui";
 /** The demo scenario from SPEC.md section 3. */
 const DEFAULT_PURCHASE = { description: "Laptop", amount: "800" };
 
+// A 1px border recolour is not a focus indicator on its own: it is the same
+// shape as the unfocused state and reads as colour alone. SPEC section 11
+// wants focus visible, so the ring is kept alongside the border change.
 const field =
-  "w-full rounded-lg border border-line bg-raised px-3 py-2 text-sm text-ink outline-none placeholder:text-faint focus:border-counter";
+  "w-full rounded-lg border border-line bg-raised px-3 py-2 text-sm text-ink placeholder:text-faint focus:border-counter focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-counter";
 const label = "mb-1 block text-xs font-medium uppercase tracking-wider text-muted";
 
 export function PurchaseSimulator({

@@ -170,7 +170,9 @@ export function ScenarioComparison({
           <p className="text-xs font-semibold uppercase tracking-wider text-counter">
             Counterfactual
           </p>
-          <p className="truncate text-xs text-faint">
+          {/* Wraps: this column is the narrowest of the three, and SPEC 7.1
+              requires a long purchase name to stay readable. */}
+          <p className="break-words text-xs text-faint">
             {purchase.description} · {money(purchase.amount)}
           </p>
         </div>
