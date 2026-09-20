@@ -121,6 +121,7 @@ function SimulateWorkspace() {
       </div>
 
       <PurchaseSimulator
+        key={`${prefill?.description ?? ""}\n${prefill?.amount ?? ""}\n${prefill?.date ?? ""}`}
         twin={twin}
         lastDate={lastDate}
         isSimulating={isSimulating}
