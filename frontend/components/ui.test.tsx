@@ -82,4 +82,19 @@ describe("Row", () => {
     );
     expect(screen.getByText("Observed")).toBeInTheDocument();
   });
+
+  it("wraps long labels and stacks the value on narrow screens instead of clipping them", () => {
+    const label =
+      "Recurring transfer of unclear purpose (destination unclear — possibly savings or repayment)";
+    render(
+      <ul>
+        <Row label={label} hint="Possibly several categories" value="$75" meta={<Badge>Unanswered</Badge>} />
+      </ul>,
+    );
+
+    const text = screen.getByText(label);
+    expect(text).toHaveClass("break-words");
+    expect(text).not.toHaveClass("truncate");
+    expect(text.closest("li")).toHaveClass("flex-col", "sm:flex-row");
+  });
 });

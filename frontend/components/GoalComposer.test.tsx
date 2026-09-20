@@ -170,6 +170,16 @@ describe("reviewing a draft", () => {
     expect(screen.getByText(RESERVE.description)).toBeInTheDocument();
   });
 
+  it("wraps a long goal name in review instead of clipping it", () => {
+    const name = "Summer housing near campus with utilities and a refundable security deposit";
+    renderComposer({ draft: draftOf({ goals: [{ ...HOUSING, name }] }) });
+
+    const goalName = screen.getByText(name);
+    expect(goalName).toHaveClass("break-words");
+    expect(goalName).not.toHaveClass("truncate");
+    expect(goalName.parentElement).toHaveClass("flex-col", "sm:flex-row");
+  });
+
   it("labels what is new, what changed, and what is merely carried through", () => {
     renderComposer({ draft: draftOf() });
     const bike = screen.getByText("A bike").closest("li")!;
