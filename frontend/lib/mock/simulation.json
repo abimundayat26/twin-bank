@@ -5530,5 +5530,12 @@
       ]
     }
   },
-  "impact": null
+  "impact": {
+    "level": "high",
+    "reasons": [
+      "Chance of low balance rises by 95 points",
+      "Chance of dipping into your reserve rises by 18 points",
+      "Chance your goal is met falls by 67 points"
+    ]
+  }
 }

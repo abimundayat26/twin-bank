@@ -28,6 +28,7 @@ import type {
   MinimumBalanceRequest,
   OptimizationRequest,
   OptimizationResponse,
+  OverviewPayload,
   ProposalDecisionRequest,
   ProposalDecisionResponse,
   SimulationRequest,
@@ -137,6 +138,19 @@ export async function getForecast(userId: string): Promise<Loaded<ForecastPayloa
     console.warn("Falling back to the bundled forecast fixture.", error);
     return { data: mockForecast as ForecastPayload, source: "fixture" };
   }
+}
+
+/**
+ * Loads the backend-owned figures for the Overview page. Unlike the initial
+ * twin request, an Overview rejection is never replaced with fixture data: the
+ * page chooses the generated fixture only when TwinProvider already knows the
+ * backend is offline (G-9, G-14, OV-9).
+ */
+export async function getOverview(userId: string): Promise<Loaded<OverviewPayload>> {
+  const data = await getJson<OverviewPayload>(
+    `/twin/${encodeURIComponent(userId)}/overview`,
+  );
+  return { data, source: "api" };
 }
 
 export async function runSimulation(

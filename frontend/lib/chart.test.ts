@@ -12,7 +12,9 @@ import {
   MAX_PLOT_POINTS,
   MIN_Y_PAD,
   monthTickPositions,
+  niceTicks,
   positionOfDate,
+  TICK_MANTISSAS,
   toTrack,
   yDomain,
 } from "./chart";
@@ -293,6 +295,89 @@ describe("monthTickPositions", () => {
   it("survives a hole in the date array", () => {
     expect(() => monthTickPositions([], [0, 1], 4)).not.toThrow();
     expect(monthTickPositions([], [0, 1], 4)).toEqual([]);
+  });
+});
+
+describe("niceTicks (TR-3)", () => {
+  /** The step between consecutive ticks, which TR-3 constrains. */
+  const stepOf = (ticks: number[]) => ticks[1] - ticks[0];
+
+  /** `step` written as mantissa x 10^k, the form TR-3 allows. */
+  const mantissaOf = (step: number) => step / 10 ** Math.floor(Math.log10(step));
+
+  const DOMAINS = [
+    { lo: 0, hi: 100 },
+    { lo: -500, hi: 500 },
+    { lo: 940, hi: 1060 },
+    { lo: 2150, hi: 3400 },
+    { lo: 9500, hi: 16000 },
+    { lo: -1200, hi: 4800 },
+    { lo: 120000, hi: 480000 },
+    { lo: 1_000_000, hi: 9_500_000 },
+  ];
+
+  it("keeps 4 to 7 ticks on every domain the demo can produce", () => {
+    for (const domain of DOMAINS) {
+      const ticks = niceTicks(domain);
+      expect(ticks.length, `${domain.lo}..${domain.hi}`).toBeGreaterThanOrEqual(4);
+      expect(ticks.length, `${domain.lo}..${domain.hi}`).toBeLessThanOrEqual(7);
+    }
+  });
+
+  it("steps by a mantissa from {1, 2, 2.5, 5}", () => {
+    for (const domain of DOMAINS) {
+      const step = stepOf(niceTicks(domain));
+      expect(TICK_MANTISSAS, `${domain.lo}..${domain.hi} stepped by ${step}`).toContain(
+        mantissaOf(step),
+      );
+    }
+  });
+
+  it("spaces ticks evenly on whole dollars, so G-2 needs no cents", () => {
+    for (const domain of DOMAINS) {
+      const ticks = niceTicks(domain);
+      ticks.forEach((tick, index) => {
+        expect(Number.isInteger(tick)).toBe(true);
+        if (index > 0) expect(tick - ticks[index - 1]).toBe(stepOf(ticks));
+      });
+    }
+  });
+
+  it("stays inside the domain, so no tick is drawn off the plot", () => {
+    for (const domain of DOMAINS) {
+      for (const tick of niceTicks(domain)) {
+        expect(tick).toBeGreaterThanOrEqual(domain.lo);
+        expect(tick).toBeLessThanOrEqual(domain.hi);
+      }
+    }
+  });
+
+  // The SPEC's own example of a 2.5 step.
+  it("uses a 2,500 step where that is the nice one", () => {
+    expect(niceTicks({ lo: 9000, hi: 22000 })).toEqual([10000, 12500, 15000, 17500, 20000]);
+  });
+
+  // Zero is a multiple of every step, so an underwater plot gets it for free.
+  it("puts a tick on zero whenever the plot straddles it", () => {
+    expect(niceTicks({ lo: -800, hi: 2400 })).toContain(0);
+  });
+
+  it("returns nothing for an empty or inverted domain rather than looping", () => {
+    expect(niceTicks({ lo: 100, hi: 100 })).toEqual([]);
+    expect(niceTicks({ lo: 500, hi: 100 })).toEqual([]);
+    expect(niceTicks({ lo: NaN, hi: 100 })).toEqual([]);
+  });
+
+  // A domain too narrow for four whole-dollar ticks still gets the ticks it can
+  // hold: fewer labels than the budget asks for beats an axis with none.
+  it("falls back to the nearest fit when no step can meet the budget", () => {
+    expect(niceTicks({ lo: 0, hi: 1.5 })).toEqual([0, 1]);
+  });
+
+  // Between two whole dollars there is no whole-dollar tick to draw, and G-2
+  // forbids inventing one with cents.
+  it("draws no axis when no whole dollar lies inside the domain", () => {
+    expect(niceTicks({ lo: 1000.2, hi: 1000.8 })).toEqual([]);
   });
 });
 

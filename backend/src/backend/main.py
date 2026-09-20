@@ -12,28 +12,39 @@ from backend.forecast_view import build_forecast
 from backend.ingest.build import latest_transaction_date, rebuild
 from backend.ingest.normalize import normalize_all
 from backend.llm_goal_compiler import compile_goals_auto
+from backend.obligations import build_obligations
 from backend.overview import build_overview
 from backend.schemas import (
     AssistantMessageRequest,
     AssistantMessageResponse,
     AssistantOpening,
     ClarificationResponseRequest,
+    CommitPurchaseRequest,
+    CommitPurchaseResponse,
     DeclaredGoalsRequest,
+    EarliestDateRequest,
+    EarliestDateResponse,
     FinancialTwin,
     ForecastPayload,
     GoalCompileRequest,
     GoalCompileResponse,
     MinimumBalanceRequest,
+    ObligationsPayload,
+    OneTimeObligationChanges,
+    OneTimeObligationCreate,
     OptimizationRequest,
     OptimizationResponse,
     OverviewPayload,
     ProposalDecisionRequest,
     ProposalDecisionResponse,
+    RecurringObligationChanges,
+    RecurringObligationCreate,
     SimulationRequest,
     SimulationResponse,
     TwinBuildRequest,
 )
 from backend.simulation import SimulationError, run_simulation
+from backend.simulation.earliest_date import GoalNotEligible, GoalNotFound, find_earliest_date
 from backend.simulation.optimize import run_optimization
 from backend.tracking import log_twin_build
 
@@ -79,6 +90,116 @@ def get_forecast(user_id: str) -> ForecastPayload:
     except SimulationError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
 
+
+@app.get("/twin/{user_id}/obligations", response_model=ObligationsPayload)
+def get_obligations(user_id: str) -> ObligationsPayload:
+    return build_obligations(twin_for(user_id))
+
+
+@app.post(
+    "/twin/{user_id}/obligations/recurring",
+    response_model=FinancialTwin,
+    status_code=201,
+)
+def create_recurring_obligation(
+    user_id: str, request: RecurringObligationCreate
+) -> FinancialTwin:
+    twin_for(user_id)
+    try:
+        return twin_store.add_declared_recurring(request)
+    except twin_store.InvalidDeclaration as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@app.put(
+    "/twin/{user_id}/obligations/recurring/{obligation_id}",
+    response_model=FinancialTwin,
+)
+def update_recurring_obligation(
+    user_id: str,
+    obligation_id: str,
+    request: RecurringObligationChanges,
+) -> FinancialTwin:
+    twin_for(user_id)
+    changes = twin_store.RecurringOverride(
+        name=request.name,
+        expected_amount=request.amount,
+        due_day=request.due_day,
+        active=request.active,
+    )
+    try:
+        return twin_store.override_recurring(obligation_id, changes)
+    except twin_store.UnknownObligation as e:
+        raise HTTPException(
+            status_code=404, detail=f"Unknown recurring obligation '{obligation_id}'"
+        ) from e
+    except twin_store.InvalidDeclaration as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@app.delete(
+    "/twin/{user_id}/obligations/recurring/{obligation_id}",
+    response_model=FinancialTwin,
+)
+def delete_recurring_obligation(user_id: str, obligation_id: str) -> FinancialTwin:
+    twin_for(user_id)
+    try:
+        return twin_store.delete_declared_recurring(obligation_id)
+    except twin_store.UnknownObligation as e:
+        raise HTTPException(
+            status_code=404, detail=f"Unknown recurring obligation '{obligation_id}'"
+        ) from e
+    except twin_store.DetectedObligationCannotBeDeleted as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+
+
+@app.post(
+    "/twin/{user_id}/obligations/one-time",
+    response_model=FinancialTwin,
+    status_code=201,
+)
+def create_one_time_obligation(
+    user_id: str, request: OneTimeObligationCreate
+) -> FinancialTwin:
+    twin_for(user_id)
+    try:
+        return twin_store.add_one_time_obligation(request)
+    except twin_store.InvalidDeclaration as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@app.put(
+    "/twin/{user_id}/obligations/one-time/{obligation_id}",
+    response_model=FinancialTwin,
+)
+def update_one_time_obligation(
+    user_id: str,
+    obligation_id: str,
+    request: OneTimeObligationChanges,
+) -> FinancialTwin:
+    twin_for(user_id)
+    try:
+        return twin_store.update_one_time_obligation(obligation_id, request)
+    except twin_store.UnknownObligation as e:
+        raise HTTPException(
+            status_code=404, detail=f"Unknown one-time obligation '{obligation_id}'"
+        ) from e
+    except twin_store.InvalidDeclaration as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@app.delete(
+    "/twin/{user_id}/obligations/one-time/{obligation_id}",
+    response_model=FinancialTwin,
+)
+def delete_one_time_obligation(user_id: str, obligation_id: str) -> FinancialTwin:
+    twin_for(user_id)
+    try:
+        return twin_store.delete_one_time_obligation(obligation_id)
+    except twin_store.UnknownObligation as e:
+        raise HTTPException(
+            status_code=404, detail=f"Unknown one-time obligation '{obligation_id}'"
+        ) from e
 
 @app.post("/twin/build", response_model=FinancialTwin)
 def build_twin(request: TwinBuildRequest) -> FinancialTwin:
@@ -276,3 +397,37 @@ def decide_proposal(
         raise HTTPException(status_code=409, detail="That no longer applies. Ask again.") from e
     assistant_store.set_status(proposal_id, "accepted")
     return ProposalDecisionResponse(proposal_id=proposal_id, status="accepted", twin=twin)
+
+
+@app.post("/twin/{user_id}/goals/{goal_id}/earliest-date", response_model=EarliestDateResponse)
+def earliest_date(user_id: str, goal_id: str, request: EarliestDateRequest) -> EarliestDateResponse:
+    """The first deadline at which this purchase stops costing the goal (CM-2)."""
+    twin = twin_for(user_id)
+    try:
+        return find_earliest_date(twin, goal_id, request.events, seed=SIMULATION_SEED)
+    except GoalNotFound as e:
+        raise HTTPException(status_code=404, detail=f"Unknown goal '{goal_id}'") from e
+    except (GoalNotEligible, SimulationError) as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@app.post("/twin/{user_id}/purchases/commit", response_model=CommitPurchaseResponse)
+def commit_purchase(user_id: str, request: CommitPurchaseRequest) -> CommitPurchaseResponse:
+    """Add the purchase to the plan, moving a goal's deadline with it (CM-3, CM-4).
+
+    Nothing here moves money. It records a decision the user has already confirmed.
+    """
+    twin_for(user_id)
+    try:
+        twin, created_ids, already_committed = twin_store.commit_purchase(
+            request.events, request.goal_updates
+        )
+    except twin_store.UnknownGoal as e:
+        raise HTTPException(status_code=404, detail=f"Unknown goal '{e.args[0]}'") from e
+    except twin_store.StaleDeadline as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except twin_store.InvalidDeclaration as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    return CommitPurchaseResponse(
+        twin=twin, created_ids=created_ids, already_committed=already_committed
+    )
