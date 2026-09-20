@@ -11,6 +11,7 @@ from backend.fixtures import load_raw_transactions
 from backend.ingest.build import latest_transaction_date, rebuild
 from backend.ingest.normalize import normalize_all
 from backend.llm_goal_compiler import compile_goals_auto
+from backend.obligations import build_obligations
 from backend.overview import build_overview
 from backend.schemas import (
     AssistantMessageRequest,
@@ -26,11 +27,16 @@ from backend.schemas import (
     GoalCompileRequest,
     GoalCompileResponse,
     MinimumBalanceRequest,
+    ObligationsPayload,
+    OneTimeObligationChanges,
+    OneTimeObligationCreate,
     OptimizationRequest,
     OptimizationResponse,
     OverviewPayload,
     ProposalDecisionRequest,
     ProposalDecisionResponse,
+    RecurringObligationChanges,
+    RecurringObligationCreate,
     SimulationRequest,
     SimulationResponse,
     TwinBuildRequest,
@@ -73,6 +79,117 @@ def get_twin(user_id: str) -> FinancialTwin:
 @app.get("/twin/{user_id}/overview", response_model=OverviewPayload)
 def get_overview(user_id: str) -> OverviewPayload:
     return build_overview(twin_for(user_id))
+
+
+@app.get("/twin/{user_id}/obligations", response_model=ObligationsPayload)
+def get_obligations(user_id: str) -> ObligationsPayload:
+    return build_obligations(twin_for(user_id))
+
+
+@app.post(
+    "/twin/{user_id}/obligations/recurring",
+    response_model=FinancialTwin,
+    status_code=201,
+)
+def create_recurring_obligation(
+    user_id: str, request: RecurringObligationCreate
+) -> FinancialTwin:
+    twin_for(user_id)
+    try:
+        return twin_store.add_declared_recurring(request)
+    except twin_store.InvalidDeclaration as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@app.put(
+    "/twin/{user_id}/obligations/recurring/{obligation_id}",
+    response_model=FinancialTwin,
+)
+def update_recurring_obligation(
+    user_id: str,
+    obligation_id: str,
+    request: RecurringObligationChanges,
+) -> FinancialTwin:
+    twin_for(user_id)
+    changes = twin_store.RecurringOverride(
+        name=request.name,
+        expected_amount=request.amount,
+        due_day=request.due_day,
+        active=request.active,
+    )
+    try:
+        return twin_store.override_recurring(obligation_id, changes)
+    except twin_store.UnknownObligation as e:
+        raise HTTPException(
+            status_code=404, detail=f"Unknown recurring obligation '{obligation_id}'"
+        ) from e
+    except twin_store.InvalidDeclaration as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@app.delete(
+    "/twin/{user_id}/obligations/recurring/{obligation_id}",
+    response_model=FinancialTwin,
+)
+def delete_recurring_obligation(user_id: str, obligation_id: str) -> FinancialTwin:
+    twin_for(user_id)
+    try:
+        return twin_store.delete_declared_recurring(obligation_id)
+    except twin_store.UnknownObligation as e:
+        raise HTTPException(
+            status_code=404, detail=f"Unknown recurring obligation '{obligation_id}'"
+        ) from e
+    except twin_store.DetectedObligationCannotBeDeleted as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+
+
+@app.post(
+    "/twin/{user_id}/obligations/one-time",
+    response_model=FinancialTwin,
+    status_code=201,
+)
+def create_one_time_obligation(
+    user_id: str, request: OneTimeObligationCreate
+) -> FinancialTwin:
+    twin_for(user_id)
+    try:
+        return twin_store.add_one_time_obligation(request)
+    except twin_store.InvalidDeclaration as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@app.put(
+    "/twin/{user_id}/obligations/one-time/{obligation_id}",
+    response_model=FinancialTwin,
+)
+def update_one_time_obligation(
+    user_id: str,
+    obligation_id: str,
+    request: OneTimeObligationChanges,
+) -> FinancialTwin:
+    twin_for(user_id)
+    try:
+        return twin_store.update_one_time_obligation(obligation_id, request)
+    except twin_store.UnknownObligation as e:
+        raise HTTPException(
+            status_code=404, detail=f"Unknown one-time obligation '{obligation_id}'"
+        ) from e
+    except twin_store.InvalidDeclaration as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@app.delete(
+    "/twin/{user_id}/obligations/one-time/{obligation_id}",
+    response_model=FinancialTwin,
+)
+def delete_one_time_obligation(user_id: str, obligation_id: str) -> FinancialTwin:
+    twin_for(user_id)
+    try:
+        return twin_store.delete_one_time_obligation(obligation_id)
+    except twin_store.UnknownObligation as e:
+        raise HTTPException(
+            status_code=404, detail=f"Unknown one-time obligation '{obligation_id}'"
+        ) from e
 
 
 @app.post("/twin/build", response_model=FinancialTwin)

@@ -32,6 +32,8 @@ from backend.schemas import (
     MAX_MONEY,
     ObligationCategory,
     OneTimeObligation,
+    OneTimeObligationChanges,
+    OneTimeObligationCreate,
     RecurringObligationCreate,
     SimulationEvent,
 )
@@ -381,6 +383,97 @@ def check_one_time_obligations(
                 f"One-time obligation '{obligation.id}' is due {obligation.due_date}, "
                 f"which is not after {twin.as_of}"
             )
+
+
+def _unique_one_time_id(name: str, taken: set[str]) -> str:
+    """Return the compiler's one_<slug> shape without colliding with saved rows."""
+    # Match goal_compiler.unique_obligation_id, including its fallback for a name
+    # containing no letters or digits, without coupling the persistence layer to the
+    # natural-language compiler.
+    slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "goal"
+    base = f"one_{slug}"
+    obligation_id = base
+    suffix = 2
+    while obligation_id in taken:
+        obligation_id = f"{base}_{suffix}"
+        suffix += 1
+    return obligation_id
+
+
+def _check_managed_one_time(obligation: OneTimeObligation, twin: FinancialTwin) -> None:
+    """Validate the stricter date/account rules on the management routes (G-11)."""
+    latest = twin.as_of + timedelta(days=MAX_HORIZON_DAYS)
+    if not twin.as_of < obligation.due_date <= latest:
+        raise InvalidDeclaration(
+            f"One-time obligation due date {obligation.due_date} must be after "
+            f"{twin.as_of} and no later than {latest}"
+        )
+    if obligation.account_id not in {account.id for account in twin.accounts}:
+        raise InvalidDeclaration(f"Unknown account_id '{obligation.account_id}'")
+
+
+def add_one_time_obligation(request: OneTimeObligationCreate) -> FinancialTwin:
+    """Add one declared future expense after validating everything (PER-7)."""
+    global declared_one_time_obligations
+    with _write_lock:
+        current = get_twin()
+        owed = list(current.one_time_obligations)
+        obligation = OneTimeObligation(
+            id=_unique_one_time_id(request.name, {item.id for item in owed}),
+            name=request.name,
+            amount=request.amount,
+            due_date=request.due_date,
+            account_id=request.account_id,
+            mandatory=request.mandatory,
+        )
+        _check_managed_one_time(obligation, current)
+        owed.append(obligation)
+        declared_one_time_obligations = owed
+        _save()
+        return get_twin()
+
+
+def update_one_time_obligation(
+    obligation_id: str, request: OneTimeObligationChanges
+) -> FinancialTwin:
+    """Apply a partial edit to one declared future expense (PER-7)."""
+    global declared_one_time_obligations
+    with _write_lock:
+        current = get_twin()
+        owed = list(current.one_time_obligations)
+        index = next(
+            (index for index, obligation in enumerate(owed) if obligation.id == obligation_id),
+            None,
+        )
+        if index is None:
+            raise UnknownObligation(obligation_id)
+        changes = request.model_dump(exclude_none=True)
+        if not changes:
+            raise InvalidDeclaration("At least one field must be given")
+        updated = owed[index].model_copy(update=changes)
+        _check_managed_one_time(updated, current)
+        owed[index] = updated
+        declared_one_time_obligations = owed
+        _save()
+        return get_twin()
+
+
+def delete_one_time_obligation(obligation_id: str) -> FinancialTwin:
+    """Delete one declared future expense, including a committed purchase (CM-7)."""
+    global declared_one_time_obligations
+    with _write_lock:
+        current = get_twin()
+        owed = list(current.one_time_obligations)
+        index = next(
+            (index for index, obligation in enumerate(owed) if obligation.id == obligation_id),
+            None,
+        )
+        if index is None:
+            raise UnknownObligation(obligation_id)
+        owed.pop(index)
+        declared_one_time_obligations = owed
+        _save()
+        return get_twin()
 
 
 def set_goals(
