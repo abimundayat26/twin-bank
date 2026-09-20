@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FinancialTwin, OptimizationResponse, SimulationResponse } from "@/lib/types";
+import { addDays } from "@/lib/dates";
 import mockSimulation from "@/lib/mock/simulation.json";
 import mockTwin from "@/lib/mock/twin.json";
 
@@ -75,6 +76,21 @@ describe("Purchase Simulator", () => {
     renderSimulate();
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /Simulate/ })).toBeInTheDocument(),
+    );
+  });
+
+  // SM-1 / E-2: without a goal, the backend simulates 180 days rather than 730.
+  it("clamps purchase dates to the no-goal simulation horizon", async () => {
+    vi.mocked(api.getTwin).mockResolvedValue({
+      data: { ...TWIN, goals: [] },
+      source: "api",
+    });
+
+    renderSimulate();
+
+    expect(await screen.findByLabelText("Date")).toHaveAttribute(
+      "max",
+      addDays(TWIN.as_of, 180),
     );
   });
 

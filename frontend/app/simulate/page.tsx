@@ -21,6 +21,7 @@ import { TrajectoryPreview } from "@/components/TrajectoryPreview";
 import { Card } from "@/components/ui";
 import { alternativeRows } from "@/lib/alternatives";
 import { readPrefillParams } from "@/lib/assistant";
+import { addDays } from "@/lib/dates";
 import { useTwin } from "@/lib/state/TwinProvider";
 import { emergencyReserve, primaryGoal } from "@/lib/twin";
 
@@ -99,6 +100,7 @@ function SimulateWorkspace() {
   }
 
   const goal = primaryGoal(twin);
+  const lastDate = goal?.deadline ?? addDays(twin.as_of, 180);
   const reserve = emergencyReserve(twin);
   const purchase = simulation?.request.events[0];
   // The same rows the table shows, so Apply Compromise can only ever commit the
@@ -120,7 +122,7 @@ function SimulateWorkspace() {
 
       <PurchaseSimulator
         twin={twin}
-        lastDate={goal?.deadline}
+        lastDate={lastDate}
         isSimulating={isSimulating}
         prefill={prefill}
         isOffline={isOffline}
