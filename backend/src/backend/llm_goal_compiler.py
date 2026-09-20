@@ -1,4 +1,4 @@
-"""LLM goal compiler: Claude drafts, code decides.
+"""LLM goal compiler: Gemini drafts, code decides.
 
 The LLM only reads the user's text and proposes draft items. Every item is then
 checked in code before it can become a Goal or FinancialConstraint (SPEC section 6:
@@ -9,7 +9,7 @@ the LLM must not invent goals or financial facts):
   rules can read from the fragment wins over the LLM's reading.
 Anything that fails a check becomes a clarification question instead of a guess.
 
-On by default, but only where ANTHROPIC_API_KEY is set. Without a key, with
+On by default, but only where GEMINI_API_KEY is set. Without a key, with
 GOAL_COMPILER=rules, or when the call fails, /goals/compile uses the rules compiler
 (compiler="rules"), so a fresh clone with no credentials still runs.
 """
@@ -20,7 +20,10 @@ from collections.abc import Callable, Sequence
 from datetime import date
 from typing import Literal
 
-import anthropic
+import httpx
+from google import genai
+from google.genai import errors as genai_errors
+from google.genai import types
 from pydantic import BaseModel, ValidationError
 
 from backend.goal_compiler import (
@@ -54,10 +57,14 @@ from backend.schemas import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "claude-sonnet-5"
+DEFAULT_MODEL = "gemini-3-flash-preview"
 # One attempt, well inside the frontend's 8 s request timeout, so a slow call
 # falls back to the rules compiler instead of hanging the UI.
 TIMEOUT_SECONDS = 6
+# The SDK also sends its timeout to Gemini as a server-side deadline, and Gemini
+# rejects anything under 10 s (400 INVALID_ARGUMENT). So we send this header
+# ourselves, which the SDK then leaves alone, and keep the 6 s as our own limit.
+SERVER_DEADLINE_SECONDS = 10
 
 
 class LlmItem(BaseModel):
@@ -103,22 +110,38 @@ Put parts of the text that ask for nothing in unparsed, copied exactly."""
 
 
 def llm_enabled() -> bool:
-    return os.getenv("GOAL_COMPILER", "llm").lower() == "llm" and bool(os.getenv("ANTHROPIC_API_KEY"))
+    return os.getenv("GOAL_COMPILER", "llm").lower() == "llm" and bool(os.getenv("GEMINI_API_KEY"))
 
 
-def extract_with_claude(text: str, as_of: date) -> LlmDraft | None:
-    """One Claude call. None when the model returns nothing usable (refusal, cut off)."""
-    client = anthropic.Anthropic(timeout=TIMEOUT_SECONDS, max_retries=0)
-    response = client.messages.parse(
-        model=os.getenv("LLM_MODEL") or DEFAULT_MODEL,
-        max_tokens=2000,
-        system=SYSTEM_PROMPT,
-        # Extraction, not reasoning: thinking off keeps the call fast for the demo.
-        thinking={"type": "disabled"},
-        messages=[{"role": "user", "content": f"Today is {as_of.isoformat()}.\n\nText:\n{text}"}],
-        output_format=LlmDraft,
+def extract_with_gemini(text: str, as_of: date) -> LlmDraft | None:
+    """One Gemini call. None when the model returns nothing usable (blocked, cut off)."""
+    # The key is passed in rather than left to the SDK, which would prefer a
+    # GOOGLE_API_KEY over the GEMINI_API_KEY that llm_enabled() checked.
+    client = genai.Client(
+        api_key=os.getenv("GEMINI_API_KEY"),
+        http_options=types.HttpOptions(
+            timeout=TIMEOUT_SECONDS * 1000,  # milliseconds; how long we wait locally
+            headers={"X-Server-Timeout": str(SERVER_DEADLINE_SECONDS)},
+            retry_options=types.HttpRetryOptions(attempts=1),  # one attempt, no retries
+        ),
     )
-    return response.parsed_output
+    response = client.models.generate_content(
+        model=os.getenv("LLM_MODEL") or DEFAULT_MODEL,
+        contents=f"Today is {as_of.isoformat()}.\n\nText:\n{text}",
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            response_mime_type="application/json",
+            response_json_schema=LlmDraft.model_json_schema(),
+            max_output_tokens=2000,
+            # No tools here; skips the SDK's automatic-function-calling path and its warning.
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+            # Extraction, not reasoning: minimal thinking keeps the call fast for the demo.
+            thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL),
+        ),
+    )
+    if not response.text:
+        return None
+    return LlmDraft.model_validate_json(response.text)
 
 
 def draft_llm_obligation(
@@ -278,7 +301,7 @@ def compile_goals_auto(
     user_id: str,
     text: str,
     as_of: date,
-    extract: Callable[[str, date], LlmDraft | None] = extract_with_claude,
+    extract: Callable[[str, date], LlmDraft | None] = extract_with_gemini,
     accounts: Sequence[Account] = (),
     detected: Sequence[FinancialObligation] = (),
 ) -> GoalCompileResponse:
@@ -298,7 +321,7 @@ def compile_goals_auto(
             logger.warning("LLM goal compiler returned no draft, using rules")
             return compile_goals(user_id, text, as_of, accounts, detected)
         return validate_draft(user_id, text, as_of, draft, accounts)
-    except (anthropic.APIError, ValidationError) as e:
+    except (genai_errors.APIError, httpx.HTTPError, ValidationError) as e:
         logger.warning("LLM goal compiler failed, using rules: %s", e)
     except Exception:
         # Anything else (an SDK change, a draft shape validate_draft does not expect)

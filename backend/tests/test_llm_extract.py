@@ -7,7 +7,7 @@ compiler; what is here is the Assistant's behaviour on top of them -- what `read
 says, which reply template comes back, and that the twin is untouched either way.
 
 **No real call is made or possible.** Every test passes its own `extract`, so the
-Anthropic client is never constructed; `test_the_client_is_never_constructed` makes
+Gemini client is never constructed; `test_the_client_is_never_constructed` makes
 that a failure rather than a hope. The key in `llm_on` is a fixed dummy string, set
 on the process only for the duration of one test, which is the convention
 `test_llm_goal_compiler.py` already uses: `llm_enabled()` needs to see a key present
@@ -16,9 +16,9 @@ before it will take the injected path at all.
 
 from datetime import date
 
-import anthropic
 import httpx
 import pytest
+from google import genai
 
 from backend import assistant, twin_store
 from backend.fixtures import load_twin
@@ -32,10 +32,8 @@ FRAGMENT = "save $2,000 for a trip by next June"
 def llm_on(monkeypatch):
     """The model path turned on for one test, with a dummy key and no client."""
     monkeypatch.setenv("GOAL_COMPILER", "llm")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "not-a-real-key")
-    monkeypatch.setattr(
-        anthropic, "Anthropic", _never("the Anthropic client was constructed in a test")
-    )
+    monkeypatch.setenv("GEMINI_API_KEY", "not-a-real-key")
+    monkeypatch.setattr(genai, "Client", _never("the Gemini client was constructed in a test"))
 
 
 def _never(message: str):
@@ -174,7 +172,7 @@ def test_a_malformed_draft_falls_back_to_rules_and_says_so(llm_on):
 
 def test_a_timeout_falls_back_to_rules_and_says_so(llm_on):
     def slow(_text, _as_of):
-        raise anthropic.APITimeoutError(request=httpx.Request("POST", "https://example.invalid"))
+        raise httpx.ReadTimeout("timed out", request=httpx.Request("POST", "https://example.invalid"))
 
     reading = read(slow)
     assert reading.read_by == "rules"
@@ -202,7 +200,7 @@ def test_an_unreachable_model_still_reads_the_message(llm_on):
 
 
 def test_the_client_is_never_constructed(llm_on):
-    """`llm_on` makes constructing the Anthropic client an error; every path above ran."""
+    """`llm_on` makes constructing the Gemini client an error; every path above ran."""
     for extract in (returning(draft()), returning(None), returning({"items": 1})):
         read(extract)
 
