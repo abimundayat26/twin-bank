@@ -26,6 +26,7 @@ from backend.schemas import (
     EarliestDateResponse,
     FinancialTwin,
     ForecastPayload,
+    GoalChanges,
     GoalCompileRequest,
     GoalCompileResponse,
     MinimumBalanceRequest,
@@ -39,6 +40,7 @@ from backend.schemas import (
     ProposalDecisionResponse,
     RecurringObligationChanges,
     RecurringObligationCreate,
+    ReserveRequest,
     SimulationRequest,
     SimulationResponse,
     TwinBuildRequest,
@@ -319,6 +321,34 @@ def set_goals(user_id: str, request: DeclaredGoalsRequest) -> FinancialTwin:
         )
     except twin_store.InvalidDeclaration as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@app.patch("/twin/{user_id}/goals/{goal_id}", response_model=FinancialTwin)
+def update_goal(user_id: str, goal_id: str, request: GoalChanges) -> FinancialTwin:
+    """A partial edit, so a stale client cannot overwrite the other goals (PL-10)."""
+    twin_for(user_id)
+    try:
+        return twin_store.update_goal(goal_id, request)
+    except twin_store.UnknownGoal as e:
+        raise HTTPException(status_code=404, detail=f"Unknown goal '{goal_id}'") from e
+    except twin_store.InvalidDeclaration as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@app.delete("/twin/{user_id}/goals/{goal_id}", response_model=FinancialTwin)
+def delete_goal(user_id: str, goal_id: str) -> FinancialTwin:
+    twin_for(user_id)
+    try:
+        return twin_store.delete_goal(goal_id)
+    except twin_store.UnknownGoal as e:
+        raise HTTPException(status_code=404, detail=f"Unknown goal '{goal_id}'") from e
+
+
+@app.put("/twin/{user_id}/reserve", response_model=FinancialTwin)
+def set_reserve(user_id: str, request: ReserveRequest) -> FinancialTwin:
+    """Zero removes the reserve; the minimum checking balance is untouched (PL-9)."""
+    twin_for(user_id)
+    return twin_store.set_reserve(request.amount)
 
 
 # --- Assistant ----------------------------------------------------------------

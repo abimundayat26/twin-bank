@@ -23,12 +23,14 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.goal_compiler import RESERVE_ID, money
 from backend.schemas import (
     EditableName,
     FinancialConstraint,
     FinancialObligation,
     FinancialTwin,
     Goal,
+    GoalChanges,
     GoalDateChange,
     MAX_MONEY,
     ObligationCategory,
@@ -489,6 +491,16 @@ def delete_one_time_obligation(obligation_id: str) -> FinancialTwin:
         return get_twin()
 
 
+def _check_goal_deadline(goal: Goal, as_of: date) -> None:
+    """One wording for every route that dates a goal, so the frontend renders one
+    consistent string (API-3)."""
+    latest = as_of + timedelta(days=MAX_HORIZON_DAYS)
+    if not as_of < goal.deadline <= latest:
+        raise InvalidDeclaration(
+            f"Goal '{goal.id}' deadline {goal.deadline} must be after {as_of} and no later than {latest}"
+        )
+
+
 def set_goals(
     goals: list[Goal],
     constraints: list[FinancialConstraint],
@@ -504,15 +516,10 @@ def set_goals(
     global minimum_checking_balance
     with _write_lock:
         current = get_twin()
-        as_of = current.as_of
-        latest = as_of + timedelta(days=MAX_HORIZON_DAYS)
         if len({g.id for g in goals}) != len(goals):
             raise InvalidDeclaration("Goal ids must be unique")
         for goal in goals:
-            if not as_of < goal.deadline <= latest:
-                raise InvalidDeclaration(
-                    f"Goal '{goal.id}' deadline {goal.deadline} must be after {as_of} and no later than {latest}"
-                )
+            _check_goal_deadline(goal, current.as_of)
         for constraint_type in ("minimum_reserve", "minimum_checking_balance"):
             if sum(c.type == constraint_type for c in constraints) > 1:
                 raise InvalidDeclaration(f"At most one {constraint_type} constraint")
@@ -537,6 +544,86 @@ class UnknownGoal(KeyError):
 
 class StaleDeadline(ValueError):
     """The client's `from_deadline` is not the deadline on the twin (CM-4)."""
+
+
+def update_goal(goal_id: str, request: GoalChanges) -> FinancialTwin:
+    """Apply a partial edit to one goal (PL-10, PER-7).
+
+    The list is seeded from the served twin, not from `declared_goals`: until
+    something declares goals that is still None and the twin shows the fixture's, so
+    editing a goal the user can plainly see must not come back as unknown.
+
+    A partial edit rather than the replace-all `PUT /goals`, so a client holding a
+    stale copy cannot wipe the user's other goals.
+    """
+    global declared_goals
+    with _write_lock:
+        current = get_twin()
+        goals = list(current.goals)
+        index = next((i for i, goal in enumerate(goals) if goal.id == goal_id), None)
+        if index is None:
+            raise UnknownGoal(goal_id)
+        changes = {
+            field: value
+            for field in request.model_fields_set
+            if (value := getattr(request, field)) is not None
+        }
+        if not changes:
+            raise InvalidDeclaration("At least one field must be given")
+        updated = goals[index].model_copy(update=changes)
+        _check_goal_deadline(updated, current.as_of)
+        goals[index] = updated
+        declared_goals = goals
+        _save()
+        return get_twin()
+
+
+def delete_goal(goal_id: str) -> FinancialTwin:
+    """Delete one goal, seeding the list from the served twin as `update_goal` does."""
+    global declared_goals
+    with _write_lock:
+        current = get_twin()
+        goals = list(current.goals)
+        index = next((i for i, goal in enumerate(goals) if goal.id == goal_id), None)
+        if index is None:
+            raise UnknownGoal(goal_id)
+        goals.pop(index)
+        declared_goals = goals
+        _save()
+        return get_twin()
+
+
+def set_reserve(amount: float) -> FinancialTwin:
+    """Set the emergency reserve, or remove it with zero (PL-9, PER-7).
+
+    Only the `minimum_reserve` constraint is touched. The minimum checking balance is
+    a separate declaration with its own route and is left exactly as it was.
+
+    The id and wording come from the goal compiler so a reserve set from the panel and
+    one compiled from a sentence read identically.
+    """
+    global declared_reserves
+    with _write_lock:
+        _load()
+        # Repeated from the route body on purpose: nothing invalid should reach the
+        # answers file even if a future caller forgets to validate first.
+        if amount < 0:
+            raise InvalidDeclaration("Reserve amount cannot be negative")
+        declared_reserves = (
+            []
+            if amount == 0
+            else [
+                FinancialConstraint(
+                    id=RESERVE_ID,
+                    type="minimum_reserve",
+                    amount=amount,
+                    description=f"Keep at least {money(amount)} across checking and "
+                    "savings for emergencies.",
+                )
+            ]
+        )
+        _save()
+        return get_twin()
 
 
 def purchase_obligation(event: SimulationEvent) -> OneTimeObligation:
