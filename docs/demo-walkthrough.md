@@ -102,7 +102,7 @@ Open the top-left **Menu**, then **Plans & Assistant**.
 
 The chat opens with the question TwinBank genuinely cannot answer by itself:
 
-> What is Online Transfer To ($71.82 a month)?
+> What is Online Transfer To ***4471 ($71.82 a month)?
 
 - Point out the quick replies — **Savings transfer**, **Debt repayment**, **Optional spending** —
   and that they carry no probabilities. These are possibilities from observed activity, not facts

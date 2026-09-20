@@ -183,16 +183,17 @@ Phases describe what the demo on `main` does. Workstreams (Section 10) may build
 | 1. Mocked end-to-end demo | Done |
 | 2. Deterministic calculations | Done |
 | 3. Nessie data | Done. Alex is seeded in the live sandbox, and `USE_MOCKS=false` plus a key builds the twin from Nessie. Read back from the live sandbox on 2026-09-19, Alex is recognisable (`backend.nessie.readback`, #65); Nessie stores amounts in whole dollars (#68). The demo stays on fixtures by default. |
-| 4. Monte Carlo | Done. The Balance Trajectory page shows the projection behind the last simulation with its bands and assumptions, and the Insights page shows the forecast. Alex's demo twin now carries its fitted seasonal profiles and forecast metadata (`backend/fixtures/twin.json`), so the whole demo runs on the forecast. |
+| 4. Monte Carlo | Done. The Balance Trajectory page shows the projection behind the last simulation with its bands and assumptions, and the Forecast & Data page shows the forecast. Alex's demo twin now carries its fitted seasonal profiles and forecast metadata (`backend/fixtures/twin.json`), so the whole demo runs on the forecast. |
 | 5. Goal compilation and optimization | Done. The Plans & Assistant page has a Goals & Limits panel (goals, emergency reserve, minimum balance) and an Assistant chat that drafts goals, constraints, one-time obligations and answers about detected recurring bills; nothing reaches the twin until the user accepts a draft (`/assistant/*`). The Obligations page and one-time obligations feed the simulator and optimizer. The Purchase Simulator shows an impact level with reasons, ranked alternatives, a commit action and the earliest date a goal can still be met. `GOAL_COMPILER` defaults to `llm`, which only takes effect where `ANTHROPIC_API_KEY` is set; with no key, with `GOAL_COMPILER=rules`, or when a call fails, the rule-based compiler runs. |
 | 6. Databricks and MLflow | Built behind flags, off by default. `backend/databricks.yml` deploys `backend.build_job`, which builds a twin from a transactions file; `DATABRICKS_TWIN_PATH` with `USE_MOCKS=false`, `DATABRICKS_HOST` and `DATABRICKS_TOKEN` serves that twin; `TRACK_TWIN_BUILDS=true` records each twin build as an MLflow run. The default demo uses none of it, and this update did not run it against a live workspace. |
-| 7. Demo polish | In progress. A minimalist multi-page UI (Overview, Plans & Assistant, Obligations, Purchase Simulator, Balance Trajectory, Insights), a scripted walkthrough (`docs/demo-walkthrough.md`) and a pre-demo checklist (`DEMO_CHECKLIST.md`) are in. |
+| 7. Demo polish | In progress. A minimalist multi-page UI (Overview, Plans & Assistant, Obligations, Purchase Simulator, Balance Trajectory, Forecast & Data) laid out as `frontend/SPEC.md` describes, a scripted walkthrough (`docs/demo-walkthrough.md`) and a pre-demo checklist (`DEMO_CHECKLIST.md`) are in. |
 
 Main gaps, in priority order:
 
-1. Databricks and MLflow are built but not part of the default demo, and have not been run against a live workspace since they were built.
-2. Explanations are template-based (Section 13).
-3. `POST /twin/build` has no UI, on purpose: it returns a twin without storing it, so a "Rebuild" control would have nothing to show (see `README.md`).
+1. The minimalist frontend spec's definition of done is not finished: the 320 to 1440 px light and dark pass over the six routes is still a manual check, and several comments in `backend/` and `README.md` still cite a `frontend/SPEC.md` section 3.5 that the rewrite removed; they mean Section 12, Security.
+2. Databricks and MLflow are built but not part of the default demo, and have not been run against a live workspace since they were built.
+3. Explanations are template-based (Section 13), and Simulate no longer shows a written explanation at all (`frontend/SPEC.md` D1); the backend still returns one.
+4. `POST /twin/build` has no UI, on purpose: it returns a twin without storing it, so a "Rebuild" control would have nothing to show (see `README.md`).
 
 ---
 
@@ -394,6 +395,8 @@ All of these endpoints exist, and the frontend calls all of them except `GET /he
 
 Each workstream's focus below targets the gaps in Section 5 (Current Status), in priority order.
 
+Ownership is by subsystem. It is not a split by layer, and it is not who writes the code: for the minimalist frontend build the team lead assigned work per page (`frontend/SPEC.md` Section 14) — frontend core and the Goals panel to mkrishiv, the Assistant to abimundayat26, the Simulator and Trajectory to Jordan12369 — so backend routes and frontend pages have each been built by all three.
+
 ### Workstream 1: Data / Financial Twin (Jordan12369)
 
 Owns Nessie, transaction normalization, recurrence detection, forecasting, Databricks and Financial Twin generation.
@@ -402,7 +405,8 @@ Built: normalization, recurrence detection, twin building, the Nessie client, th
 
 Focus:
 
-1. Run the Databricks build job and MLflow tracking against a real workspace and record the result here. Until then they are built but unverified live (Section 5).
+1. Keep the demo fixture's story true if the twin is rebalanced again: the laptop clearly risky, with at least one alternative that keeps every limit.
+2. Run the Databricks build job and MLflow tracking against a real workspace and record the result here. Until then they are built but unverified live (Section 5). Keep both off by default; fixtures remain the demo source (`frontend/SPEC.md` Q6).
 
 ### Workstream 2: Simulation / Intelligence (abimundayat26)
 
@@ -417,13 +421,14 @@ Focus:
 
 ### Workstream 3: Frontend / Integration (mkrishiv)
 
-Owns the Next.js frontend, Twin visualization, the scenario UI, charts, API integration, the Financial Intent Graph and demo polish.
+Owns the Next.js frontend, the app shell and shared components, Twin visualization, the scenario UI, charts, API integration and demo polish.
 
-Built: a minimalist multi-page app (Overview, Plans & Assistant, Obligations, Purchase Simulator, Balance Trajectory, Insights) with a shared shell, the Goals & Limits panel, the Assistant chat with proposal cards, the scenario comparison with alternatives and commit actions, the balance trajectory chart, the forecast and processing-lineage panels on Insights (where the twin's data came from, separately from whether the backend is reachable), and handling of an offline backend. Frontend requirements live in `frontend/SPEC.md`. The earlier single-screen frontend and its Financial Intent Graph were removed.
+Built: a minimalist multi-page app (Overview, Plans & Assistant, Obligations, Purchase Simulator, Balance Trajectory, Forecast & Data) with a shared shell, the Goals & Limits panel, the Assistant chat with proposal cards, the scenario comparison with alternatives and commit actions, the balance trajectory chart, the forecast and processing-lineage panels on Forecast & Data (where the twin's data came from, separately from whether the backend is reachable), and handling of an offline backend. Frontend requirements live in `frontend/SPEC.md`. The earlier single-screen frontend and its Financial Intent Graph were removed.
 
 Focus:
 
-1. Demo polish and a rehearsal from a fresh clone (Phase 7), following `docs/demo-walkthrough.md`.
+1. Finish the definition of done in `frontend/SPEC.md` Section 18: the 320 to 1440 px light and dark pass, and the comments that still cite a section 3.5 that no longer exists.
+2. Demo polish and a rehearsal from a fresh clone (Phase 7), following `docs/demo-walkthrough.md` and keeping it and `DEMO_CHECKLIST.md` matched to the shipped UI.
 
 Ownership means responsibility, not exclusive permission to modify code.
 

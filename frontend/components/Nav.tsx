@@ -133,9 +133,6 @@ export function Nav() {
                             </span>
                           ) : null}
                         </span>
-                        <span className="mt-0.5 block text-xs text-on-shell/70">
-                          {destination.purpose}
-                        </span>
                       </Link>
                     </li>
                   );

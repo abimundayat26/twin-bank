@@ -166,9 +166,9 @@ conflicts with what you are asked to do, stop and tell the developer.
   `printenv`, `set`, `export -p`, or anything else that dumps the environment. To
   check whether a variable is set, test only for presence
   (`[ -n "$ANTHROPIC_API_KEY" ] && echo set`), never its value.
-* NEVER set `GOAL_COMPILER=llm`, NEVER export or pass `ANTHROPIC_API_KEY`, and NEVER
-  call the Anthropic API through the SDK, `curl`, a script or a notebook, not even
-  "just to test", unless the group lead asks for it in that session.
+* NEVER export or pass `ANTHROPIC_API_KEY`, and NEVER call the Anthropic API
+  through the SDK, `curl`, a script or a notebook, not even "just to test", unless
+  the group lead asks for it in that session.
 * NEVER run `ant auth login`, `ant auth print-credentials`, or any command that
   creates, reveals or uses stored Anthropic credentials.
 * NEVER write a key, or anything shaped like one (`sk-ant-...`), into code, tests,
@@ -186,7 +186,11 @@ conflicts with what you are asked to do, stop and tell the developer.
 * Tests MUST NOT make real model or network calls. Keep the `no_real_llm` fixture in
   `backend/tests/conftest.py`. New LLM code takes an injectable client or
   `extract` function, and tests pass a fake.
-* The default for development, tests and a fresh clone is `GOAL_COMPILER=rules`.
+* The default is `GOAL_COMPILER=llm`, and it only takes effect where
+  `ANTHROPIC_API_KEY` is set, which is the group lead's machine. With no key, or
+  with `GOAL_COMPILER=rules`, or when a call fails, the rules compiler runs, so a
+  fresh clone still works with no credentials. Tests never see a key: the
+  `no_real_llm` fixture removes it.
 * If you see a key-shaped string anywhere (repo, diff, command output, message),
   do NOT repeat it. Stop, tell the developer where it is, and tell them to revoke it
   in the Anthropic Console.

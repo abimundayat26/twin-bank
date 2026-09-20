@@ -207,8 +207,8 @@ def test_the_client_is_never_constructed(llm_on):
         read(extract)
 
 
-def test_without_the_environment_the_injected_extract_is_not_even_called():
-    """AS-16: the default is rules, so a fake model is not consulted either."""
-    reading = read(_never("extract was called with GOAL_COMPILER unset"))
+def test_without_a_key_the_injected_extract_is_not_even_called():
+    """AS-16: with no key the rules run, so a fake model is not consulted either."""
+    reading = read(_never("extract was called with no key set"))
     assert reading.read_by == "rules"
     assert len(reading.proposals) == 1

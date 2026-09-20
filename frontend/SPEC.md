@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| Status | **Draft for team review. Not merged.** Replaces the previous `frontend/SPEC.md`. |
+| Status | **Implemented and merged.** Section 18's definition of done is complete except the 320 to 1440 px light and dark check. Replaces the previous `frontend/SPEC.md`. |
 | Written | 2026-09-20 |
 | Checked against | backend at `origin/main` (`891497f`): `schemas.py`, `main.py`, `twin_store.py`, `goal_compiler.py`, `simulation/*` |
 | Root spec | `SPEC.md` and `CLAUDE.md` are **unchanged** and still win on conflict. Section 16 records every place this document departs from them; D1 to D3 are decided by the team lead. |
@@ -925,7 +925,7 @@ D1 to D3 are **decided by the team lead** and are no longer proposals. The root 
 | D3 | Data-source chip removed from the header | Old frontend spec section 8 | Mitigated by FD-2, G-10 and G-13 |
 | D4 | New backend routes (section 6) | Root `SPEC.md` section 9 "build only what the phase needs" | Each has a named UI consumer |
 
-Follow-ups (each its own PR; PR #117 on the Intent Graph can be closed): update `docs/demo-walkthrough.md` and `DEMO_CHECKLIST.md`; refresh the stale `SPEC.md` sections 5 and 10 (section 10 still assigns Jordan12369 to data, abimundayat26 to simulation and mkrishiv to frontend, which this spec changes); replace about 47 code comments that cite old frontend spec section numbers.
+Follow-ups. Done: `docs/demo-walkthrough.md` and `DEMO_CHECKLIST.md` match the shipped UI (#157, #146); root `SPEC.md` sections 5 and 10 refreshed, including the per-page roles in section 14; PR #117 on the Intent Graph closed. Remaining: seven comments still cite a section 3.5 that this rewrite removed (`backend/src/backend/schemas.py`, `main.py`, `backend/tests/test_schemas.py`, `test_twin_build_api.py`, `test_twin_source.py`, `README.md`); they mean section 12, Security. Other section numbers cited in code resolve correctly.
 
 ## 17. Open questions (each default applies until decided)
 

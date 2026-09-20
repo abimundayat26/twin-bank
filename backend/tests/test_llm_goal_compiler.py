@@ -244,8 +244,27 @@ def test_unparsed_keeps_only_words_from_the_text():
 # --- compile_goals_auto -------------------------------------------------------------
 
 
-def test_rules_by_default_without_calling_the_llm(monkeypatch):
+def test_rules_without_a_key_never_call_the_llm(monkeypatch):
     monkeypatch.delenv("GOAL_COMPILER", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    def boom(text, as_of):
+        raise AssertionError("LLM should not be called")
+
+    assert compile_goals_auto("alex", ALEX, AS_OF, extract=boom).compiler == "rules"
+
+
+def test_llm_is_the_default_when_a_key_is_set(monkeypatch):
+    monkeypatch.delenv("GOAL_COMPILER", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    draft = LlmDraft(items=[item(kind="reserve", fragment="keep at least $1,500 for emergencies", amount=1500)],
+                     unparsed=[])
+    assert compile_goals_auto("alex", ALEX, AS_OF, extract=lambda t, d: draft).compiler == "llm"
+
+
+def test_rules_can_be_forced_even_with_a_key(monkeypatch):
+    monkeypatch.setenv("GOAL_COMPILER", "rules")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
     def boom(text, as_of):
         raise AssertionError("LLM should not be called")
@@ -326,8 +345,9 @@ def test_empty_llm_answer_falls_back_to_rules(llm_on):
     assert compile_goals_auto("alex", ALEX, AS_OF, extract=lambda t, d: None).compiler == "rules"
 
 
-def test_compile_endpoint_uses_rules_with_default_env(monkeypatch):
+def test_compile_endpoint_uses_rules_with_no_key(monkeypatch):
     monkeypatch.delenv("GOAL_COMPILER", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     response = TestClient(app).post("/goals/compile", json={"user_id": "alex", "text": ALEX})
     assert response.status_code == 200
     assert response.json()["compiler"] == "rules"
