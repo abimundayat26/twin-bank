@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { money, ordinalDay, percent } from "@/lib/format";
+import { OFFLINE_REASON } from "@/lib/offline";
 import type { FinancialObligation, ObligationCategory } from "@/lib/types";
 import { Badge } from "./ui";
 
@@ -22,12 +23,14 @@ export const CATEGORY_LABELS: Record<ObligationCategory, string> = {
 export function CategoryQuestion({
   obligation,
   isBusy,
+  isOffline = false,
   savingScope,
   onAnswer,
 }: {
   obligation: FinancialObligation;
   /** A twin update is in flight somewhere on the page; no second one may start. */
   isBusy: boolean;
+  isOffline?: boolean;
   /** Which control started it. This question's scope is the obligation's own id. */
   savingScope?: string;
   onAnswer: (category: ObligationCategory) => void;
@@ -67,7 +70,8 @@ export function CategoryQuestion({
               <button
                 key={candidate.category}
                 type="button"
-                disabled={isBusy}
+                disabled={isBusy || isOffline}
+                title={isOffline ? OFFLINE_REASON : undefined}
                 onClick={() => answer(candidate.category)}
                 className={`rounded-full border px-3 py-1 text-xs disabled:opacity-50 ${
                   i === 0 ? "border-counter text-counter" : "border-line text-muted"

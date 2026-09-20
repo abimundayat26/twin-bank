@@ -69,7 +69,7 @@ describe("BalanceTrajectoryChart", () => {
     render(<BalanceTrajectoryChart bands={bands(30)} simulations={1000} />);
     const label = plot().getAttribute("aria-label")!;
     expect(label).toContain("1,000 simulated futures");
-    expect(label).toContain("a difference of -$800");
+    expect(label).toContain("a difference of −$800");
   });
 
   it("says 'the simulation' rather than inventing a run count", () => {
@@ -199,7 +199,7 @@ describe("BalanceTrajectoryChart", () => {
     expect(screen.getByText("September 19, 2026")).toBeInTheDocument();
     expect(screen.getByText("$3,000.00")).toBeInTheDocument();
     expect(screen.getByText("$2,200.00")).toBeInTheDocument();
-    expect(screen.getByText("-$800")).toBeInTheDocument();
+    expect(screen.getByText("−$800")).toBeInTheDocument();
 
     fireEvent.pointerMove(target, { clientX: 300, clientY: 10 });
     expect(screen.getByText("October 18, 2026")).toBeInTheDocument();

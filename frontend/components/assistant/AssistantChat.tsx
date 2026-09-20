@@ -23,6 +23,7 @@ import {
   sendAssistantMessage,
 } from "@/lib/api";
 import { categoryForLabel, obligationForQuestion, simulateHref } from "@/lib/assistant";
+import { OFFLINE_REASON } from "@/lib/offline";
 import { useTwin } from "@/lib/state/TwinProvider";
 import type {
   AssistantMessageResponse,
@@ -40,8 +41,6 @@ const MAX_CHARACTERS = 2000;
 const COUNTER_FROM = 1800;
 
 const OPENING_PROMPT = "Tell me a goal, a limit, a bill, or a what-if.";
-const OFFLINE_REASON =
-  "Backend offline. Showing saved sample data. Changes are disabled.";
 /**
  * G-14: a fixture may stand in for a twin, never for an assistant reply. With no
  * backend there is nothing honest to put in the transcript, so the chat says so.
@@ -83,7 +82,7 @@ function errorText(error: unknown): string {
 }
 
 export function AssistantChat() {
-  const { twin, source, applyTwin } = useTwin();
+  const { twin, isOffline, applyTwin } = useTwin();
 
   const [entries, setEntries] = useState<Entry[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -98,7 +97,8 @@ export function AssistantChat() {
   const askedForOpening = useRef(false);
   const composer = useRef<HTMLTextAreaElement>(null);
 
-  const isOffline = source === "fixture";
+  // AppShell already carries the banner (G-10); here it is the reason every
+  // control gives for being unavailable.
   const disabledReason = isOffline ? OFFLINE_REASON : undefined;
 
   function add(entry: Unkeyed<Entry>) {
@@ -261,8 +261,6 @@ export function AssistantChat() {
       title="TwinBank Assistant"
       subtitle="It drafts and asks. Nothing reaches your Financial Twin until you accept it."
     >
-      {isOffline ? <p className="mb-3 text-sm text-caution">{OFFLINE_REASON}</p> : null}
-
       <div
         role="log"
         aria-label="Assistant conversation"

@@ -92,7 +92,7 @@ describe("ScenarioComparison", () => {
 
   it("shows the counterfactual's shortfall as a signed difference", () => {
     withMetrics({ ending_balance: 3280.51 }, { ending_balance: 2480.51 });
-    expect(screen.getByText("-$800")).toBeInTheDocument();
+    expect(screen.getByText("−$800")).toBeInTheDocument();
   });
 
   it("shows a gain with a plus sign rather than a bare number", () => {

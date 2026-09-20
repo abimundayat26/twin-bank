@@ -3,10 +3,11 @@ import { describe, expect, it } from "vitest";
 import { DESTINATIONS, destinationFor, isCurrent } from "./navigation";
 
 describe("DESTINATIONS", () => {
-  it("lists the five destinations in the order the spec fixes", () => {
+  it("lists the six destinations in the order G-23 fixes", () => {
     expect(DESTINATIONS.map((d) => d.label)).toEqual([
       "Overview",
       "Plans & Assistant",
+      "Obligations",
       "Purchase Simulator",
       "Balance Trajectory",
       "Forecast & Data",

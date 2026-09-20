@@ -1,5 +1,5 @@
 /**
- * The top-level destinations, in the order SPEC section 2.1 fixes.
+ * The top-level destinations, in the order frontend SPEC G-23 fixes.
  *
  * Each page has one job, so the user never scrolls past unrelated features to
  * reach the one they came for. Plain data, kept out of the nav component so the
@@ -17,12 +17,17 @@ export const DESTINATIONS: Destination[] = [
   {
     href: "/",
     label: "Overview",
-    purpose: "Accounts, the Financial Intent Graph, goals and obligations at a glance.",
+    purpose: "Balances, cash flow, spending and upcoming activity at a glance.",
   },
   {
     href: "/plans",
     label: "Plans & Assistant",
     purpose: "Declare goals and constraints, and answer questions about detected bills.",
+  },
+  {
+    href: "/obligations",
+    label: "Obligations",
+    purpose: "Review recurring expenses and upcoming obligations.",
   },
   {
     href: "/simulate",

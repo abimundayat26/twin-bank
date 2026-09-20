@@ -259,9 +259,16 @@ def low_balance_assumption(twin: FinancialTwin) -> str:
 
 def category_assumptions(twin: FinancialTwin) -> list[str]:
     assumptions = []
+    described_active_category = False
     for o in twin.obligations:
+        if not o.active:
+            assumptions.append(
+                f"{twin.display_name} paused {o.name}, so it is left out of the projection."
+            )
+            continue
         if o.declared_category is None:
             continue
+        described_active_category = True
         label = CATEGORY_LABELS[o.declared_category]
         if o.declared_category == "not_recurring":
             effect = "so it is left out of the projection"
@@ -272,11 +279,11 @@ def category_assumptions(twin: FinancialTwin) -> list[str]:
         else:
             effect = "so it counts as a mandatory bill"
         assumptions.append(f"{twin.display_name} declared {o.name} as {label}, {effect}.")
-    if any(o.declared_category is None for o in twin.obligations):
+    if any(o.active and o.declared_category is None for o in twin.obligations):
         assumptions.append(
-            "Every other recurring bill, including optional ones, is charged in full."
-            if assumptions
-            else "Every recurring bill, including optional ones, is charged in full."
+            "Every other active recurring bill, including optional ones, is charged in full."
+            if described_active_category
+            else "Every active recurring bill, including optional ones, is charged in full."
         )
     return assumptions
 

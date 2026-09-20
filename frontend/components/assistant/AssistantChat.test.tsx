@@ -23,6 +23,7 @@ vi.mock("@/lib/api", async () => {
 });
 
 import * as api from "@/lib/api";
+import { OFFLINE_REASON } from "@/lib/offline";
 import { TwinProvider } from "@/lib/state/TwinProvider";
 import { AssistantChat } from "./AssistantChat";
 
@@ -138,7 +139,7 @@ describe("AssistantChat reading a message (PL-2, PL-3)", () => {
       await screen.findByText("Here is what I understood. Nothing changes until you accept."),
     ).toBeInTheDocument();
     expect(screen.getByText("Read by rules")).toBeInTheDocument();
-    expect(screen.getByText("Add goal: Trip, $2,000 by June 1, 2027")).toBeInTheDocument();
+    expect(screen.getByText("Add goal: Trip, $2,000 by Jun 1, 2027")).toBeInTheDocument();
     // The quote on the card is the user's own words, so the reading can be
     // checked against the message above it (V1).
     const card = screen.getByRole("article");
@@ -402,12 +403,11 @@ describe("AssistantChat offline (G-10, G-14)", () => {
     vi.mocked(api.getTwin).mockResolvedValue({ data: TWIN, source: "fixture" });
     renderChat();
 
-    const banner = await screen.findByText(
-      "Backend offline. Showing saved sample data. Changes are disabled.",
-    );
-    expect(banner).toBeInTheDocument();
+    const box = await screen.findByLabelText("Message the Assistant");
     expect(api.getAssistantOpening).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("Message the Assistant")).toBeDisabled();
+    expect(box).toBeDisabled();
+    // AppShell carries the banner; every control here says the same reason.
+    expect(box).toHaveAttribute("title", OFFLINE_REASON);
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
   });
 });

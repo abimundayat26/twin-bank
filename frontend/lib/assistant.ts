@@ -8,7 +8,7 @@
  */
 
 import { CATEGORY_LABELS } from "@/components/CategoryQuestion";
-import { displayDate, money, ordinalDay } from "./format";
+import { money, ordinalDay, twinDate } from "./format";
 import type {
   AssistantQuestion,
   FinancialTwin,
@@ -50,7 +50,7 @@ function goalChangeText(changes: GoalChanges, asOf: string): string {
     parts.push(`target amount to ${money(changes.target_amount)}`);
   }
   if (changes.deadline !== undefined) {
-    parts.push(`target date to ${displayDate(changes.deadline, asOf)}`);
+    parts.push(`target date to ${twinDate(changes.deadline, asOf)}`);
   }
   if (changes.current_amount !== undefined) {
     parts.push(`saved so far to ${money(changes.current_amount)}`);
@@ -77,7 +77,7 @@ function oneTimeChangeText(
   if (changes.name !== undefined) parts.push(`name to “${changes.name}”`);
   if (changes.amount !== undefined) parts.push(`amount to ${money(changes.amount)}`);
   if (changes.due_date !== undefined) {
-    parts.push(`due date to ${displayDate(changes.due_date, asOf)}`);
+    parts.push(`due date to ${twinDate(changes.due_date, asOf)}`);
   }
   if (changes.account_id !== undefined) {
     parts.push(`account to ${accountName(twin, changes.account_id)}`);
@@ -100,7 +100,7 @@ export function describeProposal(proposal: Proposal, twin: FinancialTwin): Propo
     case "ADD_GOAL": {
       const { name, target_amount, deadline } = proposal.goal;
       return {
-        title: `Add goal: ${name}, ${money(target_amount)} by ${displayDate(deadline, asOf)}`,
+        title: `Add goal: ${name}, ${money(target_amount)} by ${twinDate(deadline, asOf)}`,
         fields: [],
       };
     }
@@ -113,7 +113,7 @@ export function describeProposal(proposal: Proposal, twin: FinancialTwin): Propo
       const { name, amount, due_date, account_id, mandatory } = proposal.obligation;
       return {
         title:
-          `Add bill: ${name}, ${money(amount)} on ${displayDate(due_date, asOf)}, ` +
+          `Add bill: ${name}, ${money(amount)} on ${twinDate(due_date, asOf)}, ` +
           `paid from ${accountName(twin, account_id)}`,
         // Whether it must be paid changes what the simulator may skip, so it is
         // on the card rather than hidden behind Accept.

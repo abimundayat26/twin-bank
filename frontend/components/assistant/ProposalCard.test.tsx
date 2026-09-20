@@ -46,7 +46,7 @@ describe("ProposalCard", () => {
     renderCard();
     expect(
       screen.getByText(
-        "Add bill: Tuition, $1,200 on January 15, 2027, paid from Everyday Checking",
+        "Add bill: Tuition, $1,200 on Jan 15, 2027, paid from Everyday Checking",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Must pay:")).toBeInTheDocument();

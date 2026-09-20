@@ -6,6 +6,7 @@
  */
 
 import { useState } from "react";
+import { OFFLINE_REASON } from "@/lib/offline";
 import type { FinancialTwin, SimulationEvent } from "@/lib/types";
 import { Card } from "./ui";
 
@@ -35,6 +36,7 @@ export function PurchaseSimulator({
   lastDate,
   isSimulating,
   prefill,
+  isOffline = false,
   onSimulate,
 }: {
   twin: FinancialTwin;
@@ -43,6 +45,7 @@ export function PurchaseSimulator({
   isSimulating: boolean;
   /** Starting values from a what-if the Assistant routed here (PL-6). */
   prefill?: PurchasePrefill;
+  isOffline?: boolean;
   onSimulate: (event: SimulationEvent) => void;
 }) {
   const [description, setDescription] = useState(
@@ -71,7 +74,7 @@ export function PurchaseSimulator({
 
   function handleSubmit(formEvent: React.FormEvent) {
     formEvent.preventDefault();
-    if (!isValid) return;
+    if (!isValid || isOffline) return;
     onSimulate({
       type: "purchase",
       description: description.trim(),
@@ -149,7 +152,8 @@ export function PurchaseSimulator({
 
         <button
           type="submit"
-          disabled={!isValid || isSimulating}
+          disabled={!isValid || isSimulating || isOffline}
+          title={isOffline ? OFFLINE_REASON : undefined}
           className="rounded-lg bg-counter px-4 py-2.5 text-sm font-semibold text-canvas transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isSimulating ? "Simulating…" : "Simulate"}

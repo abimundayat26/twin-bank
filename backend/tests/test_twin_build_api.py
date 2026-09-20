@@ -8,9 +8,10 @@ from datetime import date
 
 from fastapi.testclient import TestClient
 
+from backend import twin_store
 from backend.fixtures import load_twin
 from backend.main import app
-from backend.schemas import FinancialTwin, SimulationRequest
+from backend.schemas import FinancialTwin, RecurringObligationCreate, SimulationRequest
 from backend.simulation import run_simulation
 
 client = TestClient(app)
@@ -67,6 +68,24 @@ def test_a_confirmed_one_time_obligation_survives_the_api_rebuild():
     rebuilt = build()
 
     assert [obligation.name for obligation in rebuilt.one_time_obligations] == ["Tuition"]
+
+
+def test_recurring_declarations_and_overrides_survive_the_api_rebuild():
+    twin_store.add_declared_recurring(
+        RecurringObligationCreate(name="Wi-Fi", amount=55, due_day=12)
+    )
+    twin_store.override_recurring(
+        "obl_hokie_property_mgmt_rent",
+        twin_store.RecurringOverride(expected_amount=700, active=False),
+    )
+
+    rebuilt = build()
+
+    declared = next(o for o in rebuilt.obligations if o.id == "rec_wi_fi")
+    rent = next(o for o in rebuilt.obligations if o.id == "obl_hokie_property_mgmt_rent")
+    assert declared.provenance == "declared"
+    assert rent.expected_amount == 700
+    assert rent.active is False
 
 
 def test_an_unconfirmed_obligation_draft_never_survives_as_a_fact():

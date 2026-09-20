@@ -149,6 +149,22 @@ def low_balance_threshold(twin: FinancialTwin) -> float:
     return max(declared) if declared else LOW_BALANCE_THRESHOLD
 
 
+def is_charged(obligation: FinancialObligation) -> bool:
+    """Whether a run charges this recurring obligation at all.
+
+    Paused (`active=False`) means the user told TwinBank to stop counting it. A
+    declared `not_recurring` was never a recurring payment in the first place.
+    Everything else is charged, a savings transfer included: that money does leave
+    checking even though it is not a bill (see `Charge.to_savings`).
+
+    Anything outside the engine that needs "the payments the simulator charges" --
+    the overview's cash-flow tile and its Fixed bills slice -- MUST call this rather
+    than restate the rule, so the screen and the projection cannot drift apart
+    (frontend/SPEC.md OV-3).
+    """
+    return obligation.active and obligation.declared_category != "not_recurring"
+
+
 def is_mandatory(obligation: FinancialObligation) -> bool:
     """The user's declared category overrides the observed mandatory flag."""
     if obligation.declared_category in ("bill", "debt_repayment"):
@@ -275,7 +291,7 @@ def simulate_scenario(
 
     charges_by_day: dict[date, list[Charge]] = {}
     for obligation in twin.obligations:
-        if obligation.declared_category == "not_recurring":
+        if not is_charged(obligation):
             continue
         for d in monthly_due_dates(obligation.due_day, start, horizon_end):
             charges_by_day.setdefault(d, []).append(

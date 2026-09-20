@@ -43,6 +43,7 @@ function SimulateWorkspace() {
   const {
     twin,
     twinError,
+    isOffline,
     simulation,
     simulationSource,
     isSimulating,
@@ -110,6 +111,7 @@ function SimulateWorkspace() {
           lastDate={goal?.deadline}
           isSimulating={isSimulating}
           prefill={prefill}
+          isOffline={isOffline}
           onSimulate={simulate}
         />
 

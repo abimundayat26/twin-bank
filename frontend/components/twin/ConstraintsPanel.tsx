@@ -11,11 +11,13 @@ import { Card, ProvenanceTag } from "../ui";
 export function ConstraintsPanel({
   twin,
   isBusy = false,
+  isOffline = false,
   savingScope,
   onSetMinimum,
 }: {
   twin: FinancialTwin;
   isBusy?: boolean;
+  isOffline?: boolean;
   savingScope?: string;
   onSetMinimum: (amount: number) => void;
 }) {
@@ -38,6 +40,7 @@ export function ConstraintsPanel({
         key={minimum?.amount ?? "unset"}
         minimum={minimum}
         isBusy={isBusy}
+        isOffline={isOffline}
         savingScope={savingScope}
         onSave={onSetMinimum}
       />

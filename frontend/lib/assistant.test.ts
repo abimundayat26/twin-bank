@@ -44,7 +44,7 @@ describe("describeProposal", () => {
     };
     // 2027 is not the twin's as_of year (2026), so the year is shown (G-1).
     expect(describeProposal(proposal, TWIN).title).toBe(
-      "Add goal: Trip, $2,000 by June 1, 2027",
+      "Add goal: Trip, $2,000 by Jun 1, 2027",
     );
   });
 
@@ -93,7 +93,7 @@ describe("describeProposal", () => {
     };
     const card = describeProposal(proposal, TWIN);
     expect(card.title).toBe(
-      "Add bill: Tuition, $1,200 on January 15, 2027, paid from Everyday Checking",
+      "Add bill: Tuition, $1,200 on Jan 15, 2027, paid from Everyday Checking",
     );
     expect(card.fields).toEqual([{ label: "Must pay", value: "Yes" }]);
   });

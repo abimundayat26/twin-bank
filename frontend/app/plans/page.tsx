@@ -30,6 +30,7 @@ export default function PlansPage() {
   const {
     twin,
     twinError,
+    isOffline,
     isBusy,
     savingScope,
     twinUpdateError,
@@ -114,6 +115,7 @@ export default function PlansPage() {
                     : undefined
                 }
                 isBusy={isBusy}
+                isOffline={isOffline}
                 savingScope={savingScope}
                 onRemove={removeGoal}
               />
@@ -134,6 +136,7 @@ export default function PlansPage() {
             draft={goalDraft}
             isCompiling={isCompilingGoal}
             isBusy={isBusy}
+            isOffline={isOffline}
             savingScope={savingScope}
             compileError={goalCompileError}
             saveError={goalSaveError}
@@ -145,6 +148,7 @@ export default function PlansPage() {
           <ConstraintsPanel
             twin={twin}
             isBusy={isBusy}
+            isOffline={isOffline}
             savingScope={savingScope}
             onSetMinimum={setMinimum}
           />
@@ -172,6 +176,7 @@ export default function PlansPage() {
           <ObligationsPanel
             twin={twin}
             isBusy={isBusy}
+            isOffline={isOffline}
             savingScope={savingScope}
             onAnswer={answerClarification}
           />

@@ -228,6 +228,62 @@ def test_optional_obligation_shortfall_does_not_count_as_uncovered(twin):
     assert result.obligations_covered
 
 
+# --- Paused obligations ---------------------------------------------------------
+
+RENT = "obl_hokie_property_mgmt_rent"
+
+
+def pause(twin, obligation_id: str):
+    return twin.model_copy(
+        update={
+            "obligations": [
+                o.model_copy(update={"active": False}) if o.id == obligation_id else o
+                for o in twin.obligations
+            ]
+        }
+    )
+
+
+def test_pausing_rent_raises_the_ending_balance_by_the_rent_it_skips(twin):
+    rent = next(o for o in twin.obligations if o.id == RENT)
+    months = len(monthly_due_dates(rent.due_day, twin.as_of, HORIZON))
+    before = simulate_scenario(twin, [], HORIZON)
+    after = simulate_scenario(pause(twin, RENT), [], HORIZON)
+    assert months == 8
+    assert after.ending_balance == pytest.approx(
+        before.ending_balance + months * rent.expected_amount, abs=0.01
+    )
+
+
+def test_a_paused_obligation_is_never_charged_or_blamed(twin):
+    # Checking cannot cover rent here, so an active rent would sweep or go uncovered.
+    paused = pause(twin, RENT)
+    result = simulate_scenario(paused, [purchase(1300, on="2026-09-26")], HORIZON)
+    assert all(s.obligation_id != RENT for s in result.savings_sweeps)
+    assert all(u.obligation_id != RENT for u in result.uncovered_obligations)
+
+
+def test_pausing_every_obligation_leaves_only_income_and_spending(twin):
+    none_active = twin.model_copy(
+        update={"obligations": [o.model_copy(update={"active": False}) for o in twin.obligations]}
+    )
+    result = simulate_scenario(none_active, [], HORIZON)
+    everyday = sum(v.mean_14d for v in twin.variable_spending)
+    spending = everyday / 14 * (HORIZON - twin.as_of).days
+    assert result.ending_balance == pytest.approx(3140 + result.total_income - spending, abs=0.01)
+    assert result.obligations_covered
+
+
+def test_all_obligations_active_reproduces_the_projection_exactly(twin):
+    """No-regression (PER-6): the filter must not move a number while nothing is paused."""
+    explicit = twin.model_copy(
+        update={"obligations": [o.model_copy(update={"active": True}) for o in twin.obligations]}
+    )
+    assert simulate_scenario(explicit, [purchase(800)], HORIZON) == simulate_scenario(
+        twin, [purchase(800)], HORIZON
+    )
+
+
 # --- One-time obligations ------------------------------------------------------
 
 
