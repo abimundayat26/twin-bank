@@ -13,16 +13,33 @@
  */
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect } from "react";
 import { AlternativesPanel } from "@/components/AlternativesPanel";
 import { ExplanationPanel } from "@/components/ExplanationPanel";
 import { PurchaseSimulator } from "@/components/PurchaseSimulator";
 import { ScenarioComparison } from "@/components/ScenarioComparison";
 import { Card } from "@/components/ui";
+import { readPrefillParams } from "@/lib/assistant";
 import { useTwin } from "@/lib/state/TwinProvider";
 import { emergencyReserve, primaryGoal } from "@/lib/twin";
 
+/**
+ * `useSearchParams` makes everything under it client-rendered, so the Suspense
+ * boundary is here rather than around the whole route (Next.js: useSearchParams,
+ * "Prerendering"). The workspace below is what the page has always been.
+ */
 export default function SimulatePage() {
+  return (
+    <Suspense fallback={<p className="px-6 py-10 text-sm text-muted">Loading the Simulator…</p>}>
+      <SimulateWorkspace />
+    </Suspense>
+  );
+}
+
+function SimulateWorkspace() {
+  // A what-if the Assistant routed here fills the form; it never runs it (PL-6).
+  const prefill = readPrefillParams(useSearchParams());
   const {
     twin,
     twinError,
@@ -93,6 +110,7 @@ export default function SimulatePage() {
           twin={twin}
           lastDate={goal?.deadline}
           isSimulating={isSimulating}
+          prefill={prefill}
           isOffline={isOffline}
           onSimulate={simulate}
         />
