@@ -1,17 +1,22 @@
 """Recurrence detection: unit behaviour, then recovery of Alex's twin.
 
 The recovery tests matter most. `fixtures/transactions.json` was generated *from*
-`fixtures/twin.json`, so running the detector over that feed and comparing the
-result to the twin asks the real question: can the structure be found again in
-the data? Tolerances are wide on purpose — the generator adds noise, and they
+`fixtures/twin_seed.json`, so running the detector over that feed and comparing
+the result to the seed asks the real question: can the structure be found again
+in the data? Tolerances are wide on purpose — the generator adds noise, and they
 track its SEED. If anyone regenerates the feed, expect to widen them.
+
+They compare against the seed, never `twin.json`. `twin.json` is the detector's
+own output, so comparing it to a detector run would prove only that the same
+code ran twice. The seed is the hand-written structure that went into the feed,
+which is the thing worth recovering.
 """
 
 from datetime import date, timedelta
 
 import pytest
 
-from backend.fixtures import load_raw_transactions, load_twin
+from backend.fixtures import load_raw_transactions, load_seed_twin
 from backend.forecast import HALF_LIFE_DAYS, MIN_FORTNIGHTS_FOR_SEASONALITY
 from backend.ingest.build import build_twin
 from backend.ingest.models import Category, Transaction
@@ -254,13 +259,13 @@ def test_income_is_not_counted_as_spending() -> None:
 
 @pytest.fixture(scope="module")
 def recovered():
-    twin = load_twin()
+    twin = load_seed_twin()
     return detect_structure(normalize_all(load_raw_transactions()), twin.as_of)
 
 
 def test_the_paycheck_comes_back(recovered) -> None:
     """$720 every 14 days, next on 2026-09-25 — recovered from 26 noisy deposits."""
-    expected = load_twin().income[0]
+    expected = load_seed_twin().income[0]
     (stream,) = recovered.income
 
     assert stream.interval_days == expected.interval_days
@@ -271,7 +276,7 @@ def test_the_paycheck_comes_back(recovered) -> None:
 
 
 def test_every_obligation_comes_back_on_the_right_day(recovered) -> None:
-    expected = {o.due_day: o for o in load_twin().obligations}
+    expected = {o.due_day: o for o in load_seed_twin().obligations}
     found = {o.due_day: o for o in recovered.obligations}
 
     assert set(found) == set(expected)
@@ -305,7 +310,7 @@ def test_spending_distributions_come_back(recovered) -> None:
     side of its own boundaries and the measured spread exceeds the parameter
     the data was drawn from.
     """
-    expected = {v.category: v for v in load_twin().variable_spending}
+    expected = {v.category: v for v in load_seed_twin().variable_spending}
     found = {v.category: v for v in recovered.variable_spending}
 
     assert set(found) == set(expected)
@@ -360,7 +365,7 @@ def test_a_flat_category_carries_no_profile() -> None:
 
 
 def test_the_built_twin_records_how_it_forecast() -> None:
-    twin = load_twin()
+    twin = load_seed_twin()
     transactions = normalize_all(load_raw_transactions())
     built = build_twin(
         user_id=twin.user_id,
