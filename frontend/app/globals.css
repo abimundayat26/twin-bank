@@ -19,6 +19,10 @@
   --color-surface: #ffffff;
   --color-raised: #e3ecf7;
 
+  /* Application chrome: white is 15.23:1 against this navy. */
+  --color-shell: #0b2740;
+  --color-on-shell: #ffffff;
+
   /* Borders and secondary text: the ink blue at controlled opacity. */
   --color-line: rgb(11 39 64 / 0.24);
   --color-muted: rgb(11 39 64 / 0.72);
