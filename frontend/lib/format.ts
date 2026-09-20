@@ -58,6 +58,18 @@ export const longDate = (iso: string) => LONG_DATE.format(new Date(`${iso}T00:00
 
 export const shortDate = (iso: string) => SHORT_DATE.format(new Date(`${iso}T00:00:00Z`));
 
+/**
+ * A date the way every page shows one (SPEC G-1): the year is dropped when it is
+ * the year the twin is current for, and kept otherwise.
+ *
+ * The reference is `twin.as_of`, never `new Date()`, so a pinned fixture reads
+ * the same on any day the demo is run (A1). Callers still put the full ISO date
+ * in a `title` and `aria-label`, which G-1 also requires.
+ */
+export function displayDate(iso: string, asOf: string): string {
+  return iso.slice(0, 4) === asOf.slice(0, 4) ? shortDate(iso) : longDate(iso);
+}
+
 /** A timestamp that already carries a zone, or is naive. */
 const ZONED = /(?:Z|[+-]\d{2}:?\d{2})$/i;
 

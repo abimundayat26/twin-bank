@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   chance,
+  displayDate,
   longDate,
   longDateTime,
   money,
@@ -73,5 +74,19 @@ describe("longDateTime", () => {
 
   it("returns null for something that is not a timestamp", () => {
     expect(longDateTime("whenever")).toBeNull();
+  });
+});
+
+describe("displayDate", () => {
+  it("drops the year inside the twin's own year and keeps it outside (G-1)", () => {
+    expect(displayDate("2026-10-15", "2026-09-18")).toBe("Oct 15");
+    expect(displayDate("2027-05-01", "2026-09-18")).toBe("May 1, 2027");
+  });
+
+  it("measures against the twin's as_of, not today (A1)", () => {
+    // The same date reads differently for two twins, and never depends on when
+    // the test is run.
+    expect(displayDate("2027-05-01", "2027-01-02")).toBe("May 1");
+    expect(displayDate("2026-12-31", "2027-01-02")).toBe("December 31, 2026");
   });
 });

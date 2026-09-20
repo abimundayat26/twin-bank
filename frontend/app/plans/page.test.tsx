@@ -10,6 +10,7 @@ vi.mock("@/lib/api", async () => {
   return {
     ...actual,
     getTwin: vi.fn(),
+    getAssistantOpening: vi.fn(),
     saveGoals: vi.fn(),
     setMinimumBalance: vi.fn(),
     respondToClarification: vi.fn(),
@@ -37,6 +38,7 @@ beforeEach(() => {
   vi.mocked(api.saveGoals).mockResolvedValue({ data: TWIN, source: "api" });
   vi.mocked(api.setMinimumBalance).mockResolvedValue({ data: TWIN, source: "api" });
   vi.mocked(api.respondToClarification).mockResolvedValue({ data: TWIN, source: "api" });
+  vi.mocked(api.getAssistantOpening).mockResolvedValue({ questions: [] });
 });
 
 describe("Plans & Assistant", () => {
@@ -56,7 +58,23 @@ describe("Plans & Assistant", () => {
 
   it("carries the goal composer, which the Overview no longer has", async () => {
     renderPlans();
-    await waitFor(() => expect(screen.getByRole("textbox")).toBeInTheDocument());
+    // Named, because the Assistant's composer is a textbox on this page too.
+    await waitFor(() =>
+      expect(screen.getByLabelText("Describe the goal")).toBeInTheDocument(),
+    );
+  });
+
+  it("opens with the Assistant, which drafts but never writes (section 9.2)", async () => {
+    renderPlans();
+    await waitFor(() =>
+      expect(screen.getByLabelText("Message the Assistant")).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("log", { name: "Assistant conversation" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "It drafts and asks. Nothing reaches your Financial Twin until you accept it.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows the declared goals and the limits they sit on top of", async () => {

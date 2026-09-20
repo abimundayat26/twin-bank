@@ -21,6 +21,9 @@ import { money } from "./format";
 import mockSimulation from "./mock/simulation.json";
 import mockTwin from "./mock/twin.json";
 import type {
+  AssistantMessageRequest,
+  AssistantMessageResponse,
+  AssistantOpening,
   ClarificationResponseRequest,
   DeclaredGoalsRequest,
   FinancialConstraint,
@@ -30,6 +33,8 @@ import type {
   MinimumBalanceRequest,
   OptimizationRequest,
   OptimizationResponse,
+  ProposalDecisionRequest,
+  ProposalDecisionResponse,
   SimulationRequest,
   SimulationResponse,
 } from "./types";
@@ -269,4 +274,41 @@ function declared(twin: FinancialTwin, request: DeclaredGoalsRequest): Financial
     requested.find((c) => c.type === "minimum_checking_balance") ??
     twin.constraints.find((c) => c.type === "minimum_checking_balance");
   return floor ? [...reserve, floor] : reserve;
+}
+
+// --- Assistant ---------------------------------------------------------------
+//
+// None of these three has a fixture behind it. G-14: mock data may stand in for
+// a twin when the backend is unreachable, never for an assistant result. A chat
+// that answered from a fixture would be putting words in the Assistant's mouth,
+// so these throw and the chat says it is offline instead.
+
+/** The opening questions about detected payments TwinBank could not classify (AS-9). */
+export async function getAssistantOpening(userId: string): Promise<AssistantOpening> {
+  return getJson<AssistantOpening>(`/assistant/opening/${encodeURIComponent(userId)}`);
+}
+
+/** Reads one message into drafts and questions. The twin is unchanged (AS-1). */
+export async function sendAssistantMessage(
+  request: AssistantMessageRequest,
+): Promise<AssistantMessageResponse> {
+  return getJson<AssistantMessageResponse>("/assistant/message", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * Accepts or rejects one draft. Accepting is the only thing the Assistant does
+ * that touches the twin (AS-15), which is why it comes back with the whole
+ * updated twin for the rest of the app to replace its own with.
+ */
+export async function decideProposal(
+  proposalId: string,
+  request: ProposalDecisionRequest,
+): Promise<ProposalDecisionResponse> {
+  return getJson<ProposalDecisionResponse>(
+    `/assistant/proposals/${encodeURIComponent(proposalId)}/decision`,
+    { method: "POST", body: JSON.stringify(request) },
+  );
 }

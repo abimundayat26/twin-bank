@@ -73,6 +73,8 @@ export interface TwinState {
   optimizationError: string | undefined;
 
   answerClarification: (obligationId: string, category: ObligationCategory) => void;
+  /** Replaces the twin with one the backend has already saved (see `applyTwin`). */
+  applyTwin: (next: FinancialTwin) => void;
   setMinimum: (amount: number) => void;
   compileGoalText: (text: string) => Promise<void>;
   confirmGoals: (request: DeclaredGoalsRequest) => Promise<void>;
@@ -181,6 +183,22 @@ export function TwinProvider({ children }: { children: ReactNode }) {
       }),
       obligationId,
     );
+  }
+
+  /**
+   * Replaces the twin with one the backend has already saved: the response to an
+   * accepted Assistant proposal (AS-15), or an opening question answered in the
+   * chat. The caller owns the request and its own waiting state, so this sets no
+   * busy flag; it still clears the simulation, which that change may have made
+   * stale, exactly as `updateTwin` does.
+   */
+  function applyTwin(next: FinancialTwin) {
+    latestRequest.current += 1;
+    setTwin(next);
+    setSource("api");
+    setSimulation(null);
+    setSimulationError(undefined);
+    clearOptimization();
   }
 
   function setMinimum(amount: number) {
@@ -292,6 +310,7 @@ export function TwinProvider({ children }: { children: ReactNode }) {
     isOptimizing,
     optimizationError,
     answerClarification,
+    applyTwin,
     setMinimum,
     compileGoalText,
     confirmGoals,
