@@ -9,6 +9,8 @@ for the repeatable Alex presentation, and [`CLAUDE.md`](CLAUDE.md) for team and 
 
 **Phase 3: real data behind a switch.** `GET /twin/alex` serves the hand-written twin in `backend/fixtures/`, plus whatever the user has since declared. `POST /simulate` runs a real 1,000-path Monte Carlo over that twin (`is_mock: false`); set `SIMULATION_SEED` to make the numbers repeat.
 
+The frontend is a six-page app reached from the top-left menu: **Overview**, **Plans & Assistant** (a chat that drafts goals, plus the Goals & Limits panel), **Obligations**, **Purchase Simulator** (baseline vs counterfactual, alternatives, and Proceed / Sacrifice / Compromise actions), **Balance Trajectory** and **Forecast & Data**. [`docs/demo-walkthrough.md`](docs/demo-walkthrough.md) walks through all six.
+
 `POST /twin/build` detects the twin's observed half — income, obligations, variable spending — from a year of transactions, and returns it rather than storing it.
 
 It is the one endpoint the frontend does not call, and that is deliberate. Because a build changes nothing, a "Rebuild" control could only show a twin the app is not using, or imply a refresh that did not happen — which [`frontend/SPEC.md`](frontend/SPEC.md) §3.5 rules out until the backend exposes an authenticated, persistent operation. It exists to exercise the ingest pipeline, to log a build to MLflow, and as the seam the Nessie and Databricks paths build through. Giving it a UI needs somewhere for the result to go and something deciding who may ask for it.
@@ -18,21 +20,26 @@ With `USE_MOCKS=false` and a `NESSIE_API_KEY`, those transactions and the accoun
 ## Layout
 
 ```text
-backend/
+backend/            see backend/README.md
   src/backend/
     schemas.py      shared Pydantic contracts (source of truth)
-    fixtures.py     loads JSON fixtures
-    main.py         FastAPI app
-  fixtures/
-    twin.json       Alex's Financial Twin
-    simulation.json $800 laptop baseline vs counterfactual
+    main.py         FastAPI app and routes
+    twin_store.py   the twin plus the user's declared answers
+    twin_source.py  fixture, Nessie or Databricks as the twin's observed half
+    ingest/         normalize transactions, detect recurrence, build the twin
+    simulation/     Monte Carlo engine, impact, alternatives, explanations
+    nessie/         Capital One Nessie client and seed script
+    assistant.py    the chat: reads a message into drafts and questions
+  fixtures/         Alex's twin, transactions and simulation fixture
   tests/
-frontend/           Next.js demo app
-  app/page.tsx      the single demo screen (only component that fetches)
-  components/       presentational panels
-  lib/api.ts        getTwin / runSimulation + offline fixture fallback
+frontend/           Next.js app, see frontend/README.md
+  app/              one route per page (/, /plans, /obligations, /simulate,
+                    /trajectory, /insights)
+  components/       panels and charts
+  lib/api.ts        the only module that talks to the backend, with offline fallback
   lib/types.ts      TypeScript mirror of schemas.py
   lib/mock/         copies of backend/fixtures/ for offline demo
+docs/               demo walkthrough
 ```
 
 ## Backend
@@ -52,13 +59,26 @@ Endpoints:
 | --- | --- | --- |
 | GET | `/health` | `{"status": "ok"}` |
 | GET | `/twin/{user_id}` | `FinancialTwin` (only `alex` exists) |
+| GET | `/twin/{user_id}/overview` | `OverviewPayload`: the Overview page's tiles, accounts, spending and upcoming activity |
+| GET | `/twin/{user_id}/forecast` | `ForecastPayload`: the baseline forecast, seasonal trends and data provenance |
+| GET | `/twin/{user_id}/obligations` | `ObligationsPayload`: recurring and one-time obligations |
+| POST, PUT, DELETE | `/twin/{user_id}/obligations/recurring[/{obligation_id}]` | `FinancialTwin` after adding, editing (name, amount, due day, paused) or deleting a declared recurring obligation. Detected ones can be edited but not deleted (409) |
+| POST, PUT, DELETE | `/twin/{user_id}/obligations/one-time[/{obligation_id}]` | `FinancialTwin` after adding, editing or deleting a one-time obligation |
 | POST | `/twin/build` | `FinancialTwin` built from transactions, for a `TwinBuildRequest` |
 | PUT | `/twin/{user_id}/minimum-balance` | `FinancialTwin` with the user's low-balance line set |
+| PUT | `/twin/{user_id}/reserve` | `FinancialTwin` with the emergency reserve set (0 removes it) |
 | POST | `/clarifications/respond` | `FinancialTwin` with the user's category answer applied |
 | POST | `/simulate` | `SimulationResponse` for a `SimulationRequest` |
+| GET | `/explain/{simulation_id}` | A recent `SimulationResponse` again, explanation included (404 once expired) |
 | POST | `/optimize` | `OptimizationResponse`: alternatives to a purchase, ranked, for an `OptimizationRequest` |
 | POST | `/goals/compile` | `GoalCompileResponse`: draft goals, constraints and clarification questions from a `GoalCompileRequest` (saves nothing) |
 | PUT | `/twin/{user_id}/goals` | `FinancialTwin` after saving the confirmed goals and emergency reserve (`DeclaredGoalsRequest`) |
+| PATCH, DELETE | `/twin/{user_id}/goals/{goal_id}` | `FinancialTwin` after a partial goal edit (`GoalChanges`) or a delete |
+| POST | `/twin/{user_id}/goals/{goal_id}/earliest-date` | `EarliestDateResponse`: the first deadline at which a purchase stops costing that goal |
+| POST | `/twin/{user_id}/purchases/commit` | `CommitPurchaseResponse`: the purchase added to the plan as a one-off obligation, optionally moving goal deadlines. Moves no money |
+| GET | `/assistant/opening/{user_id}` | `AssistantOpening`: up to two questions about payments TwinBank cannot categorise |
+| POST | `/assistant/message` | `AssistantMessageResponse`: one chat message read into draft cards and questions. Changes nothing |
+| POST | `/assistant/proposals/{proposal_id}/decision` | `ProposalDecisionResponse`: accepts or rejects one draft card. Accepting is the only chat action that changes the twin |
 
 Interactive docs: http://localhost:8000/docs
 
@@ -77,15 +97,18 @@ npm test           # Vitest unit tests (lib/*.test.ts)
 npm run build
 ```
 
-It calls the backend at `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`) and falls
-back to the fixtures in `frontend/lib/mock/` if the backend is unreachable, so the demo
-renders on its own.
+It calls the backend at `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`). If the backend
+is unreachable, Overview and Forecast & Data render from the fixtures in `frontend/lib/mock/`
+under a **Backend offline** banner, and every control that writes is disabled. Simulation,
+optimization and the Assistant need the backend and say so rather than showing a saved result.
 
 ## Configuration
 
 Copy `.env.example` to `.env`. The defaults run the demo with mocks and no credentials.
 
-The user's answers (declared categories, minimum balance, goals and reserve) are saved to `backend/.data/answers.json` and survive a backend restart. Delete that file and restart to demo from a clean slate.
+The user's answers (declared categories, minimum balance, goals, reserve and obligation edits) are saved to `backend/.data/answers.json` and survive a backend restart. Delete that file and restart to demo from a clean slate, or set `TWIN_ANSWERS_PATH=` (empty) to ignore it and keep answers in memory only.
+
+`SIMULATION_SEED` fixes the Monte Carlo seed, and `CORS_ORIGINS` (default `http://localhost:3000`) lists the frontend origins the backend accepts.
 
 ### Drafting goals with Claude (optional)
 
@@ -109,6 +132,10 @@ NESSIE_API_KEY=... uv run python -m backend.nessie.seed
 ```
 
 It prints the account ids it created. Put those and the key in `.env`, set `USE_MOCKS=false`, and restart the backend; `GET /twin/alex` is then built from Nessie. Note the base URL is `https://` — the `http://` host in Nessie's own docs refuses connections.
+
+### Building the twin on Databricks (optional)
+
+`backend/databricks.yml` is a Databricks Asset Bundle that runs the same build as `POST /twin/build` (`backend.build_job`) as a serverless job and writes the twin to a Unity Catalog volume. To serve that twin, set `USE_MOCKS=false`, `DATABRICKS_TWIN_PATH`, `DATABRICKS_HOST` and `DATABRICKS_TOKEN`; it takes precedence over Nessie. Setup steps are in the header of `databricks.yml`. Nothing else imports the job, and without all three variables the fixtures stay in charge.
 
 ### Tracking twin builds with MLflow (optional)
 
