@@ -8,13 +8,30 @@ Conventions: money is USD dollars, dates are ISO 8601, probabilities are 0-1.
 """
 
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 # "observed" = derived from banking data; "declared" = stated by the user.
 Provenance = Literal["observed", "declared"]
 Probability = Field(ge=0, le=1)
+
+# API-4 (frontend/SPEC.md section 6): money on the routes added by that spec rejects
+# NaN, infinity and anything past a billion dollars. Applied to the models below
+# only -- retrofitting the older contracts would change what an existing payload
+# means for the other workstreams.
+MAX_MONEY = 1_000_000_000
+PositiveMoney = Field(gt=0, le=MAX_MONEY, allow_inf_nan=False)
+NonNegativeMoney = Field(ge=0, le=MAX_MONEY, allow_inf_nan=False)
+SignedMoney = Field(ge=-MAX_MONEY, le=MAX_MONEY, allow_inf_nan=False)
 
 # What a recurring obligation is for. Observed data can only suggest this;
 # the user's answer is stored separately as declared_category.
@@ -98,6 +115,12 @@ class FinancialObligation(BaseModel):
     )
     declared_category: ObligationCategory | None = Field(
         default=None, description="The user's answer to the category question."
+    )
+    active: bool = Field(
+        default=True,
+        description="False means paused: the simulator and the overview ignore it "
+        "(frontend/SPEC.md 4.1, PER-6). A twin saved before this field existed loads "
+        "as active.",
     )
 
     @field_validator("category_candidates")
@@ -553,4 +576,457 @@ class DeclaredGoalsRequest(BaseModel):
         default=None,
         description="Confirmed one-off expenses. Omitted keeps the ones already "
         "confirmed; an empty list clears them.",
+    )
+
+
+# --- Overview ----------------------------------------------------------------
+#
+# Everything below this line is the contract for the pages described in
+# frontend/SPEC.md (the minimalist layout). It is additive: nothing above was
+# renamed or removed, and the routes that serve these models land in later PRs.
+# Section numbers in the comments refer to that document.
+
+
+def _clean_name(value: str) -> str:
+    """API-5: trim the ends and collapse interior runs of whitespace.
+
+    Runs after the length bounds, so a name of nothing but spaces is rejected here
+    rather than being saved as an empty string.
+    """
+
+    cleaned = " ".join(value.split())
+    if not cleaned:
+        raise ValueError("name must not be blank")
+    if len(cleaned) > 80:
+        raise ValueError("name must be at most 80 characters")
+    return cleaned
+
+
+# A user-supplied name for a goal or an obligation, normalized on the way in.
+EditableName = Annotated[str, Field(min_length=1, max_length=80), AfterValidator(_clean_name)]
+
+
+class OverviewAccount(BaseModel):
+    """An account as the Overview page lists it: no transactions, no history."""
+
+    id: str
+    name: str
+    balance: float = SignedMoney
+
+
+class SpendingSlice(BaseModel):
+    """One wedge of the spending donut.
+
+    `label` is a variable-spending category, "Fixed bills", or "Other". Obligations
+    carry no category of spend, so TwinBank groups them rather than guessing (A13).
+    """
+
+    label: str
+    monthly_amount: float = NonNegativeMoney
+
+
+class UpcomingItem(BaseModel):
+    name: str
+    amount: float = Field(
+        ge=-MAX_MONEY,
+        le=MAX_MONEY,
+        allow_inf_nan=False,
+        description="Signed: positive is income, negative is an outflow.",
+    )
+    date: date
+    kind: Literal["income", "recurring_bill", "one_time_bill"]
+
+
+class OverviewPayload(BaseModel):
+    """GET /twin/{user_id}/overview (OV-1)."""
+
+    user_id: str
+    as_of: date
+    total_balance: float = SignedMoney
+    monthly_net_cash_flow: float = SignedMoney
+    goal_progress: float | None = Field(
+        default=None, ge=0, le=1, description="None when the twin has no goals."
+    )
+    accounts: list[OverviewAccount]
+    spending: list[SpendingSlice] = Field(
+        default=[], max_length=5, description="At most four categories plus 'Other' (OV-5)."
+    )
+    total_monthly_spending: float = NonNegativeMoney
+    upcoming: list[UpcomingItem] = Field(
+        default=[], max_length=5, description="At most five, ascending by date (OV-7)."
+    )
+
+    @field_validator("upcoming")
+    @classmethod
+    def check_upcoming_order(cls, items: list[UpcomingItem]) -> list[UpcomingItem]:
+        dates = [item.date for item in items]
+        if dates != sorted(dates):
+            raise ValueError("upcoming items must be ascending by date")
+        return items
+
+
+# --- Obligations management --------------------------------------------------
+
+
+class CategoryOption(BaseModel):
+    """One answer the user may pick for an unclear obligation.
+
+    Deliberately carries no probability: the page shows plain words in likelihood
+    order and never a confidence number (G-5).
+    """
+
+    category: ObligationCategory
+    label: str
+
+
+class RecurringObligationRow(BaseModel):
+    """A recurring obligation as the Obligations page lists it (OB-1)."""
+
+    id: str
+    name: str
+    amount: float = PositiveMoney
+    frequency: Literal["monthly"] = Field(
+        default="monthly", description="FinancialObligation is keyed on due_day only."
+    )
+    due_day: int = Field(ge=1, le=31)
+    active: bool
+    origin: Literal["detected", "declared"] = Field(
+        description="detected = rebuilt from transactions, so it can be paused but not deleted."
+    )
+    category_label: str | None = Field(
+        default=None, description="The declared category in words, None when undeclared."
+    )
+    needs_answer: bool = Field(
+        description="Candidates exist and the user has not declared one."
+    )
+    options: list[CategoryOption] = Field(
+        default=[], description="Most likely first, without probabilities."
+    )
+
+
+class OneTimeObligationRow(BaseModel):
+    """A one-off expense as the Obligations page lists it (OB-1)."""
+
+    id: str
+    name: str
+    amount: float = PositiveMoney
+    due_date: date
+    account_id: str
+    account_name: str
+    mandatory: bool
+
+
+class ObligationsPayload(BaseModel):
+    user_id: str
+    as_of: date
+    recurring: list[RecurringObligationRow] = []
+    one_time: list[OneTimeObligationRow] = Field(
+        default=[], description="Only those still ahead: due_date > as_of."
+    )
+
+
+class RecurringObligationCreate(BaseModel):
+    """POST body. Anything the user types is declared, never detected (PER-3)."""
+
+    name: EditableName
+    amount: float = PositiveMoney
+    due_day: int = Field(ge=1, le=31)
+    mandatory: bool = True
+
+
+class RecurringObligationChanges(BaseModel):
+    """PUT body. An omitted field is unchanged; at least one must be given."""
+
+    name: EditableName | None = None
+    amount: float | None = Field(default=None, gt=0, le=MAX_MONEY, allow_inf_nan=False)
+    due_day: int | None = Field(default=None, ge=1, le=31)
+    active: bool | None = None
+
+    @model_validator(mode="after")
+    def check_something_changed(self) -> "RecurringObligationChanges":
+        if not self.model_fields_set:
+            raise ValueError("give at least one field to change")
+        return self
+
+
+class OneTimeObligationCreate(BaseModel):
+    """POST body. The route additionally checks the date against the twin's as_of."""
+
+    name: EditableName
+    amount: float = PositiveMoney
+    due_date: date
+    account_id: str
+    mandatory: bool = True
+
+
+class OneTimeObligationChanges(BaseModel):
+    """PUT body. An omitted field is unchanged; at least one must be given."""
+
+    name: EditableName | None = None
+    amount: float | None = Field(default=None, gt=0, le=MAX_MONEY, allow_inf_nan=False)
+    due_date: date | None = None
+    account_id: str | None = None
+    mandatory: bool | None = None
+
+    @model_validator(mode="after")
+    def check_something_changed(self) -> "OneTimeObligationChanges":
+        if not self.model_fields_set:
+            raise ValueError("give at least one field to change")
+        return self
+
+
+# --- Goal and limit edits ----------------------------------------------------
+
+
+class GoalChanges(BaseModel):
+    """PATCH body for one goal (PL-10).
+
+    A partial edit, so a stale client cannot overwrite the user's other goals the
+    way the replace-all PUT /goals would.
+    """
+
+    name: EditableName | None = None
+    target_amount: float | None = Field(default=None, gt=0, le=MAX_MONEY, allow_inf_nan=False)
+    deadline: date | None = None
+    current_amount: float | None = Field(default=None, ge=0, le=MAX_MONEY, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def check_something_changed(self) -> "GoalChanges":
+        if not self.model_fields_set:
+            raise ValueError("give at least one field to change")
+        return self
+
+
+class ReserveRequest(BaseModel):
+    """PUT /twin/{user_id}/reserve (PL-9). Zero removes the reserve."""
+
+    amount: float = NonNegativeMoney
+
+
+# --- Forecast view -----------------------------------------------------------
+
+
+class ForecastCallout(BaseModel):
+    """A high or low point worth naming on the Forecast page.
+
+    `label` is built from a fixed template vocabulary and the twin's own content
+    (FD-9). A model never writes it.
+    """
+
+    date: date
+    kind: Literal["peak", "trough"]
+    balance: float = SignedMoney
+    label: str
+
+
+class ForecastPayload(BaseModel):
+    """GET /twin/{user_id}/forecast (FD-6): the baseline the simulate route cannot give."""
+
+    user_id: str
+    horizon_end: date
+    bands: ScenarioBands
+    callouts: list[ForecastCallout] = Field(default=[], max_length=4)
+    num_simulations: int | None = Field(default=None, ge=0)
+    is_mock: bool = False
+
+
+# --- Committing a purchase ---------------------------------------------------
+
+
+class GoalDateChange(BaseModel):
+    """Moving a goal's deadline as part of committing a purchase (CM-4)."""
+
+    goal_id: str
+    from_deadline: date = Field(
+        description="The deadline the client saw. A mismatch is a 409, not an overwrite."
+    )
+    deadline: date = Field(description="The new, later deadline.")
+
+
+class CommitPurchaseRequest(BaseModel):
+    """POST /twin/{user_id}/purchases/commit (CM-3). One purchase in v1."""
+
+    events: list[SimulationEvent] = Field(min_length=1, max_length=1)
+    goal_updates: list[GoalDateChange] = []
+
+
+class CommitPurchaseResponse(BaseModel):
+    twin: FinancialTwin
+    created_ids: list[str] = Field(
+        default=[], description="The one-time obligation ids now on the twin (A9)."
+    )
+    already_committed: bool = Field(
+        default=False, description="True when this exact purchase was already there (G-15)."
+    )
+
+
+class EarliestDateRequest(BaseModel):
+    """POST /twin/{user_id}/goals/{goal_id}/earliest-date (CM-2)."""
+
+    events: list[SimulationEvent] = Field(min_length=1, max_length=1)
+
+
+class EarliestDateResponse(BaseModel):
+    goal_id: str
+    original_deadline: date
+    earliest_deadline: date | None = Field(
+        default=None,
+        description="None when no date inside the 730-day limit restores the chance.",
+    )
+    baseline_prob_goal_met: float | None = Field(default=None, ge=0, le=1)
+    prob_goal_met_at_earliest: float | None = Field(default=None, ge=0, le=1)
+    searched_until: date
+
+
+# --- Assistant ---------------------------------------------------------------
+#
+# The Assistant only ever drafts. Nothing here changes the twin: a proposal does
+# that through POST /assistant/proposals/{id}/decision with "accept" (AS-1, AS-15).
+# Payloads reuse the models above so a draft validates exactly the way the twin does.
+
+AssistantAction = Literal[
+    "ADD_GOAL",
+    "UPDATE_GOAL",
+    "ADD_OBLIGATION",
+    "UPDATE_OBLIGATION",
+    "SET_CONSTRAINT",
+    "CLASSIFY_OBLIGATION",
+]
+
+
+class ProposalBase(BaseModel):
+    proposal_id: str
+    status: Literal["pending", "accepted", "rejected"] = "pending"
+    source_fragment: str = Field(
+        min_length=1,
+        description="The user's own words this came from. A quote the frontend can "
+        "check against the message, where a model's 'reasoning' could not be (V1).",
+    )
+    requires_user_confirmation: Literal[True] = True
+
+
+class AddGoalProposal(ProposalBase):
+    action_type: Literal["ADD_GOAL"] = "ADD_GOAL"
+    goal: Goal
+
+
+class UpdateGoalProposal(ProposalBase):
+    action_type: Literal["UPDATE_GOAL"] = "UPDATE_GOAL"
+    goal_id: str
+    goal_name: str = Field(description="As shown on the card, so the user can read it back.")
+    changes: GoalChanges
+
+
+class AddObligationProposal(ProposalBase):
+    """One-time obligations only in v1. A recurring one is added on /obligations (Q2)."""
+
+    action_type: Literal["ADD_OBLIGATION"] = "ADD_OBLIGATION"
+    obligation: OneTimeObligation
+
+
+class UpdateObligationProposal(ProposalBase):
+    action_type: Literal["UPDATE_OBLIGATION"] = "UPDATE_OBLIGATION"
+    obligation_id: str
+    obligation_name: str
+    kind: Literal["recurring", "one_time"]
+    recurring_changes: RecurringObligationChanges | None = None
+    one_time_changes: OneTimeObligationChanges | None = None
+
+    @model_validator(mode="after")
+    def check_changes_match_kind(self) -> "UpdateObligationProposal":
+        given = self.recurring_changes if self.kind == "recurring" else self.one_time_changes
+        other = self.one_time_changes if self.kind == "recurring" else self.recurring_changes
+        if given is None:
+            raise ValueError(f"a {self.kind} proposal needs {self.kind}_changes")
+        if other is not None:
+            raise ValueError(f"a {self.kind} proposal must not carry the other kind's changes")
+        return self
+
+
+class SetConstraintProposal(ProposalBase):
+    action_type: Literal["SET_CONSTRAINT"] = "SET_CONSTRAINT"
+    constraint: FinancialConstraint
+
+
+class ClassifyObligationProposal(ProposalBase):
+    """Answering "the $50 transfer is savings" about a detected obligation (AS-7)."""
+
+    action_type: Literal["CLASSIFY_OBLIGATION"] = "CLASSIFY_OBLIGATION"
+    classification: ObligationClassificationDraft
+
+
+Proposal = Annotated[
+    AddGoalProposal
+    | UpdateGoalProposal
+    | AddObligationProposal
+    | UpdateObligationProposal
+    | SetConstraintProposal
+    | ClassifyObligationProposal,
+    Field(discriminator="action_type"),
+]
+
+
+class AssistantQuestion(BaseModel):
+    """Asked instead of guessing. The text comes from a template (8.3), never a model."""
+
+    question_id: str
+    text: str
+    field: GoalClarificationField | Literal["which_one", "category"]
+    choices: list[str] = Field(
+        default=[], description="Quick replies. Empty means free text."
+    )
+    fragment: str
+
+
+# `date` is a field name below, which shadows the type inside that class body.
+IsoDate = date
+
+
+class SimulatePrefill(BaseModel):
+    """A what-if, handed to the Purchase Simulator filled in but not run (AS-8)."""
+
+    description: str
+    amount: float = PositiveMoney
+    date: IsoDate | None = None
+
+
+class AssistantMessageRequest(BaseModel):
+    user_id: str
+    text: str = Field(min_length=1, max_length=2000)
+    conversation_id: str | None = None
+    in_reply_to: str | None = Field(
+        default=None,
+        description="The message_id of the question being answered. Sent only when the "
+        "user answers a specific question; the backend never guesses (AS-11).",
+    )
+
+
+class AssistantMessageResponse(BaseModel):
+    conversation_id: str
+    message_id: str
+    reply: str = Field(description="Always from a template in 8.3, never a model's words (AS-3).")
+    read_by: Literal["rules", "model"] = Field(
+        description="Who read the user's words. compiler 'rules' maps to 'rules', 'llm' to 'model' (AS-4)."
+    )
+    proposals: list[Proposal] = Field(default=[], max_length=5)
+    questions: list[AssistantQuestion] = Field(default=[], max_length=3)
+    simulate_prefill: SimulatePrefill | None = None
+    unparsed: list[str] = []
+
+
+class AssistantOpening(BaseModel):
+    """GET /assistant/opening/{user_id} (AS-9). Empty when nothing is unclassified."""
+
+    questions: list[AssistantQuestion] = Field(default=[], max_length=2)
+
+
+class ProposalDecisionRequest(BaseModel):
+    decision: Literal["accept", "reject"]
+
+
+class ProposalDecisionResponse(BaseModel):
+    proposal_id: str
+    status: Literal["accepted", "rejected"]
+    twin: FinancialTwin | None = Field(
+        default=None, description="The updated twin on accept, None on reject."
     )
