@@ -39,7 +39,7 @@ def fields(result: GoalCompileResponse) -> list[str]:
 
 # --- One-time obligations ------------------------------------------------------
 
-TUITION = "I have $1,200 tuition due 2027-01-15 from checking"
+TUITION = "I have $1,200 tuition due 2027-01-15 from checking, mandatory"
 
 
 def compile_obligation(text: str, accounts=None, as_of: date = AS_OF) -> GoalCompileResponse:
@@ -59,35 +59,52 @@ def test_a_declared_obligation_compiles_with_nothing_left_to_ask():
 
 
 def test_an_obligation_without_an_amount_asks_and_drafts_nothing():
-    result = compile_obligation("I have tuition due 2027-01-15 from checking")
+    result = compile_obligation("I have tuition due 2027-01-15 from checking, mandatory")
     assert result.one_time_obligations == []
     assert fields(result) == ["amount"]
-    assert result.clarifications[0].fragment == "I have tuition due 2027-01-15 from checking"
+    assert result.clarifications[0].fragment == (
+        "I have tuition due 2027-01-15 from checking, mandatory"
+    )
 
 
 def test_an_obligation_without_a_due_date_asks_and_drafts_nothing():
-    result = compile_obligation("I have $1,200 tuition from checking")
+    result = compile_obligation("I have $1,200 tuition from checking, mandatory")
     assert result.one_time_obligations == []
     assert fields(result) == ["deadline"]
 
 
 def test_an_obligation_without_a_name_asks_and_drafts_nothing():
-    result = compile_obligation("I owe $1,200 by 2027-01-15 from checking")
+    result = compile_obligation("I owe $1,200 by 2027-01-15 from checking, mandatory")
     assert result.one_time_obligations == []
     assert fields(result) == ["name"]
 
 
 def test_an_obligation_with_no_funding_account_named_asks_which_one():
-    result = compile_obligation("I have $1,200 tuition due 2027-01-15")
+    result = compile_obligation("I have $1,200 tuition due 2027-01-15, mandatory")
     assert result.one_time_obligations == []
     assert fields(result) == ["account"]
     assert "Everyday Checking" in result.clarifications[0].question
 
 
-def test_one_account_on_file_is_the_only_answer_there_is():
+def test_one_account_on_file_is_still_not_an_answer_the_user_declared():
     only = [Account(id="acc_only", name="Everyday Checking", type="checking", balance=500)]
-    [obligation] = compile_obligation("I have $1,200 tuition due 2027-01-15", only).one_time_obligations
-    assert obligation.account_id == "acc_only"
+    result = compile_obligation("I have $1,200 tuition due 2027-01-15, mandatory", only)
+    assert result.one_time_obligations == []
+    assert fields(result) == ["account"]
+
+
+def test_an_obligation_without_mandatory_status_asks_and_drafts_nothing():
+    result = compile_obligation("I have $1,200 tuition due 2027-01-15 from checking")
+    assert result.one_time_obligations == []
+    assert fields(result) == ["mandatory"]
+
+
+def test_an_optional_obligation_keeps_the_status_the_user_stated():
+    result = compile_obligation(
+        "I have $1,200 tuition due 2027-01-15 from checking, optional"
+    )
+    [obligation] = result.one_time_obligations
+    assert obligation.mandatory is False
 
 
 def test_a_savings_goal_is_still_a_goal_not_an_obligation():
@@ -104,7 +121,9 @@ def test_a_clause_that_reads_as_either_asks_which_it_is():
 
 
 def test_an_obligation_already_past_is_asked_about_not_back_dated():
-    result = compile_obligation("I have $1,200 tuition due 2020-01-15 from checking")
+    result = compile_obligation(
+        "I have $1,200 tuition due 2020-01-15 from checking, mandatory"
+    )
     assert result.one_time_obligations == []
     assert fields(result) == ["deadline"]
     assert "already passed" in result.clarifications[0].question
@@ -112,8 +131,8 @@ def test_an_obligation_already_past_is_asked_about_not_back_dated():
 
 def test_two_obligations_in_one_sentence_split():
     result = compile_obligation(
-        "I have $1,200 tuition due 2027-01-15 from checking "
-        "and $400 car insurance due 2026-11-01 from checking"
+        "I have $1,200 tuition due 2027-01-15 from checking, mandatory "
+        "and $400 car insurance due 2026-11-01 from checking, optional"
     )
     assert [(o.id, o.name, o.amount) for o in result.one_time_obligations] == [
         ("one_tuition", "Tuition", 1200.0),
@@ -166,6 +185,13 @@ def test_vague_deadline_is_asked_about_not_resolved():
         ("by Dec 12, 2027", date(2027, 12, 12)),
         ("by May 2028", date(2028, 5, 1)),
         ("by 2027-03-15", date(2027, 3, 15)),
+        ("by next June", date(2027, 6, 1)),  # same as "by June": the qualifier adds nothing
+        ("by next March", date(2027, 3, 1)),
+        ("by this December", date(2026, 12, 1)),  # "this" must not push it a year out
+        ("by next month", date(2026, 10, 1)),
+        ("by this month", date(2026, 9, 30)),
+        ("by the end of next June", date(2027, 6, 30)),
+        ("by the 15th of next June", date(2027, 6, 15)),
         ("in 6 months", date(2027, 3, 19)),
         ("in 3 weeks", date(2026, 10, 10)),
         ("within a year", date(2027, 9, 19)),
@@ -174,6 +200,26 @@ def test_vague_deadline_is_asked_about_not_resolved():
 def test_deadlines(phrase, expected):
     [goal] = compile_text(f"I need $500 for a trip {phrase}").goals
     assert goal.deadline == expected
+
+
+def test_a_month_qualifier_does_not_change_the_date():
+    [plain] = compile_text("I need $500 for a trip by June").goals
+    [qualified] = compile_text("I need $500 for a trip by next June").goals
+    assert plain.deadline == qualified.deadline == date(2027, 6, 1)
+
+
+def test_next_summer_is_still_vague_rather_than_a_silent_date():
+    result = compile_text("I want $2000 for housing by next summer")
+    assert result.goals == []
+    assert fields(result) == ["deadline"]
+    assert "by next summer" in result.clarifications[0].question
+
+
+def test_a_qualifier_in_front_of_a_non_month_is_still_no_date():
+    result = compile_text("I want $2000 for housing by next Foo")
+    assert result.goals == []
+    assert fields(result) == ["deadline"]
+    assert result.clarifications[0].question == "When do you need the money for housing?"
 
 
 def test_past_deadline_is_asked_about():
@@ -342,6 +388,17 @@ def test_compile_endpoint_returns_drafts_and_saves_nothing():
     assert get_twin().goals == load_twin().goals
 
 
+def test_compile_endpoint_resolves_a_relative_month_without_clarifying():
+    response = compile_api("I want to save $2,000 for a trip by next June")
+    assert response.status_code == 200
+    result = GoalCompileResponse.model_validate(response.json())
+    assert [(goal.name, goal.target_amount, goal.deadline) for goal in result.goals] == [
+        ("Trip", 2000.0, date(2027, 6, 1))
+    ]
+    assert result.clarifications == []
+    assert result.compiler == "rules"
+
+
 def test_compile_endpoint_survives_an_out_of_range_date():
     response = compile_api("Save $500 for a trip in 99999 years")
     assert response.status_code == 200
@@ -404,7 +461,8 @@ def test_goals_put_keeps_the_checking_minimum_unless_given_one():
 @pytest.mark.parametrize(
     "goals",
     [
-        [{"id": "g", "name": "Past", "target_amount": 100, "deadline": "2026-09-19"}],
+        # Not after the twin's as_of, so there is no future left to save in.
+        [{"id": "g", "name": "Past", "target_amount": 100, "deadline": "2026-09-18"}],
         [{"id": "g", "name": "Far", "target_amount": 100, "deadline": "2030-01-01"}],
         [
             {"id": "g", "name": "A", "target_amount": 100, "deadline": "2027-01-01"},

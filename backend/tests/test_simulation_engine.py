@@ -2,6 +2,7 @@ from datetime import date, timedelta
 
 import pytest
 
+from backend.fixtures import load_twin
 from backend.schemas import Goal, OneTimeObligation, SeasonalProfile, SimulationEvent
 from backend.simulation.engine import (
     LOW_BALANCE_THRESHOLD,
@@ -32,11 +33,22 @@ def twin(flat_twin):
 
 def test_baseline_ending_balance_matches_closed_form(twin):
     result = simulate_scenario(twin, [], HORIZON)
-    # 16 paychecks; rent x8, utilities x7, phone x8, subscriptions x7, mystery transfer x7; 224 days of spending.
-    income = 16 * 720
-    bills = 8 * 650 + 7 * 60 + 8 * 40 + 7 * 25 + 7 * 75
-    spending = 260 / 14 * 224
-    assert result.total_income == income
+    amount = {o.id: o.expected_amount for o in twin.obligations}
+    paycheck = twin.income[0].expected_amount
+    everyday = sum(v.mean_14d for v in twin.variable_spending)
+    # 16 paychecks; rent x8, utilities x7, phone x8, subscriptions x7, transfer x7;
+    # every day from as_of to the horizon. The counts are the point here; the
+    # amounts are read off the twin, which measured them from the feed.
+    income = 16 * paycheck
+    bills = (
+        8 * amount["obl_hokie_property_mgmt_rent"]
+        + 7 * amount["obl_town_electric_utility"]
+        + 8 * amount["obl_verizon_wireless"]
+        + 7 * amount["obl_spotify_premium"]
+        + 7 * amount["obl_online_transfer_to"]
+    )
+    spending = everyday / 14 * (HORIZON - twin.as_of).days
+    assert result.total_income == pytest.approx(income, abs=0.01)
     assert result.ending_balance == pytest.approx(3140 + income - bills - spending, abs=0.01)
 
 
@@ -104,7 +116,7 @@ def test_purchase_that_empties_checking_makes_rent_come_out_of_savings(twin):
     # Savings covers it, so the bill is paid -- but not silently.
     assert result.obligations_covered
     sweep = result.savings_sweeps[0]
-    assert sweep.obligation_id == "obl_rent"
+    assert sweep.obligation_id == "obl_hokie_property_mgmt_rent"
     assert sweep.due == date(2026, 10, 1)
     assert sweep.amount > 0
 
@@ -117,7 +129,7 @@ def test_rent_is_uncovered_only_when_savings_cannot_cover_it_either(twin):
     result = simulate_scenario(drained, [purchase(1300, on="2026-09-26")], HORIZON)
     assert not result.obligations_covered
     first = result.uncovered_obligations[0]
-    assert first.obligation_id == "obl_rent"
+    assert first.obligation_id == "obl_hokie_property_mgmt_rent"
     assert first.due == date(2026, 10, 1)
     assert first.checking_after < 0
 
@@ -148,8 +160,8 @@ def test_a_twin_with_no_savings_account_still_reports_uncovered_bills(twin):
 
 def test_an_optional_charge_is_never_blamed_on_a_mandatory_bill(twin):
     """Rent and an optional charge fall on the same day; only rent can be paid."""
-    rent = next(o for o in twin.obligations if o.id == "obl_rent")
-    optional = next(o for o in twin.obligations if o.id == "obl_subscriptions")
+    rent = next(o for o in twin.obligations if o.id == "obl_hokie_property_mgmt_rent")
+    optional = next(o for o in twin.obligations if o.id == "obl_spotify_premium")
     same_day = twin.model_copy(
         update={
             "obligations": [optional.model_copy(update={"due_day": 1}), rent],
@@ -167,8 +179,8 @@ def test_an_optional_charge_is_never_blamed_on_a_mandatory_bill(twin):
 
 
 def test_two_mandatory_bills_on_one_day_blame_only_the_one_that_fails(twin):
-    rent = next(o for o in twin.obligations if o.id == "obl_rent")
-    phone = next(o for o in twin.obligations if o.id == "obl_phone")
+    rent = next(o for o in twin.obligations if o.id == "obl_hokie_property_mgmt_rent")
+    phone = next(o for o in twin.obligations if o.id == "obl_verizon_wireless")
     same_day = twin.model_copy(
         update={
             "obligations": [rent, phone.model_copy(update={"due_day": 1})],
@@ -180,7 +192,7 @@ def test_two_mandatory_bills_on_one_day_blame_only_the_one_that_fails(twin):
     )
     result = simulate_scenario(same_day, [], date(2026, 10, 2))
     # $660 pays the $650 rent; the $40 phone bill is the one that cannot be paid.
-    assert [u.obligation_id for u in result.uncovered_obligations] == ["obl_phone"]
+    assert [u.obligation_id for u in result.uncovered_obligations] == ["obl_verizon_wireless"]
     assert result.uncovered_obligations[0].checking_after == pytest.approx(-30.0)
 
 
@@ -189,14 +201,14 @@ def test_a_declared_savings_transfer_never_sweeps_from_savings(twin):
         update={
             "obligations": [
                 o.model_copy(update={"declared_category": "savings_transfer"})
-                if o.id == "obl_mystery_transfer"
+                if o.id == "obl_online_transfer_to"
                 else o
                 for o in twin.obligations
             ]
         }
     )
     result = simulate_scenario(declared, [purchase(1300, on="2026-09-26")], HORIZON)
-    assert all(s.obligation_id != "obl_mystery_transfer" for s in result.savings_sweeps)
+    assert all(s.obligation_id != "obl_online_transfer_to" for s in result.savings_sweeps)
 
 
 def test_purchase_from_savings_does_not_affect_checking_coverage(twin):
@@ -266,7 +278,7 @@ def test_a_one_time_obligation_before_as_of_is_not_applied(twin):
 
 def test_a_one_time_obligation_on_as_of_itself_is_not_applied(twin):
     """The window is (as_of, horizon_end], the same as every other flow."""
-    today = owing(twin, owed(1000, "2026-09-19"))
+    today = owing(twin, owed(1000, twin.as_of.isoformat()))
     assert simulate_scenario(today, [], HORIZON) == simulate_scenario(twin, [], HORIZON)
 
 
@@ -310,7 +322,7 @@ def test_a_one_time_obligation_paid_from_savings_leaves_checking_alone(twin):
 
 
 def test_a_one_time_and_a_recurring_obligation_on_one_day_both_apply(twin):
-    rent = next(o for o in twin.obligations if o.id == "obl_rent")
+    rent = next(o for o in twin.obligations if "rent" in o.name.lower())
     same_day = twin.model_copy(
         update={
             "obligations": [rent],
@@ -348,13 +360,27 @@ def test_due_day_31_clamps_to_month_end():
 # --- Goal impact ---------------------------------------------------------------
 
 
-def test_laptop_creates_goal_shortfall(twin):
+def test_what_is_available_for_the_goal_is_the_balance_minus_the_reserve(twin):
     c = compare(twin, [purchase(800)])
-    base_goal, cf_goal = c.baseline.goals[0], c.counterfactual.goals[0]
+    base_goal = c.baseline.goals[0]
     # Available for the goal = balance at deadline minus the $1,500 reserve.
     assert base_goal.available == pytest.approx(c.baseline.ending_balance - 1500)
     assert base_goal.shortfall == 0
     assert base_goal.surplus == pytest.approx(base_goal.available - 1600)
+
+
+def test_laptop_creates_goal_shortfall():
+    """Against Alex's own twin, seasonal profiles and all, because that is the claim.
+
+    The shortfall needs the seasonal shape. The laptop lands in the busy autumn,
+    and it is that concentration of spending in the months right after the
+    purchase that puts the goal out of reach. Spread the same annual spending
+    evenly -- the flat twin every other test in this module uses -- and the goal
+    survives the purchase.
+    """
+    c = compare(load_twin(), [purchase(800)])
+    base_goal, cf_goal = c.baseline.goals[0], c.counterfactual.goals[0]
+    assert base_goal.shortfall == 0
     assert cf_goal.shortfall == pytest.approx(1600 - cf_goal.available)
     assert c.counterfactual.goal_shortfall == cf_goal.shortfall > 0
 
@@ -431,10 +457,12 @@ def test_a_flat_profile_changes_nothing(twin):
 def test_seasonal_spending_follows_the_month_factor(twin):
     result = simulate_scenario(with_profile(twin, TERM_SHAPE), [], HORIZON)
     flat = simulate_scenario(twin, [], HORIZON)
+    everyday = sum(v.mean_14d for v in twin.variable_spending)
     days = [twin.as_of + timedelta(days=i) for i in range(1, (HORIZON - twin.as_of).days + 1)]
-    # Sep 20 - Dec 31 at 1.5x, Jan 1 - Apr 30 at 0.5x, May 1 at 1.0x of $260 per 14 days.
-    extra = sum(260 / 14 * (TERM_SHAPE[d.month] - 1) for d in days)
-    assert extra == pytest.approx(260 / 14 * (103 * 0.5 - 120 * 0.5))
+    # Sep 19 - Dec 31 at 1.5x, Jan 1 - Apr 30 at 0.5x, May 1 at 1.0x: 104 heavy
+    # days against 120 light ones.
+    extra = sum(everyday / 14 * (TERM_SHAPE[d.month] - 1) for d in days)
+    assert extra == pytest.approx(everyday / 14 * (104 * 0.5 - 120 * 0.5))
     assert result.ending_balance == pytest.approx(flat.ending_balance - extra, abs=0.01)
 
 
@@ -442,7 +470,8 @@ def test_a_heavy_month_spends_faster_than_a_light_one(twin):
     result = simulate_scenario(with_profile(twin, TERM_SHAPE), [], HORIZON)
     checking = dict(zip(result.dates, result.checking))
     # Two paycheck-free, bill-free stretches of equal length: Oct 10-14 and Jan 10-14.
+    everyday = sum(v.mean_14d for v in twin.variable_spending)
     october = checking[date(2026, 10, 10)] - checking[date(2026, 10, 14)]
     january = checking[date(2027, 1, 10)] - checking[date(2027, 1, 14)]
-    assert october == pytest.approx(4 * 260 / 14 * 1.5, abs=0.01)
-    assert january == pytest.approx(4 * 260 / 14 * 0.5, abs=0.01)
+    assert october == pytest.approx(4 * everyday / 14 * 1.5, abs=0.01)
+    assert january == pytest.approx(4 * everyday / 14 * 0.5, abs=0.01)
