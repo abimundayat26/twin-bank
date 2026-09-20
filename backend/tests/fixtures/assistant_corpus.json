@@ -45,8 +45,8 @@
     },
     {
       "text": "rent went up to 1050",
-      "expect": {"questions": ["which_one"]},
-      "note": "8.6 expects UPDATE_OBLIGATION. Editing a detected recurring payment needs the twin_store overrides of PER-1, which are a separate PR, so this version says where rent can be edited instead. The row changes to a proposal when that lands."
+      "expect": {"proposals": [{"action_type": "UPDATE_OBLIGATION", "obligation_name": "Hokie Property Mgmt Rent", "changes": {"amount": 1050}}]},
+      "note": "The detected payment is unchanged until the user accepts the proposal. Acceptance stores a recurring override (PER-1, AS-15)."
     },
     {
       "text": "change my summer housing goal to $2,500",
@@ -71,7 +71,7 @@
       "setup": {"one_time_obligations": [{"id": "one_tuition", "name": "Tuition", "amount": 1200, "due_date": "2027-01-15", "account_id": "acc_checking", "mandatory": true}]},
       "text": "my tuition bill went up to $1,500",
       "expect": {"proposals": [{"action_type": "UPDATE_OBLIGATION", "obligation_name": "Tuition", "changes": {"amount": 1500}}]},
-      "note": "A one-off expense can be updated from the chat; a detected recurring one cannot yet."
+      "note": "A one-off expense and a detected recurring payment can both be updated from the chat."
     },
     {
       "text": "what if I buy a $800 laptop",
